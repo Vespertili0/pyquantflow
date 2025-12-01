@@ -1,0 +1,10 @@
+Metadata-Version: 2.4
+Name: stock_package
+Version: 0.1.0
+Summary: A robust stock analysis and backtesting framework.
+Requires-Dist: pandas
+Requires-Dist: numpy
+Requires-Dist: yfinance
+Requires-Dist: backtesting
+Dynamic: requires-dist
+Dynamic: summary
