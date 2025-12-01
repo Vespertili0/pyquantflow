@@ -183,4 +183,11 @@ class DatabaseManager:
         query = "SELECT datetime, open, high, low, close, volume FROM price_data WHERE ticker_id = ? ORDER BY datetime"
         df = pd.read_sql_query(query, self.conn, params=(ticker_id,), parse_dates=['datetime'])
         df = df.set_index('datetime')
+        df = df.rename(columns={
+            'open': 'Open',
+            'high': 'High',
+            'low': 'Low',
+            'close': 'Close',
+            'volume': 'Volume'
+        })
         return df

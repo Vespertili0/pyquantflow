@@ -48,7 +48,7 @@ class TestDatabaseManager(unittest.TestCase):
         # Verify get_data
         df = self.db.get_data(ticker)
         self.assertEqual(len(df), 5)
-        self.assertEqual(df.iloc[0]['open'], 10.0)
+        self.assertEqual(df.iloc[0]['Open'], 10.0)
 
     @patch('stock_package.data.database.yf.download')
     @patch('stock_package.data.database.fetch_quarterly_data')

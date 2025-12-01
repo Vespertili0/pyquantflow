@@ -1,11 +1,10 @@
 import pandas as pd
 from backtesting import Backtest
-from ..db.backtest_results import BacktestResultsDB
-from ..config import BACKTEST_RESULTS_DB
+
 
 class BacktestRunner:
-    def __init__(self, results_db_path=BACKTEST_RESULTS_DB):
-        self.results_db_path = results_db_path
+    def __init__(self):
+        pass
 
     def _validate_data(self, df):
         required_cols = ['Open', 'High', 'Low', 'Close', 'Volume']
@@ -27,7 +26,7 @@ class BacktestRunner:
             commission: Commission rate.
             **strategy_params: Parameters for the strategy.
         """
-        aggregated_results = []
+        results = {}
         
         # Normalize input to a dictionary of {symbol: dataframe}
         data_map = {}
@@ -40,45 +39,26 @@ class BacktestRunner:
         else:
             raise ValueError("Data must be a pandas DataFrame or a dictionary of DataFrames.")
 
-        with BacktestResultsDB(self.results_db_path) as results_db:
-            for sym, df in data_map.items():
-                print(f"Running backtest for {sym}...")
-                try:
-                    df = self._validate_data(df)
-                    
-                    bt = Backtest(df, strategy_class, cash=cash, commission=commission)
-                    stats = bt.run(**strategy_params)
-                    
-                    # Extract metrics
-                    start_date = stats['Start'].isoformat()
-                    end_date = stats['End'].isoformat()
-                    return_pct = stats['Return [%]']
-                    sharpe = stats['Sharpe Ratio']
-                    max_drawdown = stats['Max. Drawdown [%]']
-                    trades = stats['# Trades']
-                    duration = str(stats['Duration'])
+        for sym, df in data_map.items():
+            print(f"Running backtest for {sym}...")
+            try:
+                df = self._validate_data(df)
+                if not isinstance(df.index, pd.DatetimeIndex):
+                    df.index = pd.to_datetime(df.index, utc=True)
+                
+                if df.index.tz is not None:
+                    df.index = df.index.tz_localize(None)
+                
+                bt = Backtest(df, strategy_class, cash=cash, commission=commission)
+                stats = bt.run(**strategy_params)
+                
+                # Convert stats to dictionary for easier handling
+                # stats is a pd.Series, to_dict() works well
+                results[sym] = stats.to_dict()
+                
+                print(f"Finished {sym}: Return {stats['Return [%]']:.2f}%")
+            except Exception as e:
+                print(f"Error running backtest for {sym}: {e}")
+                results[sym] = {'Error': str(e)}
 
-                    # Save to DB
-                    results_db.save_result(
-                        strategy_class.__name__,
-                        sym,
-                        start_date,
-                        end_date,
-                        return_pct,
-                        sharpe,
-                        max_drawdown,
-                        trades,
-                        duration
-                    )
-                    
-                    aggregated_results.append({
-                        'symbol': sym,
-                        'return': return_pct,
-                        'sharpe': sharpe,
-                        'trades': trades
-                    })
-                    print(f"Finished {sym}: Return {return_pct:.2f}%")
-                except Exception as e:
-                    print(f"Error running backtest for {sym}: {e}")
-
-        return aggregated_results
+        return results
