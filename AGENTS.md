@@ -19,9 +19,10 @@ python -m unittest discover tests
 ```
 
 Dependencies required for testing:
-- `pandas`
-- `yfinance`
-- `backtesting`
+- Install dependencies from `requirements.txt`:
+  ```bash
+  pip install -r requirements.txt
+  ```
 
 ## Database Schema
 The SQLite database (`stocks.db`) has two main tables (managed by `stock_package.data.database`):

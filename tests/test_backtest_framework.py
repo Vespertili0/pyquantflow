@@ -1,42 +1,47 @@
-
+import unittest
+import os
 import pandas as pd
 from stock_package.backtest_framework import BatchBacktester
 from stock_package.strategies.example_strategy import SmaCross
 
-def test_batch_backtester():
-    tickers = ['FMG.AX', 'CBA.AX']
-    backtester = BatchBacktester(db_path="stocks.db")
-    
-    # Run backtest
-    results = backtester.run_batch_backtest(tickers, SmaCross, cash=10000, commission=.002)
-    
-    # Verify structure
-    assert 'individual_results' in results
-    assert 'average_metrics' in results
-    
-    # Verify individual results
-    for ticker in tickers:
-        assert ticker in results['individual_results']
-        stats = results['individual_results'][ticker]
+class TestBacktestFramework(unittest.TestCase):
+    def setUp(self):
+        # Locate the database file relative to this test file
+        self.db_path = os.path.join(os.path.dirname(__file__), "stocks.db")
+        if not os.path.exists(self.db_path):
+            self.fail(f"Database file not found at {self.db_path}")
         
-        # Check for some key metrics
-        assert 'Return [%]' in stats
-        assert 'Sharpe Ratio' in stats
-        assert '# Trades' in stats
-        assert 'Max. Drawdown [%]' in stats
-        
-        print(f"\nResults for {ticker}:")
-        print(f"Return: {stats['Return [%]']:.2f}%")
-        print(f"Sharpe: {stats['Sharpe Ratio']:.2f}")
-        print(f"Trades: {stats['# Trades']}")
+        self.tickers = ['FMG.AX', 'CBA.AX']
+        self.backtester = BatchBacktester(db_path=self.db_path)
 
-    # Verify averages
-    print("\nAverage Metrics:")
-    for metric, value in results['average_metrics'].items():
-        print(f"{metric}: {value}")
+    def test_run_batch_backtest(self):
+        # Run backtest
+        results = self.backtester.run_batch_backtest(
+            self.tickers,
+            SmaCross,
+            cash=10000,
+            commission=.002
+        )
         
-    assert 'Return [%]' in results['average_metrics']
-    assert 'Sharpe Ratio' in results['average_metrics']
+        # Verify structure
+        self.assertIn('individual_results', results)
+        self.assertIn('average_metrics', results)
+
+        # Verify individual results
+        for ticker in self.tickers:
+            self.assertIn(ticker, results['individual_results'])
+            stats = results['individual_results'][ticker]
+
+            # Check for some key metrics
+            self.assertIn('Return [%]', stats)
+            self.assertIn('Sharpe Ratio', stats)
+            self.assertIn('# Trades', stats)
+            self.assertIn('Max. Drawdown [%]', stats)
+
+        # Verify averages
+        avg_metrics = results['average_metrics']
+        self.assertIn('Return [%]', avg_metrics)
+        self.assertIn('Sharpe Ratio', avg_metrics)
 
 if __name__ == "__main__":
-    test_batch_backtester()
+    unittest.main()
