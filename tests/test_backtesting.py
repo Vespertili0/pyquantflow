@@ -73,14 +73,32 @@ class TestBacktesting(unittest.TestCase):
             self.assertIn('Return [%]', avg_metrics)
             self.assertIn('Sharpe Ratio', avg_metrics)
 
-        # 4. Verify Database Storage
+        # 4. Verify Database Storage (Should be empty before saving)
         conn = sqlite3.connect(self.results_db_path)
         cursor = conn.cursor()
 
+        # Check that no results are stored yet
+        cursor.execute("SELECT count(*) FROM backtest_results")
+        count = cursor.fetchone()[0]
+        self.assertEqual(count, 0, "Database should be empty before explicit save")
+
+        # 5. Save Results
+        batch_name = self.backtester.save_batch_results(results, SmaCross)
+
+        # Verify batch name format
+        from datetime import datetime
+        expected_prefix = datetime.now().strftime('%Y-%m-%d')
+        self.assertTrue(batch_name.startswith(expected_prefix))
+        self.assertTrue(batch_name.endswith(SmaCross.__name__))
+
+        # 6. Verify Database Storage after saving
         for ticker in data_map.keys():
             cursor.execute("SELECT * FROM backtest_results WHERE ticker = ?", (ticker,))
             row = cursor.fetchone()
             self.assertIsNotNone(row, f"No results found in database for {ticker}")
+
+            # Verify batch name storage
+            self.assertEqual(row[2], batch_name) # batch_run_name is the 3rd column (index 2)
 
             # Verify JSON content
             stored_metrics = json.loads(row[3]) # metrics is the 4th column (index 3)

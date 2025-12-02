@@ -26,10 +26,6 @@ class BatchBacktester:
         # Run backtests
         individual_results = self.runner.run(strategy_class, data_map, **kwargs)
         
-        # Save results to DB
-        for ticker, result in individual_results.items():
-            self.results_db.save_result(ticker, result)
-        
         # Calculate averages
         average_metrics = self._calculate_averages(individual_results)
         
@@ -37,6 +33,27 @@ class BatchBacktester:
             'individual_results': individual_results,
             'average_metrics': average_metrics
         }
+
+    def save_batch_results(self, results, strategy_class):
+        """
+        Saves the batch backtest results to the database with a unique batch run name.
+
+        Args:
+            results (dict): The dictionary containing 'individual_results' (as returned by run_batch_backtest).
+            strategy_class: The strategy class used for the backtest.
+
+        Returns:
+            str: The generated batch run name.
+        """
+        from datetime import datetime
+
+        individual_results = results.get('individual_results', {})
+        batch_run_name = f"{datetime.now().strftime('%Y-%m-%d')}_{strategy_class.__name__}"
+
+        for ticker, result in individual_results.items():
+            self.results_db.save_result(ticker, result, batch_run_name)
+
+        return batch_run_name
 
     def _calculate_averages(self, results):
         """
