@@ -1,45 +1,34 @@
 import pandas as pd
 import numpy as np
-from .data.database import DatabaseManager
 from .backtesting.engine import BacktestRunner
+from .backtesting.backtest_database import BacktestDatabaseManager
 
 class BatchBacktester:
-    def __init__(self, db_path="stocks.db"):
-        self.db_manager = DatabaseManager(db_path)
+    def __init__(self, results_db_path="backtest_results.db"):
+        self.results_db = BacktestDatabaseManager(results_db_path)
         self.runner = BacktestRunner()
 
-    def run_batch_backtest(self, tickers, strategy_class, **kwargs):
+    def run_batch_backtest(self, data_map, strategy_class, **kwargs):
         """
         Runs backtests for a list of tickers and aggregates results.
         
         Args:
-            tickers (list): List of ticker symbols.
+            data_map (dict): Dictionary of {ticker: DataFrame}.
             strategy_class: The strategy class to use.
             **kwargs: Additional arguments for the backtest (cash, commission, strategy params).
         
         Returns:
             dict: A dictionary containing 'individual_results' and 'average_metrics'.
         """
-        data_map = {}
-        for ticker in tickers:
-            # Ensure we have data. 
-            # Check if data exists, if not try to add it (simple check)
-            df = self.db_manager.get_data(ticker)
-            if df.empty:
-                print(f"Data for {ticker} not found in DB. Attempting to fetch...")
-                self.db_manager.add_ticker(ticker)
-                df = self.db_manager.get_data(ticker)
-            
-            if not df.empty:
-                data_map[ticker] = df
-            else:
-                print(f"Could not retrieve data for {ticker}. Skipping.")
-
         if not data_map:
             return {'individual_results': {}, 'average_metrics': {}}
 
         # Run backtests
         individual_results = self.runner.run(strategy_class, data_map, **kwargs)
+        
+        # Save results to DB
+        for ticker, result in individual_results.items():
+            self.results_db.save_result(ticker, result)
         
         # Calculate averages
         average_metrics = self._calculate_averages(individual_results)
