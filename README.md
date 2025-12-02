@@ -1,4 +1,4 @@
-# Stock Package
+# pyquantflow
 
 **Analyze. Backtest. Trade.**
 
@@ -18,7 +18,7 @@ pip install .
 Initialize your local SQLite database and fetch historical data for your favorite tickers.
 
 ```python
-from stock_package.data.database import DatabaseManager
+from pyquantflow.data.database import DatabaseManager
 
 # Initialize database (defaults to stocks.db, using a separate one for example)
 db = DatabaseManager('example_stocks.db')
@@ -36,9 +36,9 @@ print(data.tail())
 Test your trading strategies using the built-in engine.
 
 ```python
-from stock_package.backtesting.engine import BacktestRunner
-from stock_package.strategies.example_strategy import SmaCross
-from stock_package.data.database import DatabaseManager
+from pyquantflow.backtesting.engine import BacktestRunner
+from pyquantflow.strategies.example_strategy import SmaCross
+from pyquantflow.data.database import DatabaseManager
 
 # Get data
 db = DatabaseManager('example_stocks.db')
@@ -59,9 +59,9 @@ else:
 Run backtests for multiple tickers and save results to a SQLite database.
 
 ```python
-from stock_package.backtest_framework import BatchBacktester
-from stock_package.strategies.example_strategy import SmaCross
-from stock_package.data.database import DatabaseManager
+from pyquantflow.backtest_framework import BatchBacktester
+from pyquantflow.strategies.example_strategy import SmaCross
+from pyquantflow.data.database import DatabaseManager
 
 # Get data for multiple tickers
 db = DatabaseManager('example_stocks.db')

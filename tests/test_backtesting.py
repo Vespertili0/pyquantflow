@@ -3,9 +3,9 @@ import os
 import sqlite3
 import json
 import pandas as pd
-from stock_package.backtest_framework import BatchBacktester
-from stock_package.strategies.example_strategy import SmaCross
-from stock_package.data.database import DatabaseManager
+from pyquantflow.backtest_framework import BatchBacktester
+from pyquantflow.strategies.example_strategy import SmaCross
+from pyquantflow.data.database import DatabaseManager
 
 class TestBacktesting(unittest.TestCase):
     def setUp(self):
