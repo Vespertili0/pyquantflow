@@ -2,7 +2,7 @@ import unittest
 from unittest.mock import patch, MagicMock
 import pandas as pd
 import sqlite3
-from stock_package.data.database import DatabaseManager
+from pyquantflow.data.database import DatabaseManager
 from datetime import datetime
 
 class TestDatabaseManager(unittest.TestCase):
@@ -14,7 +14,7 @@ class TestDatabaseManager(unittest.TestCase):
     def tearDown(self):
         self.db.conn.close()
 
-    @patch('stock_package.data.database.fetch_quarterly_data')
+    @patch('pyquantflow.data.database.fetch_quarterly_data')
     def test_add_ticker(self, mock_fetch):
         # Setup mock return data
         dates = pd.date_range(start='2023-01-01', periods=5, freq='D', tz='Australia/Sydney')
@@ -50,8 +50,8 @@ class TestDatabaseManager(unittest.TestCase):
         self.assertEqual(len(df), 5)
         self.assertEqual(df.iloc[0]['Open'], 10.0)
 
-    @patch('stock_package.data.database.yf.download')
-    @patch('stock_package.data.database.fetch_quarterly_data')
+    @patch('pyquantflow.data.database.yf.download')
+    @patch('pyquantflow.data.database.fetch_quarterly_data')
     def test_update_ticker(self, mock_fetch, mock_yf_download):
         # 1. Add ticker first
         dates_initial = pd.date_range(start='2023-01-01', periods=2, freq='D', tz='Australia/Sydney')

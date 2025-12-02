@@ -1,4 +1,4 @@
-# Stock Package
+# pyquantflow
 
 **Analyze. Backtest. Trade.**
 
@@ -18,7 +18,7 @@ pip install .
 Initialize your local SQLite database and fetch historical data for your favorite tickers.
 
 ```python
-from stock_package.data.database import DatabaseManager
+from pyquantflow.data.database import DatabaseManager
 
 # Initialize database (defaults to stocks.db, using a separate one for example)
 db = DatabaseManager('example_stocks.db')
@@ -31,14 +31,14 @@ data = db.get_data('AAPL')
 print(data.tail())
 ```
 
-### 2. Run a Backtest
+### 2. Run a Single Backtest
 
 Test your trading strategies using the built-in engine.
 
 ```python
-from stock_package.backtesting.engine import BacktestRunner
-from stock_package.strategies.example_strategy import SmaCross
-from stock_package.data.database import DatabaseManager
+from pyquantflow.backtesting.engine import BacktestRunner
+from pyquantflow.strategies.example_strategy import SmaCross
+from pyquantflow.data.database import DatabaseManager
 
 # Get data
 db = DatabaseManager('example_stocks.db')
@@ -52,4 +52,30 @@ if not data.empty:
     print(f"Return: {results['AAPL']['Return [%]']:.2f}%")
 else:
     print("No data available for backtest.")
+```
+
+### 3. Run Batch Backtest with Result Persistence
+
+Run backtests for multiple tickers and save results to a SQLite database.
+
+```python
+from pyquantflow.backtest_framework import BatchBacktester
+from pyquantflow.strategies.example_strategy import SmaCross
+from pyquantflow.data.database import DatabaseManager
+
+# Get data for multiple tickers
+db = DatabaseManager('example_stocks.db')
+tickers = ['AAPL', 'MSFT']
+data_map = {}
+for ticker in tickers:
+    data = db.get_data(ticker)
+    if not data.empty:
+        data_map[ticker] = data
+
+# Run batch backtest
+# results will be saved to 'backtest_results.db' by default
+backtester = BatchBacktester(results_db_path='backtest_results.db')
+results = backtester.run_batch_backtest(data_map, SmaCross, cash=10000, commission=.002)
+
+print("Average Metrics:", results['average_metrics'])
 ```
