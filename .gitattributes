@@ -12,3 +12,8 @@
 *.png binary
 *.jpg binary
 *.jpeg binary
+*.md text
+*.txt text
+*.json text
+*.yml text
+*.yaml text
