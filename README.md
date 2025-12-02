@@ -31,7 +31,7 @@ data = db.get_data('AAPL')
 print(data.tail())
 ```
 
-### 2. Run a Backtest
+### 2. Run a Single Backtest
 
 Test your trading strategies using the built-in engine.
 
@@ -52,4 +52,30 @@ if not data.empty:
     print(f"Return: {results['AAPL']['Return [%]']:.2f}%")
 else:
     print("No data available for backtest.")
+```
+
+### 3. Run Batch Backtest with Result Persistence
+
+Run backtests for multiple tickers and save results to a SQLite database.
+
+```python
+from stock_package.backtest_framework import BatchBacktester
+from stock_package.strategies.example_strategy import SmaCross
+from stock_package.data.database import DatabaseManager
+
+# Get data for multiple tickers
+db = DatabaseManager('example_stocks.db')
+tickers = ['AAPL', 'MSFT']
+data_map = {}
+for ticker in tickers:
+    data = db.get_data(ticker)
+    if not data.empty:
+        data_map[ticker] = data
+
+# Run batch backtest
+# results will be saved to 'backtest_results.db' by default
+backtester = BatchBacktester(results_db_path='backtest_results.db')
+results = backtester.run_batch_backtest(data_map, SmaCross, cash=10000, commission=.002)
+
+print("Average Metrics:", results['average_metrics'])
 ```
