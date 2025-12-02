@@ -1,0 +1,14 @@
+# Auto-detect text files and perform LF normalization
+* text=auto eol=lf
+
+# Custom for Python
+*.py text diff=python
+
+# Binary files
+*.db binary
+*.sqlite binary
+*.pyc binary
+*.pyd binary
+*.png binary
+*.jpg binary
+*.jpeg binary
