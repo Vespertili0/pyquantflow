@@ -59,7 +59,7 @@ else:
 Run backtests for multiple tickers and save results to a SQLite database.
 
 ```python
-from pyquantflow.backtest_framework import BatchBacktester
+from pyquantflow.backtesting.batchbacktest import BatchBacktester
 from pyquantflow.strategies.example_strategy import SmaCross
 from pyquantflow.data.database import DatabaseManager
 
