@@ -6,9 +6,7 @@ This project contains a stock analysis and backtesting package (`stock_package`)
 ## Directory Structure
 - `stock_package/`: Main source code.
   - `data/`: Data ingestion and database management.
-  - `backtesting/`: Backtesting engine.
-  - `db/`: Database models and ORM/interface definitions.
-  - `models/`: Machine learning models (if any).
+  - `backtesting/`: Backtesting engine and result storage.
   - `strategies/`: Trading strategies.
 - `tests/`: Unit tests.
 
@@ -40,6 +38,13 @@ The SQLite database (`stocks.db`) has two main tables (managed by `stock_package
    - `low`: REAL
    - `close`: REAL
    - `volume`: REAL
+
+The Backtest Results database (`backtest_results.db`) has one main table (managed by `stock_package.backtesting.backtest_database`):
+1. `backtest_results`: Stores results of backtest runs.
+   - `id`: INTEGER PRIMARY KEY
+   - `ticker`: TEXT
+   - `run_date`: TIMESTAMP
+   - `metrics`: JSON
 
 ## CI/CD
 A GitHub Actions workflow is set up in `.github/workflows/main.yml`.
