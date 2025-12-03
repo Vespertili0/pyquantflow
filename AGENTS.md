@@ -43,7 +43,7 @@ The Backtest Results database (`backtest_results.db`) has one main table (manage
 1. `backtest_results`: Stores results of backtest runs.
    - `id`: INTEGER PRIMARY KEY
    - `ticker`: TEXT
-   - `run_date`: TIMESTAMP
+   - `batch_run_name`: TEXT
    - `metrics`: JSON
 
 ## CI/CD

@@ -1,8 +1,8 @@
 # pyquantflow
 
-**Analyze. Backtest. Trade.**
+**Analyze. Backtest. Decide.**
 
-A powerful, local-first stock analysis and backtesting framework designed for data persistence and strategy validation. Built on top of `yfinance` and `backtesting.py`, it gives you control over your data and your strategies.
+A local-first stock analysis and backtesting framework designed for data persistence and strategy validation. Built on top of `yfinance` and `backtesting.py`, it gives you control over your data and your strategies.
 
 ## Installation
 
@@ -59,7 +59,7 @@ else:
 Run backtests for multiple tickers and save results to a SQLite database.
 
 ```python
-from pyquantflow.backtest_framework import BatchBacktester
+from pyquantflow.backtesting.batchbacktest import BatchBacktester
 from pyquantflow.strategies.example_strategy import SmaCross
 from pyquantflow.data.database import DatabaseManager
 

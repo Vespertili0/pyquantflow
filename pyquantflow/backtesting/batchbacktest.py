@@ -1,12 +1,14 @@
 import pandas as pd
 import numpy as np
-from .backtesting.engine import BacktestRunner
-from .backtesting.backtest_database import BacktestDatabaseManager
+from .engine import BacktestRunner
+from .backtest_database import BacktestDatabaseManager
 
 class BatchBacktester:
     def __init__(self, results_db_path="backtest_results.db"):
         self.results_db = BacktestDatabaseManager(results_db_path)
         self.runner = BacktestRunner()
+        self.results = None
+        self.strategy_class = None
 
     def run_batch_backtest(self, data_map, strategy_class, **kwargs):
         """
@@ -20,23 +22,46 @@ class BatchBacktester:
         Returns:
             dict: A dictionary containing 'individual_results' and 'average_metrics'.
         """
+        self.strategy_class = strategy_class
+
         if not data_map:
-            return {'individual_results': {}, 'average_metrics': {}}
+            self.results = {'individual_results': {}, 'average_metrics': {}}
+            return self.results
 
         # Run backtests
         individual_results = self.runner.run(strategy_class, data_map, **kwargs)
         
-        # Save results to DB
-        for ticker, result in individual_results.items():
-            self.results_db.save_result(ticker, result)
-        
         # Calculate averages
         average_metrics = self._calculate_averages(individual_results)
         
-        return {
+        self.results = {
             'individual_results': individual_results,
             'average_metrics': average_metrics
         }
+
+        return self.results
+
+    def save_batch_results(self):
+        """
+        Saves the batch backtest results to the database with a unique batch run name.
+        Uses the results and strategy_class stored in self from the last run.
+
+        Returns:
+            str: The generated batch run name, or None if no results available.
+        """
+        from datetime import datetime
+
+        if not self.results or not self.strategy_class:
+            print("No results to save.")
+            return None
+
+        individual_results = self.results.get('individual_results', {})
+        batch_run_name = f"{datetime.now().strftime('%Y-%m-%d')}_{self.strategy_class.__name__}"
+
+        for ticker, result in individual_results.items():
+            self.results_db.save_result(ticker, result, batch_run_name)
+
+        return batch_run_name
 
     def _calculate_averages(self, results):
         """

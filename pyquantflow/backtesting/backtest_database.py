@@ -13,19 +13,20 @@ class BacktestDatabaseManager:
             CREATE TABLE IF NOT EXISTS backtest_results (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 ticker TEXT NOT NULL,
-                run_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                batch_run_name TEXT NOT NULL,
                 metrics JSON
             )
         """)
         self.conn.commit()
 
-    def save_result(self, ticker, result_dict):
+    def save_result(self, ticker, result_dict, batch_run_name):
         """
         Saves a single backtest result to the database.
         
         Args:
             ticker (str): The ticker symbol.
             result_dict (dict): The dictionary containing backtest metrics.
+            batch_run_name (str): The unique name of the batch run.
         """
         cursor = self.conn.cursor()
         
@@ -41,9 +42,9 @@ class BacktestDatabaseManager:
             return
 
         cursor.execute("""
-            INSERT INTO backtest_results (ticker, run_date, metrics)
+            INSERT INTO backtest_results (ticker, batch_run_name, metrics)
             VALUES (?, ?, ?)
-        """, (ticker, datetime.now(), metrics_json))
+        """, (ticker, batch_run_name, metrics_json))
         
         self.conn.commit()
         # print(f"Saved results for {ticker} to DB.")
