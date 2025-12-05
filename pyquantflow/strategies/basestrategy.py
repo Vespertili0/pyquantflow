@@ -1,41 +1,24 @@
 from backtesting import Strategy
-import pandas as pd
 
 class StrategyFactory:
-    def __init__(self, indicators=None, ml_model=None, rules=None):
-        self.indicators = indicators or []
-        self.ml_model = ml_model
-        self.rules = rules or []
+    def __init__(self, init_function, next_function):
+        self.init_function = init_function
+        self.next_function = next_function
 
-    def create(self, name="CustomStrategy"):
+    def create(self, name="CustomStrategy", params=None):
         factory = self
 
         class CustomStrategy(Strategy):
             def init(self):
-                # Initialize indicators
-                for ind in factory.indicators:
-                    setattr(self, ind.__name__, self.I(ind, self.data.Close))
-
-                # Initialize ML model if provided
-                if factory.ml_model:
-                    self.model = factory.ml_model
-                    X = pd.DataFrame({"Close": self.data.Close})
-                    y = (self.data.Close.shift(-1) > self.data.Close).astype(int)
-                    self.model.fit(X[:-1], y[:-1])
+                factory.init_function(self)
 
             def next(self):
-                # If ML model is present, use it
-                if factory.ml_model:
-                    X_new = pd.DataFrame({"Close": [self.data.Close[-1]]})
-                    pred = self.model.predict(X_new)[0]
-                    if pred == 1:
-                        self.buy()
-                    else:
-                        self.sell()
-                else:
-                    # Apply rule‑based logic
-                    for rule in factory.rules:
-                        rule(self)
+                factory.next_function(self)
 
         CustomStrategy.__name__ = name
+
+        if params:
+            for key, value in params.items():
+                setattr(CustomStrategy, key, value)
+
         return CustomStrategy
