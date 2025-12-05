@@ -1,6 +1,7 @@
+![](logo.png)
 # pyquantflow
 
-**Analyze. Backtest. Decide.**
+**Strategise. Backtest. Decide.**
 
 A local-first stock analysis and backtesting framework designed for data persistence and strategy validation. Built on top of `yfinance` and `backtesting.py`, it gives you control over your data and your strategies.
 
