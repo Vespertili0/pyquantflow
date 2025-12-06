@@ -52,7 +52,7 @@ class BacktestRunner:
             #    if df.index.tz is not None:
             #        df.index = df.index.tz_localize(None)
                 
-                bt = Backtest(df, strategy_class, cash=cash, commission=commission
+                bt = Backtest(df, strategy_class, cash=cash, commission=commission,
                 trade_on_close=trade_on_close, finalize_trades=finalize_trades)
                 stats = bt.run(**strategy_params)
                 
