@@ -15,10 +15,22 @@ class DatabaseManager:
             CREATE TABLE IF NOT EXISTS tickers (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 ticker TEXT UNIQUE NOT NULL,
+                interval TEXT DEFAULT '1h',
                 first_added TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 last_updated TIMESTAMP
             )
         """)
+
+        # Check if interval column exists (for migration)
+        cursor.execute("PRAGMA table_info(tickers)")
+        columns = [info[1] for info in cursor.fetchall()]
+        if 'interval' not in columns:
+            try:
+                cursor.execute("ALTER TABLE tickers ADD COLUMN interval TEXT DEFAULT '1h'")
+            except sqlite3.OperationalError:
+                # Column might have been added concurrently
+                pass
+
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS price_data (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -34,10 +46,10 @@ class DatabaseManager:
         """)
         self.conn.commit()
 
-    def add_ticker(self, ticker, start_year=2020):
+    def add_ticker(self, ticker, start_date=None, start_year=None, interval='1h'):
         """
         Adds a new ticker to the database.
-        Fetches historical data using quarterly_pull.
+        Fetches historical data using quarterly_pull (for 1h) or direct download (for 1d).
         """
         cursor = self.conn.cursor()
         cursor.execute("SELECT id FROM tickers WHERE ticker = ?", (ticker,))
@@ -46,16 +58,44 @@ class DatabaseManager:
             self.update_ticker(ticker)
             return
 
-        # Generate time_dict for quarterly pull
-        # Defaulting to 2020 to save time for testing, but this should be configurable
-        current_year = datetime.now().year
-        time_dict = {}
-        for year in range(start_year, current_year + 1):
-            time_dict[year] = [1, 2, 3, 4]
+        # Determine start date
+        if start_date:
+            # yfinance expects string YYYY-MM-DD or datetime
+            start = start_date
+            try:
+                # If start_date is string, parse to get year for quarterly fallback logic
+                if isinstance(start_date, str):
+                    start_year_val = int(start_date.split('-')[0])
+                else:
+                    start_year_val = start_date.year
+            except Exception:
+                start_year_val = 2020
+        else:
+            if start_year is None:
+                start_year = 2020
+            start_year_val = start_year
+            start = f"{start_year}-01-01"
 
-        print(f"Fetching initial data for {ticker} from {start_year}...")
+        print(f"Fetching initial data for {ticker} from {start} (interval={interval})...")
+
+        df = pd.DataFrame()
         try:
-            df = fetch_quarterly_data(ticker, time_dict)
+            if interval == '1d':
+                # For daily data, we can download in one go
+                df = yf.download(ticker, start=start, interval='1d', progress=False, auto_adjust=True, multi_level_index=False)
+            else:
+                # Default 1h behavior using quarterly_pull
+                # Generate time_dict for quarterly pull
+                current_year = datetime.now().year
+                time_dict = {}
+                for year in range(start_year_val, current_year + 1):
+                    time_dict[year] = [1, 2, 3, 4]
+
+                df = fetch_quarterly_data(ticker, time_dict)
+        except TypeError:
+             # Fallback for yfinance versions without multi_level_index
+             if interval == '1d':
+                 df = yf.download(ticker, start=start, interval='1d', progress=False, auto_adjust=True)
         except Exception as e:
             print(f"Error fetching data: {e}")
             return
@@ -65,7 +105,7 @@ class DatabaseManager:
             return
 
         # Insert ticker
-        cursor.execute("INSERT INTO tickers (ticker, last_updated) VALUES (?, ?)", (ticker, datetime.now()))
+        cursor.execute("INSERT INTO tickers (ticker, interval, last_updated) VALUES (?, ?, ?)", (ticker, interval, datetime.now()))
         ticker_id = cursor.lastrowid
 
         # Insert data
@@ -78,13 +118,14 @@ class DatabaseManager:
         Updates an existing ticker with new data since the last entry.
         """
         cursor = self.conn.cursor()
-        cursor.execute("SELECT id, last_updated FROM tickers WHERE ticker = ?", (ticker,))
+        cursor.execute("SELECT id, last_updated, interval FROM tickers WHERE ticker = ?", (ticker,))
         row = cursor.fetchone()
         if not row:
             print(f"Ticker {ticker} not found.")
             return
         
         ticker_id = row[0]
+        interval = row[2] if len(row) > 2 else '1h'
         
         # Get last datetime from price_data
         cursor.execute("SELECT MAX(datetime) FROM price_data WHERE ticker_id = ?", (ticker_id,))
@@ -102,15 +143,14 @@ class DatabaseManager:
         # If last_date has tz, we should probably keep it.
         # But yf.download start parameter expects string 'YYYY-MM-DD' or datetime.
         
-        print(f"Updating {ticker} from {last_date}...")
+        print(f"Updating {ticker} from {last_date} (interval={interval})...")
         
         # Download new data
-        # Using 1h interval as per quarterly_pull
         try:
-            new_data = yf.download(ticker, start=last_date, interval="1h", progress=False, auto_adjust=True, multi_level_index=False)
+            new_data = yf.download(ticker, start=last_date, interval=interval, progress=False, auto_adjust=True, multi_level_index=False)
         except TypeError:
             # Fallback for older versions of yfinance that don't support multi_level_index
-            new_data = yf.download(ticker, start=last_date, interval="1h", progress=False, auto_adjust=True)
+            new_data = yf.download(ticker, start=last_date, interval=interval, progress=False, auto_adjust=True)
         except Exception as e:
             print(f"Error updating data: {e}")
             return
