@@ -107,6 +107,9 @@ class DatabaseManager:
         # Download new data
         # Using 1h interval as per quarterly_pull
         try:
+            new_data = yf.download(ticker, start=last_date, interval="1h", progress=False, auto_adjust=True, multi_level_index=False)
+        except TypeError:
+            # Fallback for older versions of yfinance that don't support multi_level_index
             new_data = yf.download(ticker, start=last_date, interval="1h", progress=False, auto_adjust=True)
         except Exception as e:
             print(f"Error updating data: {e}")
@@ -144,6 +147,11 @@ class DatabaseManager:
         print(f"Updated {ticker} with {len(new_data)} new records.")
 
     def _insert_price_data(self, ticker_id, df):
+        # Flatten MultiIndex columns if present
+        if isinstance(df.columns, pd.MultiIndex):
+            df = df.copy()
+            df.columns = df.columns.get_level_values(0)
+
         df_reset = df.reset_index()
         data_to_insert = []
         for _, row in df_reset.iterrows():
