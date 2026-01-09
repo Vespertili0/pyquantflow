@@ -28,7 +28,9 @@ def _adf_stat_single(y, lag_len, add_trend):
     const = jnp.ones(eff_n)
     
     # 2. Lagged Level: y[lag_len-1 : -1]
-    lag_level = y[lag_len-1 : -1]
+    # Fixed indexing: to align with dy[lag_len:], we need y starting from lag_len
+    # y[lag_len] corresponds to y_{t-1} for the first target dy_{t} (where t=lag_len+1)
+    lag_level = y[lag_len : -1]
     
     # 3. Lagged Differences
     # We construct them dynamically
