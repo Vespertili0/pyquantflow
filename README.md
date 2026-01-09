@@ -32,7 +32,46 @@ data = db.get_data('AAPL')
 print(data.tail())
 ```
 
-### 2. Run a Single Backtest
+### 2. Add Indicator via pandas-pipe
+
+Compute talib indicators and add them directly to the OHLCV-dataframe of a ticker.
+
+```python
+from pyquantflow.data.indicator import pipe_indicator, ICHIMOKU
+import talib
+
+data_indicator = (
+    data.pipe(
+        pipe_indicator, 
+        indicator=ICHIMOKU,
+        input_map={'high': 'High', 'low': 'Low', 'close': 'Close'},
+        output_names=[
+            'Tenkan', 'Kijun', 
+            'SpanA_Projected', 'SpanB_Projected', 
+            'SpanA_Live', 'SpanB_Live', 
+            'Chikou'
+        ]
+    )
+    .pipe(
+        pipe_indicator, 
+        indicator=talib.EMA,
+        input_map={'real': 'Close'},
+        output_names=['EMA_120'],
+        **{'timeperiod': 120}
+    )
+)
+
+# Example 2: Hypothetical usage with standard TA-Lib (e.g., RSI)
+# df = data.pipe(
+#    pipe_indicator,
+#    func=talib.RSI,
+#    input_map=['Close'],     <-- List implies positional args for RSI(real, timeperiod)
+#    output_names='RSI_14',
+#    timeperiod=14
+# )
+```
+
+### 3. Run a Single Backtest
 
 Test your trading strategies using the built-in engine.
 
@@ -55,7 +94,7 @@ else:
     print("No data available for backtest.")
 ```
 
-### 3. Run Batch Backtest with Result Persistence
+### 4. Run Batch Backtest with Result Persistence
 
 Run backtests for multiple tickers and save results to a SQLite database.
 
