@@ -116,17 +116,12 @@ def _solve_ols_moment_stats(
     
     # Solve for Beta: (X'X) * Beta = X'y
     # Using solve is numerically more stable than inv(xx) @ xy
-    try:
-        # Add a tiny jitter to diagonal for numerical stability if needed, 
-        # though usually not needed with float64
-        beta = jnp.linalg.solve(xx_window, xy_window)
-        
-        # We need the inverse of XX for the variance calculation
-        xx_inv = jnp.linalg.inv(xx_window)
-        
-    except:
-        # Fallback for singular matrices
-        return jnp.nan
+    # JAX linalg functions will naturally propagate NaNs if the matrix is singular,
+    # so no try/except block is needed (or effective) inside JIT.
+    beta = jnp.linalg.solve(xx_window, xy_window)
+    
+    # We need the inverse of XX for the variance calculation
+    xx_inv = jnp.linalg.inv(xx_window)
 
     # Calculate Sum of Squared Errors (SSE)
     # SSE = y'y - 2*beta'X'y + beta'X'X*beta
@@ -158,7 +153,8 @@ def _solve_ols_moment_stats(
     return t_stat
 
 
-@functools.partial(jax.jit, static_argnames=['min_length', 'use_abs_penalty'])
+# Added 'phi' to static_argnames so it is treated as a float, not a Tracer
+@functools.partial(jax.jit, static_argnames=['min_length', 'phi', 'use_abs_penalty'])
 def _run_sadf_kernel(
     X: jnp.ndarray, 
     y: jnp.ndarray, 
@@ -233,6 +229,7 @@ def _run_sadf_kernel(
         
         stats_processed = jnp.where(use_abs_penalty, jnp.abs(t_stats), t_stats)
         
+        # Since phi is now a static arg, this python conditional works during trace
         if phi > 0.0:
             penalty = lengths ** phi
             stats_processed = stats_processed / penalty
