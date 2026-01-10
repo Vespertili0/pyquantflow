@@ -1,168 +1,330 @@
+import functools
+from typing import Tuple, Union
+
 import jax
 import jax.numpy as jnp
-import pandas as pd
 import numpy as np
-from functools import partial
+import pandas as pd
 
-# Set JAX to 64-bit precision for financial calculations
+# Enable 64-bit precision for JAX (crucial for matrix inversion stability in finance)
 jax.config.update("jax_enable_x64", True)
 
-@partial(jax.jit, static_argnames=['lag_len', 'add_trend'])
-def _adf_stat_single(y, lag_len, add_trend):
+
+def _get_y_x(
+    series: pd.Series, model: str, lags: Union[int, list], add_const: bool
+) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
-    Calculates a single ADF statistic for a specific window y.
-    Used within vmap for rolling calculations.
+    Prepares the X and y datasets for SADF generation.
+    (Kept largely in Pandas as this is a one-time setup step).
     """
-    n = y.shape[0]
+    series = pd.DataFrame(series)
+    series_diff = series.diff().dropna()
+    x = _lag_df(series_diff, lags).dropna()
+    x["y_lagged"] = series.shift(1).loc[x.index]  # add y_(t-1) column
+    y = series_diff.loc[x.index]
+
+    if add_const:
+        x["const"] = 1
+
+    # Add trend columns based on model type
+    n_samples = x.shape[0]
+    trend = np.arange(n_samples)
     
-    # First differences
-    dy = jnp.diff(y)
-    
-    # Target: dy[lag_len:]
-    # Effective length for regression
-    y_target = dy[lag_len:]
-    eff_n = y_target.shape[0]
-    
-    # Regressors
-    # 1. Constant
-    const = jnp.ones(eff_n)
-    
-    # 2. Lagged Level: y[lag_len-1 : -1]
-    # Fixed indexing: to align with dy[lag_len:], we need y starting from lag_len
-    # y[lag_len] corresponds to y_{t-1} for the first target dy_{t} (where t=lag_len+1)
-    lag_level = y[lag_len : -1]
-    
-    # 3. Lagged Differences
-    # We construct them dynamically
-    # Since lag_len is static, we can unroll or stack
-    lag_diffs = []
-    for i in range(1, lag_len + 1):
-        lag_diffs.append(dy[lag_len - i : -i])
-    
-    # Construct Design Matrix X
-    if add_trend:
-        # Canonical with Trend: Constant, Trend, Lagged Level, Lagged Diffs
-        trend = jnp.arange(eff_n, dtype=jnp.float64)
-        if lag_len > 0:
-            X = jnp.column_stack([const, trend, lag_level] + lag_diffs)
-        else:
-            X = jnp.column_stack([const, trend, lag_level])
-        # Index of Gamma (coefficient of lagged level) is 2 (0=const, 1=trend, 2=lag_level)
-        gamma_idx = 2
+    if model == "linear":
+        x["trend"] = trend
+        beta_column = "y_lagged"
+    elif model == "quadratic":
+        x["trend"] = trend
+        x["quad_trend"] = trend ** 2
+        beta_column = "y_lagged"
+    elif model == "sm_poly_1":
+        y = series.loc[y.index]
+        x = pd.DataFrame(index=y.index)
+        x["const"] = 1
+        x["trend"] = trend
+        x["quad_trend"] = trend ** 2
+        beta_column = "quad_trend"
+    elif model == "sm_poly_2":
+        y = np.log(series.loc[y.index])
+        x = pd.DataFrame(index=y.index)
+        x["const"] = 1
+        x["trend"] = trend
+        x["quad_trend"] = trend ** 2
+        beta_column = "quad_trend"
+    elif model == "sm_exp":
+        y = np.log(series.loc[y.index])
+        x = pd.DataFrame(index=y.index)
+        x["const"] = 1
+        x["trend"] = trend
+        beta_column = "trend"
+    elif model == "sm_power":
+        y = np.log(series.loc[y.index])
+        x = pd.DataFrame(index=y.index)
+        x["const"] = 1
+        # Avoid log(0)
+        with np.errstate(divide="ignore"):
+            x["log_trend"] = np.log(trend)
+            # Fix potential -inf at index 0 if trend starts at 0
+            if trend[0] == 0: 
+                 x.iloc[0, x.columns.get_loc("log_trend")] = 0
+        beta_column = "log_trend"
     else:
-        # Canonical without Trend: Constant, Lagged Level, Lagged Diffs
-        if lag_len > 0:
-            X = jnp.column_stack([const, lag_level] + lag_diffs)
-        else:
-            X = jnp.column_stack([const, lag_level])
-        # Index of Gamma is 1 (0=const, 1=lag_level)
-        gamma_idx = 1
+        raise ValueError(f"Unknown model: {model}")
+
+    # Move beta_column to the front (index 0) so JAX knows which coeff to pick
+    columns = list(x.columns)
+    if beta_column in columns:
+        columns.insert(0, columns.pop(columns.index(beta_column)))
+    x = x[columns]
     
-    # OLS
-    XtX = X.T @ X
-    Xty = X.T @ y_target
+    return x, y
+
+
+def _lag_df(df: pd.DataFrame, lags: Union[int, list[int]]) -> pd.DataFrame:
+    """Apply Lags to DataFrame"""
+    df_lagged = pd.DataFrame()
+    if isinstance(lags, int):
+        lags = range(1, lags + 1)
+    else:
+        lags = [int(lag) for lag in lags]
+
+    for lag in lags:
+        temp_df = df.shift(lag).copy(deep=True)
+        temp_df.columns = [str(i) + "_" + str(lag) for i in temp_df.columns]
+        df_lagged = df_lagged.join(temp_df, how="outer")
+    return df_lagged
+
+
+@jax.jit
+def _solve_ols_moment_stats(
+    xx_window: jnp.ndarray, 
+    xy_window: jnp.ndarray, 
+    yy_window: jnp.ndarray, 
+    n_obs: int
+) -> float:
+    """
+    Solves OLS using precomputed moments matrices (X'X, X'y, y'y).
+    Returns the t-statistic for the first coefficient (index 0).
     
-    # Note: Ridge regularization removed to match PSY econometric specification.
-    # Ensure min_length is sufficient to avoid singular matrices.
+    Math:
+        beta = (X'X)^-1 X'y
+        error = y - X*beta
+        SSE = e'e = y'y - 2*beta'X'y + beta'(X'X)beta
+        var(beta) = (SSE / (n - k)) * (X'X)^-1
+    """
+    k = xx_window.shape[0]
     
-    beta = jnp.linalg.solve(XtX, Xty)
+    # Solve for Beta: (X'X) * Beta = X'y
+    # Using solve is numerically more stable than inv(xx) @ xy
+    try:
+        # Add a tiny jitter to diagonal for numerical stability if needed, 
+        # though usually not needed with float64
+        beta = jnp.linalg.solve(xx_window, xy_window)
+        
+        # We need the inverse of XX for the variance calculation
+        xx_inv = jnp.linalg.inv(xx_window)
+        
+    except:
+        # Fallback for singular matrices
+        return jnp.nan
+
+    # Calculate Sum of Squared Errors (SSE)
+    # SSE = y'y - 2*beta'X'y + beta'X'X*beta
+    # Note: xy_window is (k, 1), beta is (k, 1)
+    term_1 = yy_window
+    term_2 = 2 * (beta.T @ xy_window)
+    term_3 = beta.T @ (xx_window @ beta)
     
-    # t-stat of gamma
-    y_pred = X @ beta
-    resid = y_target - y_pred
-    ssr = jnp.sum(resid**2)
-    var_resid = ssr / (eff_n - X.shape[1])
+    sse = term_1 - term_2 + term_3
     
-    XtX_inv = jnp.linalg.inv(XtX)
-    se_gamma = jnp.sqrt(var_resid * XtX_inv[gamma_idx, gamma_idx])
+    # Degrees of freedom: n - k
+    # We use jnp.maximum to avoid division by zero or negative dof
+    dof = jnp.maximum(n_obs - k, 1.0)
     
-    t_stat = beta[gamma_idx] / se_gamma
+    mse = sse / dof
+    
+    # Variance of Beta
+    # var(beta) = MSE * diag((X'X)^-1)
+    beta_var = mse * jnp.diag(xx_inv).reshape(-1, 1)
+    
+    # t-stat = beta / sqrt(var(beta))
+    # We are interested in index 0 (the moved beta_column)
+    b_mean = beta[0, 0]
+    b_std = jnp.sqrt(beta_var[0, 0])
+    
+    # Avoid division by zero
+    t_stat = jnp.where(b_std > 1e-8, b_mean / b_std, jnp.nan)
+    
     return t_stat
 
-@partial(jax.jit, static_argnames=['window', 'lags', 'add_trend'])
-def _rolling_adf(prices, window, lags, add_trend):
-    """
-    Computes rolling ADF t-stats for a specific window size.
-    """
-    n = prices.shape[0]
-    
-    # Create windows (n - window + 1, window)
-    starts = jnp.arange(n - window + 1)
-    indices = starts[:, None] + jnp.arange(window)[None, :]
-    windows = prices[indices]
-    
-    # Vmap the single ADF stat calculator
-    calc_func = lambda w: _adf_stat_single(w, lags, add_trend)
-    t_stats = jax.vmap(calc_func)(windows)
-    
-    return t_stats
 
-def gsadf_values(series: pd.Series, min_length: int = None, add_trend: bool = False, lags: int = 1) -> pd.Series:
+@functools.partial(jax.jit, static_argnames=['min_length', 'use_abs_penalty'])
+def _run_sadf_kernel(
+    X: jnp.ndarray, 
+    y: jnp.ndarray, 
+    min_length: int, 
+    phi: float, 
+    use_abs_penalty: bool
+) -> jnp.ndarray:
     """
-    Calculates the GSADF (Generalized Supremum Augmented Dickey-Fuller) statistics.
-    
-    This implements the double recursion defined by Phillips, Shi, and Yu (2015):
-    1. Inner Supremum (BSADF): For a fixed endpoint t, find max ADF over all start points.
-    2. Outer Supremum (GSADF): For the sample up to t, find max BSADF.
-    
-    Args:
-        series (pd.Series): Log prices.
-        min_length (int): Minimum window size. If None, it is calculated 
-                          using the PSY rule: r0 = 0.01 + 1.8/sqrt(T).
-        add_trend (bool): If True, includes a linear time trend in the ADF specification.
-                          Default False (Canonical: Constant, Lagged Level, Lagged Diffs).
-        lags (int): Number of lags for ADF test.
-        
-    Returns:
-        pd.Series: GSADF statistics over time.
+    Core JAX kernel for SADF.
+    Uses Prefix Sums (CumSum) to perform OLS in constant time per window.
     """
-    arr = jnp.array(series.values, dtype=jnp.float64)
-    n = len(series)
+    n_samples, n_features = X.shape
     
-    # PSY Minimum Window Rule
-    if min_length is None:
-        r0 = 0.01 + 1.8 / np.sqrt(n)
-        min_length = int(r0 * n)
-        
-    # Safety floor for min_length to ensure regression is solvable
-    # Min regressors = 2 (const, level) + lags. If trend, +1.
-    min_required = 5 + lags
-    if min_length < min_required:
-        min_length = min_required
-        
-    # Initialize BSADF array with a very small number
-    # bsadf_arr[t] will store the max ADF statistic for windows ending at t
-    bsadf_arr = np.full(n, -np.inf)
+    # 1. Precompute Moments via Cumulative Sums
+    # Pad with 0 at the beginning to handle subtraction easily
+    # XX_t = sum(x_i * x_i^T) from 0 to t
     
-    # 1. Inner Recursion: Calculate BSADF sequence
-    # We loop over all possible window lengths.
-    for length in range(min_length, n + 1):
-        # Get rolling ADF stats for this specific length
-        stats = _rolling_adf(arr, length, lags, add_trend)
-        stats_np = np.array(stats)
-        
-        # The stat at index i corresponds to the window ending at (i + length - 1)
-        # So we align ends:
-        end_indices = np.arange(length - 1, n)
-        
-        # Update maximums (BSADF logic: max over all start points for a fixed end t)
-        current_vals = bsadf_arr[end_indices]
-        bsadf_arr[end_indices] = np.maximum(current_vals, stats_np)
+    # Outer product for every row: (N, K, K)
+    xx_moments = jax.vmap(lambda x_row: jnp.outer(x_row, x_row))(X)
+    # Cross product for every row: (N, K, 1)
+    xy_moments = jax.vmap(lambda x_row, y_row: jnp.outer(x_row, y_row))(X, y)
+    # Squared y for every row: (N, 1, 1)
+    yy_moments = y.reshape(-1, 1, 1) ** 2
+    
+    # Prefix sums (Cumulative Moments)
+    # Shape becomes (N+1, ...), index i represents sum up to i (exclusive of i in standard python slice, but here represents inclusive of i-1)
+    # We simply pad with zero at index 0.
+    xx_cum = jnp.concatenate([jnp.zeros((1, n_features, n_features)), jnp.cumsum(xx_moments, axis=0)], axis=0)
+    xy_cum = jnp.concatenate([jnp.zeros((1, n_features, 1)), jnp.cumsum(xy_moments, axis=0)], axis=0)
+    yy_cum = jnp.concatenate([jnp.zeros((1, 1, 1)), jnp.cumsum(yy_moments, axis=0)], axis=0)
 
-    # Replace initial -inf with NaN (before min_length)
-    bsadf_arr[:min_length-1] = np.nan
+    # 2. Define the Scanning Function (Iterates over Time t)
+    def scan_body(carry, t):
+        # We are at time index `t`. (Note: t is 0-indexed relative to original data)
+        # However, because of CumSum padding, `cum` array index `t+1` corresponds to data up to `t`.
+        # The window ends at `t` (inclusive).
+        
+        end_idx_cum = t + 1
+        
+        # Identify valid start points.
+        # Window length must be >= min_length.
+        # Length = (t - start + 1) >= min_length  => start <= t + 1 - min_length
+        # So valid starts are 0, 1, ..., t + 1 - min_length - 1
+        
+        max_start_idx = t - min_length + 1
+        
+        # We need to map over ALL possible starts up to N to keep shapes static for JIT.
+        # We will mask out invalid results later.
+        all_starts = jnp.arange(n_samples) 
+        
+        # Calculate Moments for window [start : end]
+        # Moment[start:end] = CumSum[end] - CumSum[start]
+        # In cum arrays: index `end_idx_cum` is sum(0..t). Index `start` is sum(0..start-1).
+        
+        xx_windows = xx_cum[end_idx_cum] - xx_cum[all_starts]
+        xy_windows = xy_cum[end_idx_cum] - xy_cum[all_starts]
+        yy_windows = yy_cum[end_idx_cum] - yy_cum[all_starts]
+        
+        lengths = (t + 1) - all_starts
+        
+        # Vectorized OLS solver over all start points
+        # vmap over xx, xy, yy, lengths
+        t_stats = jax.vmap(_solve_ols_moment_stats)(xx_windows, xy_windows, yy_windows, lengths)
+        
+        # Apply penalties and masking
+        # 1. Mask invalid starts (where length < min_length or start > t)
+        valid_mask = (lengths >= min_length) & (lengths > 0)
+        
+        # 2. Apply Phi penalty if needed
+        # penalty = length ^ phi
+        # If use_abs_penalty (SMT logic), take abs of t_stat
+        
+        stats_processed = jnp.where(use_abs_penalty, jnp.abs(t_stats), t_stats)
+        
+        if phi > 0.0:
+            penalty = lengths ** phi
+            stats_processed = stats_processed / penalty
+        
+        # Filter invalid windows
+        # Set invalid stats to -inf so they don't affect the max
+        stats_masked = jnp.where(valid_mask, stats_processed, -jnp.inf)
+        
+        # Take the Supremum (Max) over all valid start points for this t
+        bsadf_t = jnp.max(stats_masked)
+        
+        # If all masked (e.g. t < min_length), return NaN
+        bsadf_t = jnp.where(jnp.isneginf(bsadf_t), jnp.nan, bsadf_t)
+        
+        return carry, bsadf_t
+
+    # 3. Run Scan over t
+    time_indices = jnp.arange(n_samples)
+    _, sadf_series_values = jax.lax.scan(scan_body, None, time_indices)
     
-    # 2. Outer Recursion: Calculate GSADF sequence
-    # GSADF_t = max(BSADF_s) for s <= t
-    # We use expanding max, carefully handling NaNs at the start
+    return sadf_series_values
+
+
+def get_sadf_jax(
+    series: pd.Series,
+    model: str,
+    lags: Union[int, list],
+    min_length: int,
+    add_const: bool = False,
+    phi: float = 0,
+    verbose: bool = True, # verbose argument kept for compatibility, unused in JAX
+) -> pd.Series:
+    """
+    JAX-Accelerated implementation of Supremum Augmented Dickey-Fuller (SADF).
     
-    # Fill leading NaNs with -inf for the accumulation step, then restore
-    temp_bsadf = bsadf_arr.copy()
-    temp_bsadf[np.isnan(temp_bsadf)] = -np.inf
+    This function utilizes JAX for GPU/TPU acceleration and vectorized 
+    linear algebra operations. It transforms the nested loop OLS structure 
+    into a prefix-sum (cumulative moment) calculation, reducing algorithmic 
+    complexity and enabling massive parallelism.
+
+    Parameters
+    ----------
+    series : pd.Series
+        Series for which SADF statistics are generated.
+    model : str
+        Either 'linear', 'quadratic', 'sm_poly_1', 'sm_poly_2', 'sm_exp', 'sm_power'.
+    lags : int or list
+        Either number of lags to use or array of specified lags.
+    min_length : int
+        Minimum number of observations needed for estimation.
+    add_const : bool
+        Flag to add constant.
+    phi : float
+        Coefficient to penalize large sample lengths when computing SMT, in [0, 1].
+    verbose : bool
+        Kept for API compatibility; JAX compilation logs may appear.
+
+    Returns
+    -------
+    pd.Series
+        SADF statistics indexed by the original series index (aligned to end points).
+    """
+    # 1. Prepare Data (Pandas/Numpy)
+    X_df, y_df = _get_y_x(series, model, lags, add_const)
     
-    gsadf_arr = np.maximum.accumulate(temp_bsadf)
+    # 2. Convert to JAX Arrays
+    X_jax = jnp.array(X_df.values, dtype=jnp.float64)
+    y_jax = jnp.array(y_df.values.reshape(-1, 1), dtype=jnp.float64)
     
-    # Restore NaNs where data wasn't sufficient
-    gsadf_arr[:min_length-1] = np.nan
+    # 3. Determine specific logic flags
+    # Original logic: if model[:2] == "sm", we use abs(adf) / length^phi
+    use_abs_penalty = model.startswith("sm")
     
-    return pd.Series(gsadf_arr, index=series.index, name="GSADF")
+    # 4. Run JAX Kernel
+    # The Kernel returns an array of size N (same as X rows).
+    sadf_values = _run_sadf_kernel(
+        X_jax, 
+        y_jax, 
+        min_length=min_length, 
+        phi=phi, 
+        use_abs_penalty=use_abs_penalty
+    )
+    
+    # 5. Convert back to Pandas
+    # The JAX output aligns with the X rows.
+    # We should slice the output to match the valid range if necessary, 
+    # but the original code returns a series indexed by molecule.
+    # The JAX kernel computes for all t. Indices < min_length will be NaN.
+    
+    sadf_series = pd.Series(np.array(sadf_values), index=y_df.index)
+    
+    # Filter to valid min_length start (compatible with original behavior)
+    sadf_series = sadf_series.iloc[min_length:]
+    
+    return sadf_series
