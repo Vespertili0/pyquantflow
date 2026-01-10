@@ -5,7 +5,7 @@ This project contains a stock analysis and backtesting package (`pyquantflow`). 
 
 ## Directory Structure
 - `pyquantflow/`: Main source code.
-  - `data/`: Data ingestion and database management.
+  - `data/`: Data ingestion, database management, and advanced features (Fractional Diff, Trend Scanning, Triple Barrier, GSADF).
   - `backtesting/`: Backtesting engine and result storage.
   - `strategies/`: Trading strategies.
 - `tests/`: Unit tests.
