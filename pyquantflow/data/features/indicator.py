@@ -2,59 +2,6 @@ import numpy as np
 import pandas as pd
 
 
-def pipe_indicator(df: pd.DataFrame, indicator, input_map, output_names, **kwargs) -> pd.DataFrame:
-    """
-    A Pandas pipe-compatible function to calculate indicators and inject them 
-    back into the DataFrame.
-
-    Args:
-        df (pd.DataFrame): The input dataframe.
-        func (callable): The indicator function (e.g., ICHIMOKU or talib.RSI).
-        input_map (dict or list): 
-            - If dict: maps function arguments to DF column names. e.g. {'high': 'High', 'low': 'Low'}
-            - If list: maps positional function arguments to DF column names. e.g. ['Close']
-        output_names (str or list): Names for the resulting columns. 
-            - If the function returns a tuple, provide a list of names. 
-            - Use None in the list to skip specific return values.
-        **kwargs: Static arguments passed to the indicator function (e.g., timeperiod=14).
-
-    Returns:
-        pd.DataFrame: The dataframe with new indicator columns.
-    """
-    
-    # 1. Prepare Data Inputs
-    if isinstance(input_map, dict):
-        # Pass data as Keyword Arguments (Good for functions with named inputs like ours)
-        data_inputs = {arg: df[col].values for arg, col in input_map.items()}
-        # Combine with static kwargs
-        full_kwargs = {**data_inputs, **kwargs}
-        results = indicator(**full_kwargs)
-        
-    elif isinstance(input_map, list) or isinstance(input_map, tuple):
-        # Pass data as Positional Arguments (Good for standard TA-Lib functions like RSI)
-        pos_inputs = [df[col].values for col in input_map]
-        results = indicator(*pos_inputs, **kwargs)
-    else:
-        raise ValueError("input_map must be a dict or list/tuple")
-
-    # 2. Handle Output Assignment
-    
-    # Normalize results to be iterable if it's a single value
-    if not isinstance(results, tuple):
-        results = (results,)
-    
-    # Normalize output_names to list
-    if isinstance(output_names, str):
-        output_names = [output_names]
-
-    # Assign columns
-    for name, data in zip(output_names, results):
-        if name is not None and data is not None:
-            df[name] = data
-            
-    return df
-
-
 def ICHIMOKU(
     high: np.ndarray, 
     low: np.ndarray, 
@@ -121,9 +68,9 @@ def ICHIMOKU(
 
     # --- 6. Chikou Span (Lagging Span) ---
     chikou_span = None
-    if close is not None:
-        close_s = pd.Series(close)
-        chikou_span = close_s.shift(-displacement).to_numpy()
+#    if close is not None:
+#        close_s = pd.Series(close)
+#        chikou_span = close_s.shift(-displacement).to_numpy()
 
     # Return tuple of numpy arrays (TA-Lib style)
     return (
@@ -135,3 +82,65 @@ def ICHIMOKU(
         span_b_shifted.to_numpy(),
         chikou_span
     )
+
+
+def ROGERSATCHELL(high, low, open, close, timeperiod=30):
+    """
+    Rogers-Satchell Volatility for TA-Lib style function calls.
+    Uses the 'cumsum' trick to achieve near-C speeds without Numba or JAX.
+
+    Parameters
+    ----------
+    high, low, open, close : np.ndarray
+        Input price arrays (float). Must be the same length.
+    timeperiod : int
+        The rolling window size (default 30).
+
+    Returns
+    -------
+    np.ndarray
+        Volatility array of the same length as inputs.
+        The first `timeperiod` elements are NaN.
+    """
+    # 1. Input Validation (TA-Lib style strictness)
+    # Ensure inputs are float arrays to prevent integer division errors
+    h = np.asarray(high, dtype=np.float64)
+    l = np.asarray(low, dtype=np.float64)
+    o = np.asarray(open, dtype=np.float64)
+    c = np.asarray(close, dtype=np.float64)
+
+    if not (h.shape == l.shape == o.shape == c.shape):
+        raise ValueError("All input arrays must have the same shape.")
+
+    n = h.shape[0]
+    if timeperiod > n:
+        # If data is shorter than window, return all NaNs
+        return np.full(n, np.nan)
+
+    # 2. Vectorized Math (Rogers-Satchell Formula)
+    # rs = log(h/c)*log(h/o) + log(l/c)*log(l/o)
+    # Use log(a/b) = log(a) - log(b) which is slightly safer/faster 
+       
+    # term1 = ln(High / Close) * ln(High / Open)
+    term1 = np.log(h / c) * np.log(h / o)
+    
+    # term2 = ln(Low / Close) * ln(Low / Open)
+    term2 = np.log(l / c) * np.log(l / o)
+    
+    rs_daily = term1 + term2
+
+    # 3. The Optimization: Rolling Sum via Cumsum Trick
+    # Sum[i:i+w] = CumSum[i+w] - CumSum[i]
+    ret = np.cumsum(rs_daily, dtype=float)
+    ret[timeperiod:] = ret[timeperiod:] - ret[:-timeperiod]
+      
+    # 4. Variance to Volatility
+    # Divide by window size and sqrt
+    vol = np.sqrt(ret / timeperiod)
+
+    # 5. Padding
+    # TA-Lib convention: if window is 30, indices 0..28 are NaN. Index 29 is the first valid value.
+    # Usually TA-Lib returns NaN for indices 0 to timeperiod-2.
+    vol[:timeperiod-1] = np.nan
+    
+    return vol
