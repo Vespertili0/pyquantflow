@@ -121,9 +121,9 @@ def ICHIMOKU(
 
     # --- 6. Chikou Span (Lagging Span) ---
     chikou_span = None
-    if close is not None:
-        close_s = pd.Series(close)
-        chikou_span = close_s.shift(-displacement).to_numpy()
+#    if close is not None:
+#        close_s = pd.Series(close)
+#        chikou_span = close_s.shift(-displacement).to_numpy()
 
     # Return tuple of numpy arrays (TA-Lib style)
     return (
@@ -135,3 +135,65 @@ def ICHIMOKU(
         span_b_shifted.to_numpy(),
         chikou_span
     )
+
+
+def ROGERSATCHELL(high, low, open, close, timeperiod=30):
+    """
+    Rogers-Satchell Volatility for TA-Lib style function calls.
+    Uses the 'cumsum' trick to achieve near-C speeds without Numba or JAX.
+
+    Parameters
+    ----------
+    high, low, open, close : np.ndarray
+        Input price arrays (float). Must be the same length.
+    timeperiod : int
+        The rolling window size (default 30).
+
+    Returns
+    -------
+    np.ndarray
+        Volatility array of the same length as inputs.
+        The first `timeperiod` elements are NaN.
+    """
+    # 1. Input Validation (TA-Lib style strictness)
+    # Ensure inputs are float arrays to prevent integer division errors
+    h = np.asarray(high, dtype=np.float64)
+    l = np.asarray(low, dtype=np.float64)
+    o = np.asarray(open, dtype=np.float64)
+    c = np.asarray(close, dtype=np.float64)
+
+    if not (h.shape == l.shape == o.shape == c.shape):
+        raise ValueError("All input arrays must have the same shape.")
+
+    n = h.shape[0]
+    if timeperiod > n:
+        # If data is shorter than window, return all NaNs
+        return np.full(n, np.nan)
+
+    # 2. Vectorized Math (Rogers-Satchell Formula)
+    # rs = log(h/c)*log(h/o) + log(l/c)*log(l/o)
+    # Use log(a/b) = log(a) - log(b) which is slightly safer/faster 
+       
+    # term1 = ln(High / Close) * ln(High / Open)
+    term1 = np.log(h / c) * np.log(h / o)
+    
+    # term2 = ln(Low / Close) * ln(Low / Open)
+    term2 = np.log(l / c) * np.log(l / o)
+    
+    rs_daily = term1 + term2
+
+    # 3. The Optimization: Rolling Sum via Cumsum Trick
+    # Sum[i:i+w] = CumSum[i+w] - CumSum[i]
+    ret = np.cumsum(rs_daily, dtype=float)
+    ret[timeperiod:] = ret[timeperiod:] - ret[:-timeperiod]
+      
+    # 4. Variance to Volatility
+    # Divide by window size and sqrt
+    vol = np.sqrt(ret / timeperiod)
+
+    # 5. Padding
+    # TA-Lib convention: if window is 30, indices 0..28 are NaN. Index 29 is the first valid value.
+    # Usually TA-Lib returns NaN for indices 0 to timeperiod-2.
+    vol[:timeperiod-1] = np.nan
+    
+    return vol
