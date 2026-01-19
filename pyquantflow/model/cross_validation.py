@@ -33,7 +33,14 @@ class PurgedKFoldCV(BaseCrossValidator):
 
     def _extract_times(self, X):
         """Extract datetime index from X, supporting MultiIndex."""
-        idx = X.index
+        if hasattr(X, "index"):
+            idx = X.index
+        elif self.t1 is not None:
+            if len(X) != len(self.t1):
+                raise ValueError("X (numpy) and t1 must have same length.")
+            idx = self.t1.index
+        else:
+            raise ValueError("X must be a pandas DataFrame/Series or t1 must be provided to infer times.")
 
         if isinstance(idx, pd.MultiIndex):
             # Allow both name and integer level
@@ -54,7 +61,10 @@ class PurgedKFoldCV(BaseCrossValidator):
 
         # Ensure sorted by time (critical for multi-asset MultiIndex)
         order = np.argsort(times.values)
-        X = X.iloc[order]
+        if hasattr(X, "iloc"):
+            X = X.iloc[order]
+        else:
+            X = X[order]
         times = times[order]
 
         # Unique sorted timestamps
@@ -66,7 +76,10 @@ class PurgedKFoldCV(BaseCrossValidator):
 
         # Convert t1 to aligned DatetimeIndex
         if self.t1 is not None:
-            t1_times = pd.DatetimeIndex(self.t1.loc[X.index])
+            # t1 should be indexed by original time index (bar index)
+            # times contains the bar index, sorted.
+            # So t1.loc[times] gives the t1 values in sorted order.
+            t1_times = pd.DatetimeIndex(self.t1.loc[times])
         else:
             t1_times = pd.DatetimeIndex([pd.NaT] * len(X))
 
