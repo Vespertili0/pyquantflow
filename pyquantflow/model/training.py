@@ -61,21 +61,21 @@ class HyperparameterOptimiser:
         """
         metric_kwargs = metric_kwargs or {}
 
-        # 1. Convert to Numpy arrays prior to any Sklearn/Loop handling
-        X_np = X.to_numpy() if hasattr(X, "to_numpy") else np.array(X)
-        y_np = y.to_numpy() if hasattr(y, "to_numpy") else np.array(y)
-
         # Define optuna objective function
         def objective(trial: optuna.Trial):
             model = model_factory(trial)
             fold_scores = []
 
             # Loop over CV splits using the Numpy arrays
-            for step, (train_idx, val_idx) in enumerate(cv.split(X_np, y_np)):
+            for step, (train_idx, val_idx) in enumerate(cv.split(X, y)):
                 
                 # Slicing numpy arrays directly (no .iloc needed)
-                X_train_fold, X_val_fold = X_np[train_idx], X_np[val_idx]
-                y_train_fold, y_val_fold = y_np[train_idx], y_np[val_idx]
+                X_train_fold = X.iloc[train_idx]
+                X_val_fold   = X.iloc[val_idx]
+
+                y_train_fold = y.iloc[train_idx]
+                y_val_fold   = y.iloc[val_idx]
+
 
                 model.fit(X_train_fold, y_train_fold)
 
