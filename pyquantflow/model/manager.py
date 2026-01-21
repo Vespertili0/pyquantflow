@@ -1,3 +1,4 @@
+from inspect import signature
 import optuna
 import pandas as pd
 import numpy as np
@@ -9,9 +10,11 @@ import logging
 
 try:
     import mlflow
+    from mlflow.models import infer_signature
 except ImportError:
     mlflow = None
 
+from pyquantflow import model
 from pyquantflow.model.training import HyperparameterOptimiser
 
 logger = logging.getLogger(__name__)
@@ -37,7 +40,7 @@ class BaseModelEngine(ABC):
         pass
 
     @abstractmethod
-    def register(
+    def register_mlflow_evaluation(
         self, 
         model: Any, 
         params: Dict[str, Any], 
@@ -50,7 +53,8 @@ class BaseModelEngine(ABC):
         """
         pass
 
-class ModelOrchestrationEngine(BaseModelEngine):
+
+class ClassifierEngine(BaseModelEngine):
     """
     Orchestrates the full ML pipeline:
     1. Hyperparameter Optimization (via HyperparameterOptimiser)
@@ -88,17 +92,37 @@ class ModelOrchestrationEngine(BaseModelEngine):
         score = metric(y, preds, **metric_kwargs)
         return {metric.__name__: score}
 
-    def register(
+    def register_mlflow_evaluation(
         self, 
-        model: Any, 
-        params: Dict[str, Any], 
-        metrics: Dict[str, float], 
+        model: Any,
+        X: Union[pd.DataFrame, np.ndarray], 
+        y: Union[pd.Series, np.ndarray],
+        params: Dict[str, Any],
+        tags: Dict[str, str],
+#        metrics: Dict[str, float], 
         experiment_name: Optional[str] = None,
-        run_name: Optional[str] = None
+        run_name: Optional[str] = None,
+        evaluator_config: Optional[dict] = None,
     ) -> None:
         """
         Registers to MLflow if available.
         """
+        if evaluator_config is None:
+            evaluator_config = {
+                "log_explainer": True,
+                "explainer_type": "exact",
+                "average": "weighted"
+            }
+        
+        # Create evaluation dataset
+        if isinstance(X, np.ndarray):
+            X_df = pd.DataFrame(X)
+        else:
+            X_df = X.copy()
+
+        eval_data = X_df.copy()
+        eval_data["label"] = y
+
         if mlflow is None:
             logger.warning("MLflow is not installed. Skipping registration.")
             print("MLflow is not installed. Skipping registration.")
@@ -109,20 +133,20 @@ class ModelOrchestrationEngine(BaseModelEngine):
             mlflow.set_experiment(experiment_name)
         
         with mlflow.start_run(run_name=run_name):
-            # Log params
-            mlflow.log_params(params)
-            
-            # Log metrics
-            mlflow.log_metrics(metrics)
-            
             # Log model
-            # We assume sklearn model for now based on context, but try generic first
-            if hasattr(mlflow, "sklearn"):
-                 mlflow.sklearn.log_model(model, "model")
-            else:
-                 # Fallback if specific flavor handling is desired
-                 logger.info("Generic MLflow model logging not fully implemented, using sklearn default.")
-                 mlflow.sklearn.log_model(model, "model")
+            signature = infer_signature(X, model.predict(X))
+            model_info = mlflow.sklearn.log_model(model, name="model", signature=signature)
+            mlflow.log_params(params)
+            mlflow.set_tags(tags)
+
+            # Evaluate
+            result = mlflow.models.evaluate(
+                model_info.model_uri,
+                eval_data,
+                targets="label",
+                model_type="classifier",
+                evaluator_config=evaluator_config
+            )
             
             logger.info("Model registered to MLflow successfully.")
             print(f"Model registered to MLflow experiment '{experiment_name}' with run_name '{run_name}'.")
@@ -140,7 +164,8 @@ class ModelOrchestrationEngine(BaseModelEngine):
         timeout: Optional[int] = None,
         metric_kwargs: Optional[dict] = None,
         experiment_name: Optional[str] = None,
-        run_name: Optional[str] = None
+        run_name: Optional[str] = None,
+        tags: Optional[Dict[str, str]] = None
     ) -> Any:
         """
         Executes the full pipeline.
@@ -181,10 +206,13 @@ class ModelOrchestrationEngine(BaseModelEngine):
         # 5. Register
         print("Attempting MLflow registration...")
         # Combine best params and extra info if needed
-        self.register(
+        self.register_mlflow_evaluation(
             model=best_model,
+            X=X_test,
+            y=y_test,
             params=best_params,
-            metrics=validation_metrics,
+            tags=tags,
+#            metrics=validation_metrics,
             experiment_name=experiment_name,
             run_name=run_name
         )
