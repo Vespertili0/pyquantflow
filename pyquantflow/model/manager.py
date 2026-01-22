@@ -65,6 +65,7 @@ class ClassifierEngine(BaseModelEngine):
 
     def __init__(self, optimiser: HyperparameterOptimiser):
         self.optimiser = optimiser
+        self.best_estimator_ = None
 
     def validate(
         self, 
@@ -166,7 +167,7 @@ class ClassifierEngine(BaseModelEngine):
         experiment_name: Optional[str] = None,
         run_name: Optional[str] = None,
         tags: Optional[Dict[str, str]] = None
-    ) -> Any:
+    ) -> None:
         """
         Executes the full pipeline.
         """
@@ -192,22 +193,21 @@ class ClassifierEngine(BaseModelEngine):
         # This allows us to use the same logic in model_factory without modification
         print("Re-instantiating best model...")
         fixed_trial = optuna.trial.FixedTrial(best_params)
-        best_model = model_factory(fixed_trial)
+        self.best_estimator_ = model_factory(fixed_trial)
 
         # 3. Fit on ALL training data
         print("Retraining best model on full training set...")
-        best_model.fit(X_train, y_train)
-
+        self.best_estimator_.fit(X_train, y_train)
         # 4. Validate on Hold-out Test Set
         print("Validating on hold-out test set...")
-        validation_metrics = self.validate(best_model, X_test, y_test, metric, metric_kwargs)
+        validation_metrics = self.validate(self.best_estimator_, X_test, y_test, metric, metric_kwargs)
         print(f"Validation Metrics: {validation_metrics}")
 
         # 5. Register
         print("Attempting MLflow registration...")
         # Combine best params and extra info if needed
         self.register_mlflow_evaluation(
-            model=best_model,
+            model=self.best_estimator_,
             X=X_test,
             y=y_test,
             params=best_params,
@@ -217,4 +217,4 @@ class ClassifierEngine(BaseModelEngine):
             run_name=run_name
         )
 
-        return best_model
+        return None
