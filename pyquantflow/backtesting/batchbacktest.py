@@ -1,22 +1,28 @@
 import pandas as pd
 import numpy as np
+from typing import Optional, Dict, List, Any
 from .engine import BacktestRunner
 from .backtest_database import BacktestDatabaseManager
+from ..data.assetorganiser import AssetOrganiser
 
 class BatchBacktester:
-    def __init__(self, results_db_path="backtest_results.db"):
+    def __init__(self, results_db_path: str = "backtest_results.db"):
         self.results_db = BacktestDatabaseManager(results_db_path)
         self.runner = BacktestRunner()
-        self.results = None
-        self.strategy_class = None
+        self.results: Optional[Dict[str, Any]] = None
+        self.strategy_class: Optional[type] = None
 
-    def run_batch_backtest(self, data_map, strategy_class, **kwargs):
+    def run_batch_backtest(self, strategy_class: type, data_map: Optional[Dict[str, pd.DataFrame]] = None,
+                           asset_organiser: Optional[AssetOrganiser] = None, symbols: Optional[List[str]] = None, 
+                           **kwargs) -> Dict[str, Any]:
         """
         Runs backtests for a list of tickers and aggregates results.
         
         Args:
-            data_map (dict): Dictionary of {ticker: DataFrame}.
             strategy_class: The strategy class to use.
+            data_map (Optional[dict]): Dictionary of {ticker: DataFrame}.
+            asset_organiser (Optional[AssetOrganiser]): AssetOrganiser instance with transformed data.
+            symbols (Optional[List[str]]): List of specific tickers to run. 
             **kwargs: Additional arguments for the backtest (cash, commission, strategy params).
         
         Returns:
@@ -24,12 +30,18 @@ class BatchBacktester:
         """
         self.strategy_class = strategy_class
 
-        if not data_map:
+        if not data_map and not asset_organiser:
             self.results = {'individual_results': {}, 'average_metrics': {}}
             return self.results
 
         # Run backtests
-        individual_results = self.runner.run(strategy_class, data_map, **kwargs)
+        individual_results = self.runner.run(
+            strategy_class=strategy_class, 
+            data=data_map, 
+            asset_organiser=asset_organiser,
+            symbols=symbols, 
+            **kwargs
+        )
         
         # Calculate averages
         average_metrics = self._calculate_averages(individual_results)
