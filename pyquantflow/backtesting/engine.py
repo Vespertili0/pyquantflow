@@ -1,4 +1,4 @@
-from typing import Optional, Dict, List, Any
+from typing import Optional, Dict, List, Any, Tuple
 import pandas as pd
 from backtesting import Backtest
 from ..data.assetorganiser import AssetOrganiser

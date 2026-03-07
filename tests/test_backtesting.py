@@ -6,6 +6,24 @@ import pandas as pd
 from pyquantflow.backtesting.batchbacktest import BatchBacktester
 from pyquantflow.strategies.example_strategy import SmaCross
 from pyquantflow.data.database import DatabaseManager
+from pyquantflow.data.assetorganiser import AssetOrganiser
+from pyquantflow.model.classifier import BaseQuantClassifier
+import numpy as np
+
+class MockClassifier(BaseQuantClassifier):
+    def fit(self, X: pd.DataFrame, y: pd.Series | pd.DataFrame, sample_weight: np.ndarray | None = None) -> 'BaseQuantClassifier':
+        return self
+
+    def transform(self, X: pd.DataFrame) -> pd.DataFrame:
+        X_out = X.copy()
+        X_out['target_col'] = 1  # Dummy values
+        return X_out
+
+    def predict(self, X: pd.DataFrame) -> np.ndarray:
+        return np.ones(len(X))
+
+    def predict_proba(self, X: pd.DataFrame) -> np.ndarray:
+        return np.ones((len(X), 2))
 
 class TestBacktesting(unittest.TestCase):
     def setUp(self):
@@ -42,8 +60,8 @@ class TestBacktesting(unittest.TestCase):
 
         # 2. Run Backtest
         results = self.backtester.run_batch_backtest(
-            data_map,
             SmaCross,
+            data_map=data_map,
             cash=10000,
             commission=.002
         )
@@ -105,6 +123,66 @@ class TestBacktesting(unittest.TestCase):
             self.assertIn('Return [%]', stored_metrics)
 
         conn.close()
+
+    def test_run_batch_backtest_with_asset_organiser(self):
+        # 1. Load data from stocks.db
+        data_map = {}
+        for ticker in self.tickers:
+            df = self.db_manager.get_data(ticker)
+            if not df.empty:
+                # Mock a target feature column
+                df['target_col'] = 1
+                data_map[ticker] = df
+            else:
+                print(f"Warning: No data found for {ticker} in stocks.db")
+
+        self.assertTrue(data_map, "No data loaded from database for backtesting.")
+
+        # 2. Setup AssetOrganiser
+        mock_classifier = MockClassifier()
+        # Ensure cutoff date is in the middle of our sample data
+        cutoff_date = "2023-01-01"
+        asset_organiser = AssetOrganiser(
+            classifier=mock_classifier,
+            data_map=data_map,
+            cutoff_date=cutoff_date,
+            target_features=['target_col']
+        )
+        asset_organiser.prepare_multi_asset_frame()
+        asset_organiser.fit_classifier()
+
+        # 3. Run Backtest
+        results = self.backtester.run_batch_backtest(
+            SmaCross,
+            asset_organiser=asset_organiser,
+            cash=10000,
+            commission=.002
+        )
+
+        # 4. Verify returned results structure
+        self.assertIn('individual_results', results)
+        self.assertIn('average_metrics', results)
+
+        # Verify individual results
+        for ticker in data_map.keys():
+            self.assertIn(ticker, results['individual_results'])
+            stats = results['individual_results'][ticker]
+
+            # Check for some key metrics
+            if 'Error' in stats:
+                self.fail(f"Backtest failed for {ticker}: {stats['Error']}")
+
+            self.assertIn('Return [%]', stats)
+            self.assertIn('Sharpe Ratio', stats)
+            self.assertIn('# Trades', stats)
+            self.assertIn('Max. Drawdown [%]', stats)
+
+        # Verify averages (only if we have valid results)
+        if results['average_metrics']:
+            avg_metrics = results['average_metrics']
+            self.assertIn('Return [%]', avg_metrics)
+            self.assertIn('Sharpe Ratio', avg_metrics)
+
 
 if __name__ == "__main__":
     unittest.main()
