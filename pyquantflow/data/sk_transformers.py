@@ -2,10 +2,10 @@ from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.utils.validation import check_is_fitted
 import pandas as pd
 import numpy as np
-from .sadf import gsadf_values
-from .trend_scanning import trend_scanning
-from .fractional_differentiation import frac_diff_ffd
-from .triple_barrier import triple_barrier_labels
+from .features.sadf import get_sadf_jax as gsadf_values
+from .labels.trend_scanning import trend_scanning
+from .features.fractional_differentiation import frac_diff_ffd
+from .labels.triple_barrier import apply_triple_barrier as triple_barrier_labels
 
 
 class FractionalDiffTransformer(BaseEstimator, TransformerMixin):
@@ -85,9 +85,10 @@ class GSADFTransformer(BaseEstimator, TransformerMixin):
     Sklearn wrapper for GSADF (Generalized SADF).
     Transforms a log-price series into GSADF statistics for bubble detection.
     """
-    def __init__(self, min_length=None, add_trend=False, lags=1):
+    def __init__(self, model='linear', min_length=20, add_const=False, lags=1):
+        self.model = model
         self.min_length = min_length
-        self.add_trend = add_trend
+        self.add_const = add_const
         self.lags = lags
 
     def fit(self, X, y=None):
@@ -109,12 +110,12 @@ class GSADFTransformer(BaseEstimator, TransformerMixin):
             else:
                 # Apply column-wise
                 return X.apply(lambda col: gsadf_values(
-                    col, self.min_length, self.add_trend, self.lags
+                    col, self.model, self.lags, self.min_length, self.add_const
                 ))
         else:
             series = X
 
-        return gsadf_values(series, self.min_length, self.add_trend, self.lags)
+        return gsadf_values(series, self.model, self.lags, self.min_length, self.add_const)
 
 
 class TripleBarrierLabeler(BaseEstimator, TransformerMixin):
@@ -122,19 +123,17 @@ class TripleBarrierLabeler(BaseEstimator, TransformerMixin):
     Sklearn wrapper for Triple Barrier Labeling.
     
     NOTE: Unlike standard transformers, this requires specific column names 
-    if X is a DataFrame (price vs volatility), or assumes fixed barriers if 
-    volatility is missing.
+    if X is a DataFrame (price vs stop loss).
     
     This is typically used to generate 'y' (targets) rather than transform 'X',
     but wrapping it allows for integration into data prep pipelines.
     """
-    def __init__(self, price_col='close', vol_col=None, 
-                 vertical_barrier_steps=10, pt=1.0, sl=1.0):
+    def __init__(self, price_col='close', sl_col='sl',
+                 horizon=10, tp_mult=2.0):
         self.price_col = price_col
-        self.vol_col = vol_col
-        self.vertical_barrier_steps = vertical_barrier_steps
-        self.pt = pt
-        self.sl = sl
+        self.sl_col = sl_col
+        self.horizon = horizon
+        self.tp_mult = tp_mult
 
     def fit(self, X, y=None):
         return self
@@ -144,39 +143,23 @@ class TripleBarrierLabeler(BaseEstimator, TransformerMixin):
         Generates labels.
         
         Args:
-            X (pd.DataFrame or pd.Series): 
-                - If DataFrame: Must contain `price_col`. If `vol_col` is set,
-                  must also contain `vol_col` for dynamic barriers.
-                - If Series: Treated as price. Volatility is assumed None (fixed barriers).
+            X (pd.DataFrame):
+                Must contain `price_col` and `sl_col`.
         
         Returns:
-            pd.Series: Labels (-1, 0, 1).
+            pd.DataFrame: DataFrame containing `label` and `t1`.
         """
-        volatility = None
-        
         if isinstance(X, pd.DataFrame):
-            # Extract Price
-            if self.price_col not in X.columns:
-                # Fallback: try first column
-                prices = X.iloc[:, 0]
-            else:
-                prices = X[self.price_col]
-            
-            # Extract Volatility if specified
-            if self.vol_col is not None:
-                if self.vol_col in X.columns:
-                    volatility = X[self.vol_col]
-                else:
-                    raise ValueError(f"Volatility column '{self.vol_col}' not found in X.")
+            if self.price_col not in X.columns or self.sl_col not in X.columns:
+                raise ValueError(f"X must contain {self.price_col} and {self.sl_col}")
+            prices = X[self.price_col]
+            sls = X[self.sl_col]
         else:
-            # Assume Series is Price
-            prices = X
-            # Volatility remains None
+            raise ValueError("X must be a DataFrame containing price and stop loss columns.")
             
         return triple_barrier_labels(
-            price_series=prices,
-            volatility=volatility,
-            vertical_barrier_steps=self.vertical_barrier_steps,
-            pt=self.pt,
-            sl=self.sl
+            prices=prices,
+            sl_col=sls,
+            tp_mult=self.tp_mult,
+            horizon=self.horizon
         )

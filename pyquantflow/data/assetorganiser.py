@@ -2,6 +2,7 @@ import pandas as pd
 from typing import Dict, List, Optional
 from ..model.classifier import BaseQuantClassifier
 from .utils import align_and_ffill_multiasset, restructure_map_2_multiasset_df
+from .schemas import validate_multi_asset
 
 
 class AssetOrganiser:
@@ -54,8 +55,10 @@ class AssetOrganiser:
         """
         converts data_map to Date-Ticker multi-index dataframe
         """
-        self.multi_asset = align_and_ffill_multiasset(
-            restructure_map_2_multiasset_df(self.data_map)
+        self.multi_asset = validate_multi_asset(
+            align_and_ffill_multiasset(
+                restructure_map_2_multiasset_df(self.data_map)
+            )
         )
         self.multi_asset_train = self.multi_asset[
             self.multi_asset.index.get_level_values("datetime") < self.cutoff_date

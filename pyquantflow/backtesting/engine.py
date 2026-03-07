@@ -2,6 +2,7 @@ from typing import Optional, Dict, List, Any, Tuple
 import pandas as pd
 from backtesting import Backtest
 from ..data.assetorganiser import AssetOrganiser
+from ..data.schemas import validate_ohlcv
 
 
 class BacktestRunner:
@@ -9,10 +10,11 @@ class BacktestRunner:
         pass
 
     def _validate_data(self, df: pd.DataFrame) -> pd.DataFrame:
-        required_cols = ['Open', 'High', 'Low', 'Close', 'Volume']
-        if not all(col in df.columns for col in required_cols):
-            raise ValueError(f"Data must contain columns: {required_cols}")
-        return df[required_cols]
+        """Validates using pandera schemas to ensure typing and index structure."""
+        try:
+            return validate_ohlcv(df)
+        except Exception as e:
+            raise ValueError(f"Data schema validation failed: {e}")
 
     def run(self, strategy_class: type, data: Optional[pd.DataFrame | Dict[str, pd.DataFrame]] = None,
             asset_organiser: Optional[AssetOrganiser] = None, symbols: Optional[List[str]] = None,

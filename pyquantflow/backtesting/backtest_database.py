@@ -1,9 +1,11 @@
 import sqlite3
 import json
 from datetime import datetime
+from ..config import config
 
 class BacktestDatabaseManager:
-    def __init__(self, db_path="backtest_results.db"):
+    def __init__(self, db_path=None):
+        db_path = db_path or config.results_db_path
         self.conn = sqlite3.connect(db_path)
         self.create_tables()
 

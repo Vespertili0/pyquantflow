@@ -4,9 +4,11 @@ from typing import Optional, Dict, List, Any
 from .engine import BacktestRunner
 from .backtest_database import BacktestDatabaseManager
 from ..data.assetorganiser import AssetOrganiser
+from ..config import config
 
 class BatchBacktester:
-    def __init__(self, results_db_path: str = "backtest_results.db"):
+    def __init__(self, results_db_path: Optional[str] = None):
+        results_db_path = results_db_path or config.results_db_path
         self.results_db = BacktestDatabaseManager(results_db_path)
         self.runner = BacktestRunner()
         self.results: Optional[Dict[str, Any]] = None

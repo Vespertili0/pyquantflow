@@ -3,9 +3,11 @@ import pandas as pd
 import yfinance as yf
 from datetime import datetime
 from .quarterly_pull import fetch_quarterly_data
+from ..config import config
 
 class DatabaseManager:
-    def __init__(self, db_path="stocks.db"):
+    def __init__(self, db_path=None):
+        db_path = db_path or config.db_path
         self.conn = sqlite3.connect(db_path)
         self.create_tables()
 

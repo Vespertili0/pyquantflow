@@ -321,7 +321,7 @@ def get_sadf_jax(
     
     sadf_series = pd.Series(np.array(sadf_values), index=y_df.index)
     
-    # Filter to valid min_length start (compatible with original behavior)
-    sadf_series = sadf_series.iloc[min_length:]
+    # In order to align with the input series length, we reindex it.
+    sadf_series = sadf_series.reindex(series.index)
     
     return sadf_series
