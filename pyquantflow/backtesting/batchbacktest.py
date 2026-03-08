@@ -18,7 +18,7 @@ class BatchBacktester:
         return df[required_cols]
 
     def run_batch_backtest(self, strategy_class: type, data: Optional[pd.DataFrame | Dict[str, pd.DataFrame]] = None,
-                           asset_organiser: Optional[AssetOrganiser] = None, symbols: Optional[List[str]] = None, 
+                           asset_organiser: Optional[AssetOrganiser] = None, symbols: Optional[str | List[str]] = "all", 
                            cash: float = 10000, commission: float | Tuple[float, float] = (3.0, 0.0), 
                            trade_on_close: bool = False, finalize_trades: bool = True, **strategy_params) -> Dict[str, Any]:
         """
@@ -27,10 +27,10 @@ class BatchBacktester:
         Args:
             strategy_class: The strategy class to use.
             data: pd.DataFrame or dict. 
-                  If DataFrame, must provide 'symbols' as a single-element list or infer from index.
+                  If DataFrame, maps to an "asset" symbol unless symbols list is provided.
                   If dict, keys are symbols, values are DataFrames.
             asset_organiser: AssetOrganiser instance containing transformed test data.
-            symbols: List of specific tickers to run. 
+            symbols: 'all' to run all available, or a List of specific tickers to run. 
             cash: Initial cash.
             commission: Commission rate.
             trade_on_close: Whether to trade on close.
@@ -56,7 +56,12 @@ class BatchBacktester:
             else:
                  available_symbols = list(available_symbols)
 
-            target_symbols = symbols if symbols is not None else available_symbols
+            if symbols == "all":
+                target_symbols = available_symbols
+            elif isinstance(symbols, list):
+                target_symbols = symbols
+            else:
+                target_symbols = [symbols] # Handle single string case
             
             for sym in target_symbols:
                 if sym in available_symbols:
@@ -65,11 +70,9 @@ class BatchBacktester:
                     print(f"Warning: Symbol '{sym}' not found in AssetOrganiser test data.")
                     
         elif data is not None:
-            # Legacy raw data handling
+            # Direct data handling
             if isinstance(data, pd.DataFrame):
-                symbol = symbols[0] if (symbols and len(symbols) > 0) else None
-                if not symbol:
-                    raise ValueError("Symbols list must be provided when passing a single DataFrame.")
+                symbol = symbols[0] if (isinstance(symbols, list) and len(symbols) > 0) else ("asset" if symbols == "all" else symbols)
                 data_map[symbol] = data
             elif isinstance(data, dict):
                 data_map = data
