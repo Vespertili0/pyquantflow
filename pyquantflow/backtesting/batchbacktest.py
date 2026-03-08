@@ -1,12 +1,26 @@
 import pandas as pd
 import numpy as np
-from typing import Optional, Dict, List, Any, Tuple
+from typing import Optional, Dict, List, Any, Tuple, Union
 from backtesting import Backtest
 from .backtest_database import BacktestDatabaseManager
 from ..data.assetorganiser import AssetOrganiser
 
 class BatchBacktester:
-    def __init__(self, results_db_path: str = "backtest_results.db"):
+    """
+    Utility class to manage and execute backtests over a batch of assets.
+
+    It integrates seamlessly with the `AssetOrganiser` and directly handles pandas
+    DataFrames or dictionaries of DataFrames. Support is included to export results
+    to a SQLite database using `BacktestDatabaseManager`.
+    """
+    def __init__(self, results_db_path: str = "backtest_results.db") -> None:
+        """
+        Initializes the BatchBacktester.
+
+        Args:
+            results_db_path (str): The file path to the SQLite database where
+                                   batch results will be stored.
+        """
         self.results_db = BacktestDatabaseManager(results_db_path)
         self.results: Optional[Dict[str, Any]] = None
         self.strategy_class: Optional[type] = None
@@ -31,28 +45,44 @@ class BatchBacktester:
         stats = bt.run(**strategy_params)
         return stats.to_dict()
 
-    def run_batch_backtest(self, strategy_class: type, data: Optional[pd.DataFrame | Dict[str, pd.DataFrame]] = None,
-                           asset_organiser: Optional[AssetOrganiser] = None, symbols: Optional[str | List[str]] = "all", 
-                           cash: float = 10000, commission: float | Tuple[float, float] = (3.0, 0.0), 
-                           trade_on_close: bool = False, finalize_trades: bool = True, **strategy_params) -> Dict[str, Any]:
+    def run_batch_backtest(self, strategy_class: type, 
+                           data: Optional[Union[pd.DataFrame, Dict[str, pd.DataFrame]]] = None,
+                           asset_organiser: Optional[AssetOrganiser] = None, 
+                           symbols: Optional[Union[str, List[str]]] = "all", 
+                           cash: float = 10000, 
+                           commission: Union[float, Tuple[float, float]] = (3.0, 0.0), 
+                           trade_on_close: bool = False, 
+                           finalize_trades: bool = True, 
+                           **strategy_params: Any) -> Dict[str, Any]:
         """
-        Runs backtests for a list of tickers and aggregates results.
+        Runs backtests for a list of tickers and aggregates the results.
+        
+        This method handles three input paradigms natively:
+        1. Using an `AssetOrganiser` to parse multi-asset environments into separate streams.
+        2. Passing a raw `pd.DataFrame` directly.
+        3. Passing a dictionary mapping of ticker strings to `pd.DataFrame` objects.
         
         Args:
-            strategy_class: The strategy class to use.
-            data: pd.DataFrame or dict. 
-                  If DataFrame, maps to an "asset" symbol unless symbols list is provided.
-                  If dict, keys are symbols, values are DataFrames.
-            asset_organiser: AssetOrganiser instance containing transformed test data.
-            symbols: 'all' to run all available, or a List of specific tickers to run. 
-            cash: Initial cash.
-            commission: Commission rate.
-            trade_on_close: Whether to trade on close.
-            finalize_trades: Whether to finalize trades.
-            **strategy_params: Additional arguments for the strategy.
+            strategy_class (type): The uninstantiated quantitative strategy class to backtest.
+            data (Optional[Union[pd.DataFrame, Dict[str, pd.DataFrame]]]): Raw data to backtest.
+                If it is a DataFrame, it maps to an "asset" symbol unless a single-element list 
+                is provided in `symbols`. If it is a dict, keys are interpreted as symbols.
+            asset_organiser (Optional[AssetOrganiser]): AssetOrganiser instance containing 
+                the fully transformed test data to easily extract multiple symbol DataFrames.
+            symbols (Optional[Union[str, List[str]]]): "all" to run on all available symbols, 
+                or a specific list of ticker symbols to isolate the backtest.
+            cash (float): The initial cash balance allocated to the portfolio.
+            commission (Union[float, Tuple[float, float]]): Execution commission rate. 
+                Can be a float percentage or a mixed tuple setup.
+            trade_on_close (bool): Whether to calculate execution fills against the close price 
+                of the given period instead of the next open price.
+            finalize_trades (bool): Whether to forcibly close all open positions at the end 
+                of the series.
+            **strategy_params (Any): Additional dynamic arguments directly forwarded 
+                to populate strategy configuration attributes.
         
         Returns:
-            dict: A dictionary containing 'individual_results' and 'average_metrics'.
+            Dict[str, Any]: A dictionary containing dynamically averaged metrics across all assets.
         """
         self.strategy_class = strategy_class
         individual_results = {}
@@ -116,8 +146,7 @@ class BatchBacktester:
             'individual_results': individual_results,
             'average_metrics': average_metrics
         }
-
-        return self.results
+        return self.results['average_metrics']
 
     def save_batch_results(self):
         """

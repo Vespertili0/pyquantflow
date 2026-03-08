@@ -50,13 +50,38 @@ class PurgedKFoldCV(BaseCrossValidator):
                      groups: Optional[np.ndarray] = None) -> int:
         """
         Returns the number of splitting iterations in the cross-validator.
+        
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features), optional
+            Training data, where `n_samples` is the number of samples
+            and `n_features` is the number of features.
+        y : array-like of shape (n_samples,), optional
+            The target variable for supervised learning problems.
+        groups : array-like of shape (n_samples,), optional
+            Group labels for the samples used while splitting the dataset into
+            train/test set.
+            
+        Returns
+        -------
+        int
+            Number of splits.
         """
         return self.n_splits
 
     def _extract_times(self, X: pd.DataFrame) -> pd.Index:
         """
-        Extract the datetime index from X, supporting standard DatetimeIndex 
-        and MultiIndex architectures.
+        Extract the datetime index from X.
+        
+        Parameters
+        ----------
+        X : pd.DataFrame
+            The input DataFrame containing a standard DatetimeIndex or MultiIndex.
+            
+        Returns
+        -------
+        pd.Index
+            The extracted datetime index.
         """
         idx = X.index
         if isinstance(idx, pd.MultiIndex):
@@ -79,7 +104,7 @@ class PurgedKFoldCV(BaseCrossValidator):
             The target variable for supervised learning problems.
         groups : np.ndarray, optional
             Group labels for the samples used while splitting the dataset into
-            train/test set. Not used by this spliter, maintained for compatibility.
+            train/test set. Not used by this splitter, maintained for compatibility.
             
         Yields
         ------
