@@ -15,7 +15,21 @@ class BatchBacktester:
         required_cols = ['Open', 'High', 'Low', 'Close', 'Volume']
         if not all(col in df.columns for col in required_cols):
             raise ValueError(f"Data must contain columns: {required_cols}")
-        return df[required_cols]
+        return df
+
+    def run_single_backtest(self, df: pd.DataFrame, strategy_class: type, 
+                             cash: float, commission: float | Tuple[float, float],
+                             trade_on_close: bool, finalize_trades: bool, 
+                             **strategy_params) -> Dict[str, Any]:
+        """Validates Data and executes a single backtest."""
+        df = self._validate_data(df)
+        if not isinstance(df.index, pd.DatetimeIndex):
+            df.index = pd.to_datetime(df.index, utc=True)
+        
+        bt = Backtest(df, strategy_class, cash=cash, commission=commission,
+                      trade_on_close=trade_on_close, finalize_trades=finalize_trades)
+        stats = bt.run(**strategy_params)
+        return stats.to_dict()
 
     def run_batch_backtest(self, strategy_class: type, data: Optional[pd.DataFrame | Dict[str, pd.DataFrame]] = None,
                            asset_organiser: Optional[AssetOrganiser] = None, symbols: Optional[str | List[str]] = "all", 
@@ -85,16 +99,12 @@ class BatchBacktester:
         for sym, df in data_map.items():
             print(f"Running backtest for {sym}...")
             try:
-                df = self._validate_data(df)
-                if not isinstance(df.index, pd.DatetimeIndex):
-                    df.index = pd.to_datetime(df.index, utc=True)
-                
-                bt = Backtest(df, strategy_class, cash=cash, commission=commission,
-                              trade_on_close=trade_on_close, finalize_trades=finalize_trades)
-                stats = bt.run(**strategy_params)
-                
-                individual_results[sym] = stats.to_dict()
-                print(f"Finished {sym}: Return {stats['Return [%]']:.2f}%")
+                stats_dict = self.run_single_backtest(
+                    df=df, strategy_class=strategy_class, cash=cash, commission=commission,
+                    trade_on_close=trade_on_close, finalize_trades=finalize_trades, **strategy_params
+                )
+                individual_results[sym] = stats_dict
+                print(f"Finished {sym}: Return {stats_dict['Return [%]']:.2f}%")
             except Exception as e:
                 print(f"Error running backtest for {sym}: {e}")
                 individual_results[sym] = {'Error': str(e)}
