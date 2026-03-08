@@ -1,48 +1,101 @@
 import pandas as pd
 import numpy as np
-from typing import Optional, Dict, List, Any
-from .engine import BacktestRunner
+from typing import Optional, Dict, List, Any, Tuple
+from backtesting import Backtest
 from .backtest_database import BacktestDatabaseManager
 from ..data.assetorganiser import AssetOrganiser
 
 class BatchBacktester:
     def __init__(self, results_db_path: str = "backtest_results.db"):
         self.results_db = BacktestDatabaseManager(results_db_path)
-        self.runner = BacktestRunner()
         self.results: Optional[Dict[str, Any]] = None
         self.strategy_class: Optional[type] = None
 
-    def run_batch_backtest(self, strategy_class: type, data_map: Optional[Dict[str, pd.DataFrame]] = None,
+    def _validate_data(self, df: pd.DataFrame) -> pd.DataFrame:
+        required_cols = ['Open', 'High', 'Low', 'Close', 'Volume']
+        if not all(col in df.columns for col in required_cols):
+            raise ValueError(f"Data must contain columns: {required_cols}")
+        return df[required_cols]
+
+    def run_batch_backtest(self, strategy_class: type, data: Optional[pd.DataFrame | Dict[str, pd.DataFrame]] = None,
                            asset_organiser: Optional[AssetOrganiser] = None, symbols: Optional[List[str]] = None, 
-                           **kwargs) -> Dict[str, Any]:
+                           cash: float = 10000, commission: float | Tuple[float, float] = (3.0, 0.0), 
+                           trade_on_close: bool = False, finalize_trades: bool = True, **strategy_params) -> Dict[str, Any]:
         """
         Runs backtests for a list of tickers and aggregates results.
         
         Args:
             strategy_class: The strategy class to use.
-            data_map (Optional[dict]): Dictionary of {ticker: DataFrame}.
-            asset_organiser (Optional[AssetOrganiser]): AssetOrganiser instance with transformed data.
-            symbols (Optional[List[str]]): List of specific tickers to run. 
-            **kwargs: Additional arguments for the backtest (cash, commission, strategy params).
+            data: pd.DataFrame or dict. 
+                  If DataFrame, must provide 'symbols' as a single-element list or infer from index.
+                  If dict, keys are symbols, values are DataFrames.
+            asset_organiser: AssetOrganiser instance containing transformed test data.
+            symbols: List of specific tickers to run. 
+            cash: Initial cash.
+            commission: Commission rate.
+            trade_on_close: Whether to trade on close.
+            finalize_trades: Whether to finalize trades.
+            **strategy_params: Additional arguments for the strategy.
         
         Returns:
             dict: A dictionary containing 'individual_results' and 'average_metrics'.
         """
         self.strategy_class = strategy_class
+        individual_results = {}
+        data_map: Dict[str, pd.DataFrame] = {}
 
-        if not data_map and not asset_organiser:
+        if asset_organiser is not None:
+            if data is not None:
+                raise ValueError("Cannot provide both 'data' and 'asset_organiser'. Choose one.")
+            
+            # Use AssetOrganiser
+            multiasset_test_data = asset_organiser.get_transformed_multiasset_testdata()
+            available_symbols = getattr(multiasset_test_data.index.get_level_values('ticker'), 'unique', lambda: [])()
+            if callable(available_symbols):
+                available_symbols = available_symbols()
+            else:
+                 available_symbols = list(available_symbols)
+
+            target_symbols = symbols if symbols is not None else available_symbols
+            
+            for sym in target_symbols:
+                if sym in available_symbols:
+                    data_map[sym] = asset_organiser.get_transformed_test_ticker(sym)
+                else:
+                    print(f"Warning: Symbol '{sym}' not found in AssetOrganiser test data.")
+                    
+        elif data is not None:
+            # Legacy raw data handling
+            if isinstance(data, pd.DataFrame):
+                symbol = symbols[0] if (symbols and len(symbols) > 0) else None
+                if not symbol:
+                    raise ValueError("Symbols list must be provided when passing a single DataFrame.")
+                data_map[symbol] = data
+            elif isinstance(data, dict):
+                data_map = data
+            else:
+                raise ValueError("Data must be a pandas DataFrame or a dictionary of DataFrames.")
+        else:
             self.results = {'individual_results': {}, 'average_metrics': {}}
             return self.results
 
-        # Run backtests
-        individual_results = self.runner.run(
-            strategy_class=strategy_class, 
-            data=data_map, 
-            asset_organiser=asset_organiser,
-            symbols=symbols, 
-            **kwargs
-        )
-        
+        for sym, df in data_map.items():
+            print(f"Running backtest for {sym}...")
+            try:
+                df = self._validate_data(df)
+                if not isinstance(df.index, pd.DatetimeIndex):
+                    df.index = pd.to_datetime(df.index, utc=True)
+                
+                bt = Backtest(df, strategy_class, cash=cash, commission=commission,
+                              trade_on_close=trade_on_close, finalize_trades=finalize_trades)
+                stats = bt.run(**strategy_params)
+                
+                individual_results[sym] = stats.to_dict()
+                print(f"Finished {sym}: Return {stats['Return [%]']:.2f}%")
+            except Exception as e:
+                print(f"Error running backtest for {sym}: {e}")
+                individual_results[sym] = {'Error': str(e)}
+
         # Calculate averages
         average_metrics = self._calculate_averages(individual_results)
         
