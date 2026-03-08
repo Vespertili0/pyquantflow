@@ -9,9 +9,9 @@ A local-first stock analysis and backtesting framework designed for data persist
 | Feature      | Description                                                                 |
 |--------------|-----------------------------------------------------------------------------|
 | Local-First  | SQLite-backed data persistence for lightning-fast local access.             |
-| Adv. Fin. ML | Implements Triple-Barrier labeling, Purged Cross-Validation, etc..             |
+| Adv. Fin. ML | Implements Triple-Barrier labelling, Purged Cross-Validation, etc..             |
 | MLOps        | Integrated hyperparameter optimisation via Optuna and tracking via MLflow.  |
-| Vectorized   | Built on yfinance, TA‑Lib, and backtesting.py.                              |
+| Vectorised   | Built on yfinance, TA‑Lib, and backtesting.py.                              |
 
 
 ## Installation
@@ -24,7 +24,7 @@ pip install git+https://github.com/Vespertili0/pyquantflow.git
 
 ### 1. Setup Stock Database
 
-Initialize your local SQLite database and fetch historical data for your favorite tickers using '[yfinance]'(https://github.com/ranaroussi/yfinance) in the background.
+Initialise your local SQLite database and fetch historical data for your favourite tickers using [`yfinance`](https://github.com/ranaroussi/yfinance) in the background.
 
 ```python
 from pyquantflow.data.database import DatabaseManager
@@ -68,7 +68,7 @@ data_indicator = (
 
 ### 3. Integrate Financial ML Concepts
 
-Train ML-models following concepts introduced by *Marcos Lopez de Prado's* book "Advances in Financial Machine Learning" (2018), utilising target labeling (e.g. trend-scan, triple-barrier), feature engineering (e.g. fractional differentiation), and purged cross-validation. Using ['optuna'](https://github.com/optuna/optuna), hyperparameters of the ML-models are optimised and the final model is logged to ['mlflow'](https://github.com/mlflow/mlflow) via a modern MLOps workflow.
+Train ML-models following concepts introduced by *Marcos Lopez de Prado's* book "Advances in Financial Machine Learning" (2018), utilising target labelling (e.g. trend-scan, triple-barrier), feature engineering (e.g. fractional differentiation), and purged cross-validation. Using [`optuna`](https://github.com/optuna/optuna), hyperparameters of the ML-models are optimised and the final model is logged to [`mlflow`](https://github.com/mlflow/mlflow) via a modern MLOps workflow.
 
 ```python
 
@@ -78,7 +78,7 @@ from pyquantflow.model.cross_validation import PurgedKFoldCV
 from pyquantflow.model.training import HyperparameterOptimiser
 from pyquantflow.model.manager import ClassifierEngine
 
-# 1. Apply Triple-Barrier Labeling
+# 1. Apply Triple-Barrier Labelling
 # Defines horizontal (Profit/Loss) and vertical (Time) barriers
 data['label'] = apply_triple_barrier(
     data.Close, 
@@ -101,10 +101,10 @@ data['label'] = apply_triple_barrier(
 
 #### 5.1 Run Single Backtest
 
-Test trading strategies w/o ML-models using the built-in engine wrapping the ['backtesting.py'](https://github.com/kernc/backtesting.py) package.
+Test trading strategies w/o ML-models using the built-in engine wrapping the [`backtesting.py`](https://github.com/kernc/backtesting.py) package.
 
 ```python
-from pyquantflow.backtesting.engine import BacktestRunner
+from pyquantflow.backtesting.batchbacktest import BatchBacktester
 from pyquantflow.strategies.example_strategy import SmaCross
 from pyquantflow.data.database import DatabaseManager
 
@@ -113,11 +113,11 @@ db = DatabaseManager('example_stocks.db')
 data = db.get_data('AAPL')
 
 # Run backtest
-runner = BacktestRunner()
+backtester = BatchBacktester()
 # Note: Ensure data is not empty before running backtest
 if not data.empty:
-    results = runner.run(SmaCross, data, symbol='AAPL', cash=10000, commission=.002)
-    print(f"Return: {results['AAPL']['Return [%]']:.2f}%")
+    results = backtester.run_single_backtest(df=data, strategy_class=SmaCross, cash=10000, commission=.002, trade_on_close=False, finalize_trades=True)
+    print(f"Return: {results['Return [%]']:.2f}%")
 else:
     print("No data available for backtest.")
 ```
@@ -141,9 +141,10 @@ for ticker in tickers:
         data_map[ticker] = data
 
 # Run batch backtest
-# results will be saved to 'backtest_results.db' by default
+# results can be saved to 'backtest_results.db' by calling save_batch_results()
 backtester = BatchBacktester(results_db_path='backtest_results.db')
-results = backtester.run_batch_backtest(data_map, SmaCross, cash=10000, commission=.002)
+avg_metrics = backtester.run_batch_backtest(strategy_class=SmaCross, data=data_map, cash=10000, commission=.002)
+backtester.save_batch_results()
 
-print("Average Metrics:", results['average_metrics'])
+print("Average Metrics:", avg_metrics)
 ```
