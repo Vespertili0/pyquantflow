@@ -16,9 +16,30 @@ from pyquantflow.data.sk_transformers import (
     TripleBarrierLabeler
 )
 
+import os
+from pyquantflow.data.database import DatabaseManager
+
 class TestDataAdditions(unittest.TestCase):
     def setUp(self):
-        self.ohlc_data = self.generate_synthetic_ohlc()
+        # Attempt to load from stocks.db
+        source_db_path = os.path.join(os.path.dirname(__file__), "stocks.db")
+        self.ohlc_data = None
+
+        if os.path.exists(source_db_path):
+            try:
+                db_manager = DatabaseManager(db_path=source_db_path)
+                # Try FMG.AX first, then CBA.AX, else fallback
+                for ticker in ['FMG.AX', 'CBA.AX']:
+                    df = db_manager.get_data(ticker)
+                    if not df.empty and len(df) >= 100:  # Need enough data for tests
+                        self.ohlc_data = df
+                        break
+                db_manager.conn.close()
+            except Exception:
+                pass
+
+        if self.ohlc_data is None:
+            self.ohlc_data = self.generate_synthetic_ohlc()
 
     def generate_synthetic_ohlc(self, n=500, seed=42):
         """Generates synthetic OHLC data."""
