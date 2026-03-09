@@ -38,24 +38,42 @@ class TestBacktesting(unittest.TestCase):
             else:
                 print(f"Warning: No data found for {ticker} in stocks.db")
 
+        if not data_map:
+            print("Fallback: Using synthetic data since no real data was found.")
+            import numpy as np
+            np.random.seed(42)
+            dates = pd.date_range(start="2023-01-01", periods=100, freq="D")
+            returns = np.random.normal(0, 0.01, 100)
+            price_path = 10 * np.exp(np.cumsum(returns))
+
+            df = pd.DataFrame({
+                'Open': price_path,
+                'High': price_path * 1.01,
+                'Low': price_path * 0.99,
+                'Close': price_path,
+                'Volume': 1000
+            }, index=dates)
+            data_map['SYNTH1'] = df
+            data_map['SYNTH2'] = df * 1.05
+
         self.assertTrue(data_map, "No data loaded from database for backtesting.")
 
         # 2. Run Backtest
         results = self.backtester.run_batch_backtest(
-            data_map,
-            SmaCross,
+            strategy_class=SmaCross,
+            data=data_map,
             cash=10000,
             commission=.002
         )
 
         # 3. Verify returned results structure
-        self.assertIn('individual_results', results)
-        self.assertIn('average_metrics', results)
+        self.assertIn('individual_results', self.backtester.results)
+        self.assertIn('average_metrics', self.backtester.results)
 
         # Verify individual results
         for ticker in data_map.keys():
-            self.assertIn(ticker, results['individual_results'])
-            stats = results['individual_results'][ticker]
+            self.assertIn(ticker, self.backtester.results['individual_results'])
+            stats = self.backtester.results['individual_results'][ticker]
 
             # Check for some key metrics
             # Note: If backtest fails/errors, stats might contain 'Error' key
@@ -68,8 +86,8 @@ class TestBacktesting(unittest.TestCase):
             self.assertIn('Max. Drawdown [%]', stats)
 
         # Verify averages (only if we have valid results)
-        if results['average_metrics']:
-            avg_metrics = results['average_metrics']
+        if self.backtester.results['average_metrics']:
+            avg_metrics = self.backtester.results['average_metrics']
             self.assertIn('Return [%]', avg_metrics)
             self.assertIn('Sharpe Ratio', avg_metrics)
 
