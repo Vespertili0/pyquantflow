@@ -36,17 +36,37 @@ class TestStrategyFactory(unittest.TestCase):
         self.assertEqual(MyStrategy.__name__, "MyRuleStrategy")
 
         # Test execution
-        np.random.seed(42)
-        returns = np.random.normal(0, 0.01, 100)
-        price_path = 10 * np.exp(np.cumsum(returns))
+        import os
+        from pyquantflow.data.database import DatabaseManager
 
-        data = pd.DataFrame({
-            'Open': price_path,
-            'High': price_path * 1.01,
-            'Low': price_path * 0.99,
-            'Close': price_path,
-            'Volume': 1000
-        }, index=pd.date_range('2023-01-01', periods=100))
+        source_db_path = os.path.join(os.path.dirname(__file__), "stocks.db")
+        data = None
+
+        if os.path.exists(source_db_path):
+            try:
+                db_manager = DatabaseManager(db_path=source_db_path)
+                for ticker in ['FMG.AX', 'CBA.AX']:
+                    df = db_manager.get_data(ticker)
+                    if not df.empty and len(df) >= 100:
+                        data = df
+                        break
+                db_manager.conn.close()
+            except Exception:
+                pass
+
+        if data is None:
+            print("Fallback: Using synthetic data since no real data was found.")
+            np.random.seed(42)
+            returns = np.random.normal(0, 0.01, 100)
+            price_path = 10 * np.exp(np.cumsum(returns))
+
+            data = pd.DataFrame({
+                'Open': price_path,
+                'High': price_path * 1.01,
+                'Low': price_path * 0.99,
+                'Close': price_path,
+                'Volume': 1000
+            }, index=pd.date_range('2023-01-01', periods=100))
 
         bt = Backtest(data, MyStrategy, cash=10000, commission=.002)
         stats = bt.run()

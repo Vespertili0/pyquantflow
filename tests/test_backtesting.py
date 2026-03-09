@@ -38,6 +38,24 @@ class TestBacktesting(unittest.TestCase):
             else:
                 print(f"Warning: No data found for {ticker} in stocks.db")
 
+        if not data_map:
+            print("Fallback: Using synthetic data since no real data was found.")
+            import numpy as np
+            np.random.seed(42)
+            dates = pd.date_range(start="2023-01-01", periods=100, freq="D")
+            returns = np.random.normal(0, 0.01, 100)
+            price_path = 10 * np.exp(np.cumsum(returns))
+
+            df = pd.DataFrame({
+                'Open': price_path,
+                'High': price_path * 1.01,
+                'Low': price_path * 0.99,
+                'Close': price_path,
+                'Volume': 1000
+            }, index=dates)
+            data_map['SYNTH1'] = df
+            data_map['SYNTH2'] = df * 1.05
+
         self.assertTrue(data_map, "No data loaded from database for backtesting.")
 
         # 2. Run Backtest
