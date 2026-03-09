@@ -2,10 +2,10 @@ from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.utils.validation import check_is_fitted
 import pandas as pd
 import numpy as np
-from .sadf import gsadf_values
-from .trend_scanning import trend_scanning
-from .fractional_differentiation import frac_diff_ffd
-from .triple_barrier import triple_barrier_labels
+from .features.sadf import get_sadf_jax as gsadf_values
+from .labels.trend_scanning import trend_scanning
+from .features.fractional_differentiation import frac_diff_ffd
+from .labels.triple_barrier import apply_triple_barrier as triple_barrier_labels
 
 
 class FractionalDiffTransformer(BaseEstimator, TransformerMixin):
@@ -109,12 +109,12 @@ class GSADFTransformer(BaseEstimator, TransformerMixin):
             else:
                 # Apply column-wise
                 return X.apply(lambda col: gsadf_values(
-                    col, self.min_length, self.add_trend, self.lags
+                    col, model='linear', min_length=self.min_length, lags=self.lags
                 ))
         else:
             series = X
 
-        return gsadf_values(series, self.min_length, self.add_trend, self.lags)
+        return gsadf_values(series, model='linear', min_length=self.min_length, lags=self.lags)
 
 
 class TripleBarrierLabeler(BaseEstimator, TransformerMixin):
@@ -173,10 +173,12 @@ class TripleBarrierLabeler(BaseEstimator, TransformerMixin):
             prices = X
             # Volatility remains None
             
+        # Default to sl_col as fixed 0.01 if no volatility is provided
+        sl_col = volatility if volatility is not None else pd.Series(self.sl, index=prices.index)
+
         return triple_barrier_labels(
-            price_series=prices,
-            volatility=volatility,
-            vertical_barrier_steps=self.vertical_barrier_steps,
-            pt=self.pt,
-            sl=self.sl
+            prices=prices,
+            sl_col=sl_col,
+            tp_mult=self.pt,
+            horizon=self.vertical_barrier_steps
         )

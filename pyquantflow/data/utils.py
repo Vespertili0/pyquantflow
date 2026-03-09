@@ -91,3 +91,21 @@ def restructure_map_2_multiasset_df(df_dict, key_column_name='ticker'):
     final_df = pd.concat(dfs_to_concat).reset_index()
 
     return final_df.dropna().set_index(["datetime", "ticker"]).sort_index()
+
+
+def align_and_ffill_multiasset(df, time_level="datetime", ticker_level="ticker"):
+    """
+    Aligns a multi-asset dataframe to a full timestamp × ticker grid
+    and forward-fills each ticker independently.
+    """
+    full_index = pd.MultiIndex.from_product([
+        df.index.get_level_values("datetime").unique(),
+        df.index.get_level_values("ticker").unique()
+        ],
+        names=["datetime", "ticker"]
+    )
+    df = df.reindex(full_index)
+
+    df = df.groupby(level=ticker_level).ffill()
+
+    return df.dropna()
