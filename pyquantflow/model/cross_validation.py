@@ -2,7 +2,7 @@ from typing import Optional, Union, Generator, Tuple
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import BaseCrossValidator
-
+from itertools import combinations
 
 
 class PurgedKFoldCV(BaseCrossValidator):
@@ -163,3 +163,60 @@ class PurgedKFoldCV(BaseCrossValidator):
             train_mask = ~(test_mask | embargo_mask | purge_mask)
 
             yield np.where(train_mask)[0], np.where(test_mask)[0]
+
+
+class CombinatorialPurgedKFold(BaseCrossValidator):
+    def __init__(self, n_splits=5, n_test_splits=2, purge_limit=0, embargo_limit=0):
+        self.n_splits = n_splits
+        self.n_test_splits = n_test_splits
+        self.purge_limit = purge_limit
+        self.embargo_limit = embargo_limit
+
+    def split(self, X, y=None, groups=None):
+        n_samples = len(X)
+        indices = np.arange(n_samples)
+        
+        # 1. Split indices into N blocks
+        block_size = n_samples // self.n_splits
+        block_bounds = [(i * block_size, (i + 1) * block_size) for i in range(self.n_splits)]
+        block_bounds[-1] = (block_bounds[-1][0], n_samples) # Ensure last block covers remainder
+        
+        # 2. Generate all combinations of k test blocks
+        all_block_indices = list(range(self.n_splits))
+        for test_blocks in combinations(all_block_indices, self.n_test_splits):
+            test_indices = []
+            train_indices = []
+            
+            # Sort test blocks to handle purging/embargoing logically
+            test_blocks = sorted(test_blocks)
+            train_blocks = [i for i in all_block_indices if i not in test_blocks]
+
+            # Construct Test Set
+            for i in test_blocks:
+                start, end = block_bounds[i]
+                test_indices.extend(indices[start:end])
+
+            # Construct Train Set with Purging & Embargoing
+            for i in train_blocks:
+                start, end = block_bounds[i]
+                
+                # Check for overlap with any test block
+                for j in test_blocks:
+                    test_start, test_end = block_bounds[j]
+                    
+                    # If train block is immediately before a test block, PURGE the end
+                    if end > test_start and start < test_start:
+                        end = test_start - self.purge_limit
+                    
+                    # If train block is immediately after a test block, EMBARGO the start
+                    if start < test_end and end > test_end:
+                        start = test_end + self.embargo_limit
+                
+                if start < end:
+                    train_indices.extend(indices[start:end])
+
+            yield np.array(train_indices), np.array(test_indices)
+
+    def get_n_splits(self, X=None, y=None, groups=None):
+        from math import comb
+        return comb(self.n_splits, self.n_test_splits)
