@@ -67,7 +67,7 @@ def apply_triple_barrier(prices, sl_col, tp_mult, horizon):
     base_idx = np.arange(n)
     final_idx = base_idx + t1_offsets
     
-    t1_times = pd.Series(pd.NaT, index=prices.index)
+    t1_times = pd.Series(pd.NaT, index=prices.index, dtype=prices.index.dtype)
     
     # Map valid integer indices back to the price index timestamps
     valid_t1 = ~np.isnan(final_idx) & (final_idx < n)

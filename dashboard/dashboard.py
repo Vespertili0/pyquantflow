@@ -63,11 +63,18 @@ def get_stock_data(conn, ticker):
         st.error(f"Error fetching stock data: {e}")
         return pd.DataFrame()
 
+import json
+
 def get_backtest_results(conn):
     """Fetches backtest results."""
     try:
         query = "SELECT * FROM backtest_results"
         df = pd.read_sql_query(query, conn)
+        if not df.empty and 'metrics' in df.columns:
+            # Parse JSON metrics and expand into columns
+            df['metrics'] = df['metrics'].apply(lambda x: json.loads(x) if isinstance(x, str) else x)
+            metrics_df = pd.json_normalize(df['metrics'])
+            df = pd.concat([df.drop('metrics', axis=1), metrics_df], axis=1)
         return df
     except Exception as e:
         st.error(f"Error fetching backtest results: {e}")
