@@ -177,8 +177,12 @@ class DatabaseManager:
         # We should probably maintain consistency.
         try:
             new_data.index = new_data.index.tz_convert('Australia/Sydney')
-        except Exception:
-            pass # If conversion fails (e.g. naive), skip or handle
+        except TypeError:
+            # If conversion fails due to naive index, localize to UTC then convert
+            if new_data.index.tz is None:
+                new_data.index = new_data.index.tz_localize('UTC').tz_convert('Australia/Sydney')
+        except Exception as e:
+            print(f"Warning: Timezone conversion failed for {ticker}. Proceeding with current index. Error: {e}")
 
         self._insert_price_data(ticker_id, new_data)
         

@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 from typing import Optional, Dict, List, Any, Tuple, Union
+import warnings
 from backtesting import Backtest
 from .backtest_database import BacktestDatabaseManager
 from ..data.assetorganiser import AssetOrganiser
@@ -40,9 +41,17 @@ class BatchBacktester:
         if not isinstance(df.index, pd.DatetimeIndex):
             df.index = pd.to_datetime(df.index, utc=True)
         
-        bt = Backtest(df, strategy_class, cash=cash, commission=commission,
+        # Adding margin to backtest instantiation allows size scaling and reduces margin errors natively if applicable
+        # The margin argument requires a float in backtesting.py
+        margin = strategy_params.pop('margin', 1.0)
+
+        bt = Backtest(df, strategy_class, cash=cash, commission=commission, margin=margin,
                       trade_on_close=trade_on_close, finalize_trades=finalize_trades)
-        stats = bt.run(**strategy_params)
+
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", message=".*Broker canceled the relative-sized order due to insufficient margin.*")
+            stats = bt.run(**strategy_params)
+
         return stats.to_dict()
 
     def run_batch_backtest(self, strategy_class: type, 
