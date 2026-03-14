@@ -20,6 +20,12 @@ def get_sample_weights(t1, returns=None):
     pd.Series
         The final sample weights for each event.
     """
+    # Store original timezone of the index to restore it later
+    original_tz = t1.index.tz if hasattr(t1.index, "tz") else None
+
+    # Ensure t1 is a proper datetime series and drop missing values
+    t1 = pd.to_datetime(t1, utc=True).dropna()
+
     # Normalize both index and values to UTC, then drop tz
     if hasattr(t1.index, "tz"):
         t1.index = t1.index.tz_localize("UTC") if t1.index.tz is None else t1.index
@@ -71,8 +77,17 @@ def get_sample_weights(t1, returns=None):
     weights = pd.Series(u_i, index=t1.index, name='weight')
 
     if returns is not None:
+        # Temporarily drop tz from returns to align indices
+        returns_no_tz = returns.copy()
+        if hasattr(returns_no_tz.index, "tz") and returns_no_tz.index.tz is not None:
+            returns_no_tz.index = returns_no_tz.index.tz_convert(None)
+
         # Align returns just in case, then multiply uniqueness by absolute return
-        abs_rets = returns.reindex(t1.index).abs()
+        abs_rets = returns_no_tz.reindex(t1.index).abs()
         weights = weights * abs_rets
+
+    # Restore the original timezone to the weights index
+    if original_tz is not None:
+        weights.index = weights.index.tz_localize("UTC").tz_convert(original_tz)
 
     return weights
