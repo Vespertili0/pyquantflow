@@ -12,29 +12,30 @@ class AssetOrganiser:
     into an aligned multi-index DataFrame, splits it based on a cutoff date, 
     and manages the fitting and transformation process using a specified classifier.
     """
-    def __init__(self, classifier: BaseQuantClassifier, data_map: Dict[str, pd.DataFrame], 
+    def __init__(self, data_map: Dict[str, pd.DataFrame], 
                  cutoff_date: str, target_features: List[str], 
-                 sample_weights: Optional[List[float]] = None) -> None:
+                 weight_col: Optional[str] = None,
+                 classifier: Optional[BaseQuantClassifier] = None) -> None:
         """
         Initializes the AssetOrganiser.
 
         Args:
-            classifier (BaseQuantClassifier): The model pipeline to fit and transform the data.
             data_map (Dict[str, pd.DataFrame]): Dictionary mapping tickers to their respective DataFrames.
             cutoff_date (str): The date string (e.g., 'YYYY-MM-DD') separating train and test sets.
             target_features (List[str]): List of column names to be used as targets (y).
-            sample_weights (Optional[List[float]]): Optional sample weights for the training data.
+            weight_col (Optional[str]): Optional column name in the DataFrame containing target weights.
+            classifier (Optional[BaseQuantClassifier]): Optional model pipeline to fit and transform the data.
         """
-        self.classifier: BaseQuantClassifier = classifier
+        self.classifier: Optional[BaseQuantClassifier] = classifier
         self.data_map: Dict[str, pd.DataFrame] = data_map
         self.cutoff_date: str = cutoff_date
         self.target_features: List[str] = target_features
+        self.weight_col: Optional[str] = weight_col
         
         self.multi_asset: Optional[pd.DataFrame] = None
         self.multi_asset_train: Optional[pd.DataFrame] = None
         self.multi_asset_test: Optional[pd.DataFrame] = None
         self.multi_asset_transformed_test: Optional[pd.DataFrame] = None
-        self.sample_weights: Optional[List[float]] = sample_weights
 
     def fit_classifier(self) -> None:
         """
@@ -42,11 +43,19 @@ class AssetOrganiser:
         """
         if self.multi_asset_train is None or self.multi_asset_test is None:
             raise ValueError("Data not prepared. Call prepare_multi_asset_frame() first.")
+        
+        if self.classifier is None:
+            raise ValueError("No classifier was provided during initialization.")
+            
+        # Optional: Extract sample weights if weight_col is specified
+        sw = None
+        if self.weight_col and self.weight_col in self.multi_asset_train.columns:
+            sw = self.multi_asset_train[self.weight_col].values
             
         self.classifier.fit(
             X=self.multi_asset_train,
             y=self.multi_asset_train[self.target_features],
-            sample_weight=self.sample_weights
+            sample_weight=sw
         )
         self.multi_asset_transformed_test = self.classifier.transform(self.multi_asset_test)
 
@@ -64,6 +73,30 @@ class AssetOrganiser:
             self.multi_asset.index.get_level_values("datetime") >= self.cutoff_date
         ]
         return None
+        
+    def get_classifier_engine_payload(self) -> Dict[str, pd.DataFrame | List[str] | str | None]:
+        """
+        Extracts the prepared data and metadata into a dictionary suitable for 
+        unpacking (**kwargs) directly into `ClassifierEngine.run_pipeline`.
+        """
+        if self.multi_asset_train is None or self.multi_asset_test is None:
+            raise ValueError("Data not prepared. Call prepare_multi_asset_frame() first.")
+            
+        # All columns except target components are considered features
+        features = [col for col in self.multi_asset_train.columns if col not in self.target_features]
+        
+        # Remove weight_col from features list if it exists to strictly separate metadata
+        if self.weight_col and self.weight_col in features:
+            features.remove(self.weight_col)
+
+        return {
+            "X_train": self.multi_asset_train,
+            "y_train": self.multi_asset_train[self.target_features],
+            "X_test": self.multi_asset_test,
+            "y_test": self.multi_asset_test[self.target_features],
+            "features": features,
+            "weight_col": self.weight_col
+        }
     
     def get_transformed_multiasset_testdata(self) -> pd.DataFrame:
         """

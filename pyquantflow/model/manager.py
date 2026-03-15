@@ -154,12 +154,15 @@ class ClassifierEngine(BaseModelEngine):
 
     def run_pipeline(
         self,
-        X_train: Union[pd.DataFrame, np.ndarray],
-        y_train: Union[pd.Series, np.ndarray],
-        X_test: Union[pd.DataFrame, np.ndarray],
-        y_test: Union[pd.Series, np.ndarray],
+        X_train: pd.DataFrame,
+        y_train: Union[pd.Series, np.DataFrame],
+        X_test: pd.DataFrame,
+        y_test: Union[pd.Series, np.DataFrame],
+        features: list[str],
         model_factory: Callable[[optuna.Trial], Any],
         cv: BaseCrossValidator,
+        weight_col: Optional[str] = None,
+        t1_col: Optional[str] = None,
         metric: Callable = f1_score,
         n_trials: int = 50,
         timeout: Optional[int] = None,
@@ -176,8 +179,11 @@ class ClassifierEngine(BaseModelEngine):
         study = self.optimiser.run(
             X=X_train,
             y=y_train,
+            features=features,
             model_factory=model_factory,
             cv=cv,
+            weight_col=weight_col,
+            t1_col=t1_col,
             metric=metric,
             n_trials=n_trials,
             timeout=timeout,
@@ -197,10 +203,21 @@ class ClassifierEngine(BaseModelEngine):
 
         # 3. Fit on ALL training data
         print("Retraining best model on full training set...")
-        self.best_estimator_.fit(X_train, y_train)
+        fit_params = {}
+        if weight_col and weight_col in X_train.columns:
+            # Extract sample weight and find the target estimator step in the pipeline
+            sample_weight = X_train[weight_col].values
+            if hasattr(self.best_estimator_, "steps"):
+                final_step_name = self.best_estimator_.steps[-1][0]
+                fit_params[f"{final_step_name}__sample_weight"] = sample_weight
+            else:
+                fit_params["sample_weight"] = sample_weight
+                
+        self.best_estimator_.fit(X_train[features], y_train, **fit_params)
+        
         # 4. Validate on Hold-out Test Set
         print("Validating on hold-out test set...")
-        validation_metrics = self.validate(self.best_estimator_, X_test, y_test, metric, metric_kwargs)
+        validation_metrics = self.validate(self.best_estimator_, X_test[features], y_test, metric, metric_kwargs)
         print(f"Validation Metrics: {validation_metrics}")
 
         # 5. Register
@@ -208,7 +225,7 @@ class ClassifierEngine(BaseModelEngine):
         # Combine best params and extra info if needed
         self.register_mlflow_evaluation(
             model=self.best_estimator_,
-            X=X_test,
+            X=X_test[features],
             y=y_test,
             params=best_params,
             tags=tags,
