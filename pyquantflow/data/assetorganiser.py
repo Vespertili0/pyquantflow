@@ -74,25 +74,22 @@ class AssetOrganiser:
         ]
         return None
         
-    def get_classifier_engine_payload(self) -> Dict[str, pd.DataFrame | List[str] | str | None]:
+    def get_classifier_engine_payload(self, features: List[str]) -> Dict[str, pd.DataFrame | List[str] | str | None]:
         """
         Extracts the prepared data and metadata into a dictionary suitable for 
         unpacking (**kwargs) directly into `ClassifierEngine.run_pipeline`.
         """
         if self.multi_asset_train is None or self.multi_asset_test is None:
-            raise ValueError("Data not prepared. Call prepare_multi_asset_frame() first.")
-            
-        # All columns except target components are considered features
-        features = [col for col in self.multi_asset_train.columns if col not in self.target_features]
+            self.prepare_multi_asset_frame()            
         
         # Remove weight_col from features list if it exists to strictly separate metadata
         if self.weight_col and self.weight_col in features:
             features.remove(self.weight_col)
 
         return {
-            "X_train": self.multi_asset_train,
+            "X_train": self.multi_asset_train[features],
             "y_train": self.multi_asset_train[self.target_features],
-            "X_test": self.multi_asset_test,
+            "X_test": self.multi_asset_test[features],
             "y_test": self.multi_asset_test[self.target_features],
             "features": features,
             "weight_col": self.weight_col
