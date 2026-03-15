@@ -1,5 +1,8 @@
 import pandas as pd
+import numpy as np
 from typing import Dict, List, Optional
+from scipy.stats import entropy
+from sklearn.base import BaseEstimator
 from ..model.classifier import BaseQuantClassifier
 from .utils import align_and_ffill_multiasset, restructure_map_2_multiasset_df
 
@@ -37,7 +40,29 @@ class AssetOrganiser:
         self.multi_asset_test: Optional[pd.DataFrame] = None
         self.multi_asset_transformed_test: Optional[pd.DataFrame] = None
 
-    def fit_classifier(self) -> None:
+    def _split_train_test(self) -> None:
+        """
+        Splits the multi_asset DataFrame into train and test sets based on the cutoff date.
+        """
+        self.multi_asset_train = self.multi_asset[
+            self.multi_asset.index.get_level_values("datetime") < self.cutoff_date
+        ]
+        self.multi_asset_test  = self.multi_asset[
+            self.multi_asset.index.get_level_values("datetime") >= self.cutoff_date
+        ]        
+
+    def prepare_multi_asset_frame(self) -> None:
+        """
+        converts data_map to Date-Ticker multi-index dataframe
+        """
+        self.multi_asset = align_and_ffill_multiasset(
+            restructure_map_2_multiasset_df(self.data_map)
+        )
+        self._split_train_test()
+
+        return None
+
+    def fit_quant_classifier(self) -> None:
         """
         Fits the underlying classifier on the training set and transforms the test set.
         """
@@ -59,22 +84,48 @@ class AssetOrganiser:
         )
         self.multi_asset_transformed_test = self.classifier.transform(self.multi_asset_test)
 
-    def prepare_multi_asset_frame(self) -> None:
+    def add_model_predictions(self, model: BaseEstimator, features: List[str], filter_prediction: Optional[int] = None) -> None:
         """
-        converts data_map to Date-Ticker multi-index dataframe
-        """
-        self.multi_asset = align_and_ffill_multiasset(
-            restructure_map_2_multiasset_df(self.data_map)
-        )
-        self.multi_asset_train = self.multi_asset[
-            self.multi_asset.index.get_level_values("datetime") < self.cutoff_date
-        ]
-        self.multi_asset_test  = self.multi_asset[
-            self.multi_asset.index.get_level_values("datetime") >= self.cutoff_date
-        ]
-        return None
+        Fits the model on the multiasset data.
+        Generates predictions and probability entropy from the provided model, 
+        injects them into the multi_asset DataFrame, and optionally filters the dataset.
         
-    def get_classifier_engine_payload(self, features: List[str]) -> Dict[str, pd.DataFrame | List[str] | str | None]:
+        Args:
+            model: A fitted Scikit-Learn estimator.
+            features: List of column names to pass to the model.
+            filter_prediction: Optional prediction value (e.g., 1) to filter the 
+                                resulting dataset (Meta-Labelling).
+        """
+        if self.multi_asset is None:
+            self.prepare_multi_asset_frame()
+            
+        X = self.multi_asset[features]
+        preds = model.predict(X)
+        probas = model.predict_proba(X)
+        
+        # Calculate Shannon Entropy: H = -sum(p * log(p))
+        prob_entropy = entropy(probas, axis=1)
+        
+        # Inject predictions as new features out-of-place
+        new_columns = pd.DataFrame({
+            "primary_pred": preds,
+            # Assuming binary classification where class 1 is the positive outcome
+            "primary_proba": probas[:, 1] if probas.shape[1] > 1 else probas[:, 0],
+            "primary_entropy": prob_entropy
+        }, index=self.multi_asset.index)
+        
+        self.multi_asset = pd.concat([self.multi_asset, new_columns], axis=1)
+        
+        # Apply Meta-Labelling filter (e.g. only keep trades the primary model took)
+        if filter_prediction is None:
+            pass
+        else:
+            self.multi_asset = self.multi_asset[self.multi_asset["primary_pred"] == filter_prediction]
+            
+        # Re-split the chronological train/test sets to reflect the new features and filtering
+        self._split_train_test()
+
+    def get_classifierengine_payload(self, features: List[str]) -> Dict[str, pd.DataFrame | List[str] | str | None]:
         """
         Extracts the prepared data and metadata into a dictionary suitable for 
         unpacking (**kwargs) directly into `ClassifierEngine.run_pipeline`.

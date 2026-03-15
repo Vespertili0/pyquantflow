@@ -16,8 +16,8 @@ A local-first stock analysis and backtesting framework designed for data persist
 
 ## Architecture
 - **`pyquantflow/`**: Main source code containing the core modules.
-  - **`data/`**: Data ingestion (`database.py`), advanced features (Fractional Diff, Trend Scanning, Triple Barrier), and `pandas-pipe` indicators.
-  - **`model/`**: MLOps workflow, cross-validation (`PurgedKFoldCV`), hyperparameter optimisation (`optuna`), and `mlflow` tracking.
+  - **`data/`**: Data ingestion (`database.py`), advanced features (Fractional Diff, Trend Scanning, Triple Barrier), `pandas-pipe` indicators, and `AssetOrganiser` for multi-asset DataFrame preparation (handles slicing and injecting metadata like `sample_weights` and `t1`).
+  - **`model/`**: MLOps workflow (`manager.py` with `ClassifierEngine`), cross-validation (`PurgedKFoldCV`), hyperparameter optimisation (`optuna` via `training.py`), and `mlflow` tracking. Pipelines accept unified DataFrames and extract metadata (e.g., weights) just-in-time before base estimator fitting.
   - **`backtesting/`**: Event-driven backtesting engine (wraps `backtesting.py`) and batch execution with SQLite persistence.
   - **`portfolio/`**: `StrategyLab` for analysing/validating portfolio strategies via walk-forward and combinatorial purged cross-validation using `skfolio`.
   - **`collection/`**: Definitions of major ticker groupings (e.g., ASX 20/50/100/200).
@@ -39,6 +39,7 @@ A GitHub Actions workflow is set up in `.github/workflows/tests.yml`. It runs `u
 ## Current Status
 - Core SQLite database managers for market data and batch backtesting results are fully implemented.
 - Financial ML concepts (e.g., Triple-Barrier labelling) and MLOps workflows are integrated.
+- Unified DataFrame dataflow architecture is implemented: `AssetOrganiser` feeds raw DataFrames and column references (like `weight_col`, `t1_col`) to `ClassifierEngine` and `HyperparameterOptimiser`, preventing indexing errors and allowing dynamic extraction of sample weights inside CV folds.
 - `StrategyLab` portfolio journey simulations and cross-validation pipelines (WalkForward, CPCV) are operational.
 - A Streamlit dashboard is available to visualise ingested data and backtest outcomes.
 
@@ -50,5 +51,6 @@ A GitHub Actions workflow is set up in `.github/workflows/tests.yml`. It runs `u
 
 ## Next Steps
 1. **Develop Statistical-Backtesting integration**: Follow up on the "in development" section from the README to implement statistical backtesting methodologies.
-2. **Expand Pipeline Orchestration**: Introduce a workflow orchestrator (such as Prefect or Airflow) or advanced ML pipeline abstractions to string together data ingestion, labelling, feature engineering, model training, and backtesting into automated workflows.
-3. **Enhance the Dashboard**: Add more analytical pages to the Streamlit dashboard, such as a dedicated tab for visualising `StrategyLab` cross-validation metrics.
+2. **Enhance the Dashboard**: Add more analytical pages to the Streamlit dashboard, such as a dedicated tab for visualising `StrategyLab` cross-validation metrics.
+3. **Standardise Meta-Labelling and Size Scaling**: With the ML pipeline now passing `sample_weights`, update `PrimarySecondaryClassifier` to output continuous probability calibrations directly influenced by asymmetric return vectors.
+4. **Decouple Triple-Barrier constraints**: Shift the generation of `t1` (Triple-Barrier bounds) completely away from the modelling layer so that `AssetOrganiser` serves as the sole factory supplying standard temporal constraints down to the `HyperparameterOptimiser`.
