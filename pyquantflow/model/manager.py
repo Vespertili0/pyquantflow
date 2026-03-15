@@ -155,9 +155,9 @@ class ClassifierEngine(BaseModelEngine):
     def run_pipeline(
         self,
         X_train: pd.DataFrame,
-        y_train: Union[pd.Series, np.DataFrame],
+        y_train: Union[pd.Series, pd.DataFrame],
         X_test: pd.DataFrame,
-        y_test: Union[pd.Series, np.DataFrame],
+        y_test: Union[pd.Series, pd.DataFrame],
         features: list[str],
         model_factory: Callable[[optuna.Trial], Any],
         cv: BaseCrossValidator,
