@@ -1,5 +1,4 @@
 import pandas as pd
-import numpy as np
 from typing import Dict, List, Optional
 from scipy.stats import entropy
 from sklearn.base import BaseEstimator
@@ -23,11 +22,15 @@ class AssetOrganiser:
         Initializes the AssetOrganiser.
 
         Args:
-            data_map (Dict[str, pd.DataFrame]): Dictionary mapping tickers to their respective DataFrames.
-            cutoff_date (str): The date string (e.g., 'YYYY-MM-DD') separating train and test sets.
+            data_map (Dict[str, pd.DataFrame]): Dictionary mapping tickers to
+                their respective DataFrames.
+            cutoff_date (str): The date string (e.g., 'YYYY-MM-DD') separating
+                train and test sets.
             target_features (List[str]): List of column names to be used as targets (y).
-            weight_col (Optional[str]): Optional column name in the DataFrame containing target weights.
-            classifier (Optional[BaseQuantClassifier]): Optional model pipeline to fit and transform the data.
+            weight_col (Optional[str]): Optional column name in the DataFrame 
+                containing target weights.
+            classifier (Optional[BaseQuantClassifier]): Optional model pipeline to fit
+                and transform the data.
         """
         self.classifier: Optional[BaseQuantClassifier] = classifier
         self.data_map: Dict[str, pd.DataFrame] = data_map
@@ -42,7 +45,8 @@ class AssetOrganiser:
 
     def _split_train_test(self) -> None:
         """
-        Splits the multi_asset DataFrame into train and test sets based on the cutoff date.
+        Splits the multi_asset DataFrame into train and test sets 
+        based on the cutoff date.
         """
         self.multi_asset_train = self.multi_asset[
             self.multi_asset.index.get_level_values("datetime") < self.cutoff_date
@@ -67,10 +71,14 @@ class AssetOrganiser:
         Fits the underlying classifier on the training set and transforms the test set.
         """
         if self.multi_asset_train is None or self.multi_asset_test is None:
-            raise ValueError("Data not prepared. Call prepare_multi_asset_frame() first.")
+            raise ValueError(
+                "Data not prepared. Call prepare_multi_asset_frame() first."
+            )
         
         if self.classifier is None:
-            raise ValueError("No classifier was provided during initialization.")
+            raise ValueError(
+                "No classifier was provided during initialization."
+            )
             
         # Optional: Extract sample weights if weight_col is specified
         sw = None
@@ -82,9 +90,16 @@ class AssetOrganiser:
             y=self.multi_asset_train[self.target_features],
             sample_weight=sw
         )
-        self.multi_asset_transformed_test = self.classifier.transform(self.multi_asset_test)
+        self.multi_asset_transformed_test = (
+            self.classifier.transform(self.multi_asset_test)
+        )
 
-    def add_model_predictions(self, model: BaseEstimator, features: List[str], filter_prediction: Optional[int] = None) -> None:
+    def add_model_predictions(
+        self, 
+        model: BaseEstimator, 
+        features: List[str], 
+        filter_prediction: Optional[int] = None
+    ) -> None:
         """
         Fits the model on the multiasset data.
         Generates predictions and probability entropy from the provided model, 
@@ -109,23 +124,34 @@ class AssetOrganiser:
         # Inject predictions as new features out-of-place
         new_columns = pd.DataFrame({
             "primary_pred": preds,
-            # Assuming binary classification where class 1 is the positive outcome
-            "primary_proba": probas[:, 1] if probas.shape[1] > 1 else probas[:, 0],
             "primary_entropy": prob_entropy
         }, index=self.multi_asset.index)
+
+        # Create a DataFrame for the probabilities with dynamic column names
+        # This automatically handles N classes (primary_proba0, primary_proba1, etc.)
+        proba_df = pd.DataFrame(
+            probas, 
+            columns=[f"primary_proba{i}" for i in range(probas.shape[1])],
+            index=self.multi_asset.index
+        )
+
+        # Concatenate them together
+        new_columns = pd.concat([new_columns, proba_df], axis=1)
         
         self.multi_asset = pd.concat([self.multi_asset, new_columns], axis=1)
-        
-        # Apply Meta-Labelling filter (e.g. only keep trades the primary model took)
         if filter_prediction is None:
             pass
         else:
-            self.multi_asset = self.multi_asset[self.multi_asset["primary_pred"] == filter_prediction]
+            self.multi_asset = self.multi_asset[
+                self.multi_asset["primary_pred"] == filter_prediction
+            ]
             
-        # Re-split the chronological train/test sets to reflect the new features and filtering
         self._split_train_test()
 
-    def get_classifierengine_payload(self, features: List[str]) -> Dict[str, pd.DataFrame | List[str] | str | None]:
+    def get_classifierengine_payload(
+        self,
+        features: List[str]
+    ) -> Dict[str, pd.DataFrame | List[str] | str | None]:
         """
         Extracts the prepared data and metadata into a dictionary suitable for 
         unpacking (**kwargs) directly into `ClassifierEngine.run_pipeline`.
@@ -133,7 +159,7 @@ class AssetOrganiser:
         if self.multi_asset_train is None or self.multi_asset_test is None:
             self.prepare_multi_asset_frame()            
         
-        # Remove weight_col from features list if it exists to strictly separate metadata
+        # Remove weight_col from features list to strictly separate metadata
         if self.weight_col and self.weight_col in features:
             features.remove(self.weight_col)
 

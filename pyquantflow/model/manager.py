@@ -1,4 +1,3 @@
-from inspect import signature
 import optuna
 import pandas as pd
 import numpy as np
@@ -14,7 +13,6 @@ try:
 except ImportError:
     mlflow = None
 
-from pyquantflow import model
 from pyquantflow.model.training import HyperparameterOptimiser
 
 logger = logging.getLogger(__name__)
