@@ -145,7 +145,7 @@ class ClassifierEngine(BaseModelEngine):
             mlflow.set_tags(tags)
 
             # Evaluate
-            result = mlflow.models.evaluate(
+            _ = mlflow.models.evaluate(
                 model_info.model_uri,
                 eval_data,
                 targets="label",
@@ -154,7 +154,10 @@ class ClassifierEngine(BaseModelEngine):
             )
             
             logger.info("Model registered to MLflow successfully.")
-            print(f"Model registered to MLflow experiment '{experiment_name}' with run_name '{run_name}'.")
+            print(
+                f"Model registered to MLflow experiment '{experiment_name}' ",
+                f"with run_name '{run_name}'."
+            )
 
     def run_pipeline(
         self,

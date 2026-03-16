@@ -1,7 +1,7 @@
 # AGENTS.md - pyquantflow Context & Reminders
 
 ## Project Goal
-A local-first stock analysis and backtesting framework designed for data persistence and strategy validation. It bridges the gap between simple technical analysis and Financial Machine Learning.
+A local-first stock analysis and backtesting framework designed for data persistence and strategy validation. It bridges the gap between simple technical analysis and Financial Machine Learning, acting as a *workbench* for strategy development and testing.
 
 ## Key Constraints & Environment
 - **OS**: Linux

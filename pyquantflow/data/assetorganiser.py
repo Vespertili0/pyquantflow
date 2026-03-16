@@ -102,6 +102,7 @@ class AssetOrganiser:
         self, 
         model: BaseEstimator, 
         features: List[str], 
+        prefix: str ='primary',
         filter_prediction: Optional[int] = None
     ) -> None:
         """
@@ -127,15 +128,15 @@ class AssetOrganiser:
         
         # Inject predictions as new features out-of-place
         new_columns = pd.DataFrame({
-            "primary_pred": preds,
-            "primary_entropy": prob_entropy
+            f"{prefix}_pred": preds,
+            f"{prefix}_entropy": prob_entropy
         }, index=self.multi_asset.index)
 
         # Create a DataFrame for the probabilities with dynamic column names
         # This automatically handles N classes (primary_proba0, primary_proba1, etc.)
         proba_df = pd.DataFrame(
             probas, 
-            columns=[f"primary_proba{i}" for i in range(probas.shape[1])],
+            columns=[f"{prefix}_proba{i}" for i in range(probas.shape[1])],
             index=self.multi_asset.index
         )
 
@@ -145,7 +146,7 @@ class AssetOrganiser:
         self.multi_asset = pd.concat([self.multi_asset, new_columns], axis=1)
         if filter_prediction is not None:
             self.multi_asset = self.multi_asset[
-                self.multi_asset["primary_pred"] == filter_prediction
+                self.multi_asset[f"{prefix}_pred"] == filter_prediction
             ]
             
         self._split_train_test()
