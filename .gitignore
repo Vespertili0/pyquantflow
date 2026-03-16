@@ -8,3 +8,5 @@ venv/
 .env
 .DS_Store
 stocks.db
+mlruns/
+mlflow.db
