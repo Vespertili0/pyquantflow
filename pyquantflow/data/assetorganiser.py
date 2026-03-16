@@ -43,6 +43,7 @@ class AssetOrganiser:
         self.multi_asset_test: Optional[pd.DataFrame] = None
         self.multi_asset_transformed_test: Optional[pd.DataFrame] = None
 
+
     def _split_train_test(self) -> None:
         """
         Splits the multi_asset DataFrame into train and test sets 
@@ -55,6 +56,7 @@ class AssetOrganiser:
             self.multi_asset.index.get_level_values("datetime") >= self.cutoff_date
         ]        
 
+
     def prepare_multi_asset_frame(self) -> None:
         """
         converts data_map to Date-Ticker multi-index dataframe
@@ -65,6 +67,7 @@ class AssetOrganiser:
         self._split_train_test()
 
         return None
+
 
     def fit_quant_classifier(self) -> None:
         """
@@ -93,6 +96,7 @@ class AssetOrganiser:
         self.multi_asset_transformed_test = (
             self.classifier.transform(self.multi_asset_test)
         )
+
 
     def add_model_predictions(
         self, 
@@ -139,14 +143,13 @@ class AssetOrganiser:
         new_columns = pd.concat([new_columns, proba_df], axis=1)
         
         self.multi_asset = pd.concat([self.multi_asset, new_columns], axis=1)
-        if filter_prediction is None:
-            pass
-        else:
+        if filter_prediction is not None:
             self.multi_asset = self.multi_asset[
                 self.multi_asset["primary_pred"] == filter_prediction
             ]
             
         self._split_train_test()
+
 
     def get_classifierengine_payload(
         self,
@@ -164,14 +167,15 @@ class AssetOrganiser:
             features.remove(self.weight_col)
 
         return {
-            "X_train": self.multi_asset_train[features],
+            "X_train": self.multi_asset_train,
             "y_train": self.multi_asset_train[self.target_features],
-            "X_test": self.multi_asset_test[features],
+            "X_test": self.multi_asset_test,
             "y_test": self.multi_asset_test[self.target_features],
             "features": features,
             "weight_col": self.weight_col
         }
-    
+
+
     def get_transformed_multiasset_testdata(self) -> pd.DataFrame:
         """
         Returns the transformed test data containing predictions.
@@ -182,6 +186,7 @@ class AssetOrganiser:
         if self.multi_asset_transformed_test is None:
             raise ValueError("Test data not transformed. Fit the classifier first.")
         return self.multi_asset_transformed_test
+
 
     def get_transformed_test_ticker(self, ticker: str) -> pd.DataFrame:
         """

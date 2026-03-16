@@ -80,11 +80,13 @@ class ClassifierEngine(BaseModelEngine):
         
         # Ensure model is fitted (assumed to be done by caller or prior step)
         # We try to handle proba if the metric suggests it, similar to training.py
-        if hasattr(model, "predict_proba") and metric.__name__ in ("log_loss", "roc_auc_score"):
-             preds = model.predict_proba(X)
-             # Handle binary classification if needed
-             if preds.ndim > 1 and preds.shape[1] == 2:
-                 preds = preds[:, 1]
+        if hasattr(model, "predict_proba") and (
+            metric.__name__ in ("log_loss", "roc_auc_score")
+        ):
+            preds = model.predict_proba(X)
+            # Handle binary classification if needed
+            if preds.ndim > 1 and preds.shape[1] == 2:
+                preds = preds[:, 1]
         else:
             preds = model.predict(X)
             
@@ -134,7 +136,11 @@ class ClassifierEngine(BaseModelEngine):
         with mlflow.start_run(run_name=run_name):
             # Log model
             signature = infer_signature(X, model.predict(X))
-            model_info = mlflow.sklearn.log_model(model, name="model", signature=signature)
+            model_info = mlflow.sklearn.log_model(
+                model, 
+                name="model", 
+                signature=signature
+            )
             mlflow.log_params(params)
             mlflow.set_tags(tags)
 
@@ -215,7 +221,13 @@ class ClassifierEngine(BaseModelEngine):
         
         # 4. Validate on Hold-out Test Set
         print("Validating on hold-out test set...")
-        validation_metrics = self.validate(self.best_estimator_, X_test[features], y_test, metric, metric_kwargs)
+        validation_metrics = self.validate(
+            self.best_estimator_, 
+            X_test[features], 
+            y_test, 
+            metric, 
+            metric_kwargs
+        )
         print(f"Validation Metrics: {validation_metrics}")
 
         # 5. Register
