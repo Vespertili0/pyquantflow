@@ -36,12 +36,14 @@ class TestDataHierarchyIntegration(unittest.TestCase):
             "target": np.random.randint(0, 2, 10),
             "weight": np.random.uniform(0.5, 1.5, 10)
         }, index=dates)
+        df_a.index.name = "datetime"
         
         df_b = pd.DataFrame({
             "feature1": np.random.randn(10),
             "target": np.random.randint(0, 2, 10),
             "weight": np.random.uniform(0.5, 1.5, 10)
         }, index=dates)
+        df_b.index.name = "datetime"
 
         self.data_map = {"AAA": df_a, "BBB": df_b}
 
@@ -54,7 +56,7 @@ class TestDataHierarchyIntegration(unittest.TestCase):
             weight_col="weight"
         )
         organiser.prepare_multi_asset_frame()
-        payload = organiser.get_classifier_engine_payload()
+        payload = organiser.get_classifierengine_payload(features=["feature1"])
         
         # Verify payload structure
         self.assertIn("feature1", payload["features"])

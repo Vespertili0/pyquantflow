@@ -142,7 +142,8 @@ class ClassifierEngine(BaseModelEngine):
                 signature=signature
             )
             mlflow.log_params(params)
-            mlflow.set_tags(tags)
+            if tags is not None:
+                mlflow.set_tags(tags)
 
             # Evaluate
             _ = mlflow.models.evaluate(
