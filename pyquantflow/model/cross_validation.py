@@ -91,7 +91,8 @@ class PurgedKFoldCV(BaseCrossValidator):
     def split(self, 
               X: pd.DataFrame, 
               y: Optional[Union[pd.Series, np.ndarray]] = None, 
-              groups: Optional[np.ndarray] = None) -> Generator[Tuple[np.ndarray, np.ndarray], None, None]:
+              groups: Optional[np.ndarray] = None
+        ) -> Generator[Tuple[np.ndarray, np.ndarray], None, None]:
         """
         Generate indices to split data into training and test sets.
         
@@ -114,7 +115,9 @@ class PurgedKFoldCV(BaseCrossValidator):
             The testing set indices for that split.
         """
         # 1. Extract times as a Series to safely execute vectorized logic
-        times = pd.Series(self._extract_times(X))
+        times = pd.to_datetime(pd.Series(self._extract_times(X)))
+        if times.dt.tz is not None:
+            times = times.dt.tz_localize(None)
         
         # 2. Get chronological boundaries (No need to sort X itself!)
         unique_times = np.sort(times.unique())
@@ -129,9 +132,12 @@ class PurgedKFoldCV(BaseCrossValidator):
                 t1_series = X[self.t1]
             else:
                 t1_series = self.t1
-            # .reindex ensures perfect alignment even if X has duplicate indices or is unsorted
+            # .reindex ensures perfect alignment 
+            # even if X has duplicate indices or is unsorted
             t1_times = pd.Series(t1_series).reindex(X.index).values
             t1_times = pd.to_datetime(t1_times)
+            if t1_times.tz is not None:
+                t1_times = t1_times.tz_localize(None)
         else:
             t1_times = pd.Series([pd.NaT] * len(X)).values
 
@@ -178,8 +184,11 @@ class CombinatorialPurgedKFold(BaseCrossValidator):
         
         # 1. Split indices into N blocks
         block_size = n_samples // self.n_splits
-        block_bounds = [(i * block_size, (i + 1) * block_size) for i in range(self.n_splits)]
-        block_bounds[-1] = (block_bounds[-1][0], n_samples) # Ensure last block covers remainder
+        block_bounds = [
+            (i * block_size, (i + 1) * block_size) for i in range(self.n_splits)
+        ]
+        # Ensure last block covers remainder
+        block_bounds[-1] = (block_bounds[-1][0], n_samples) 
         
         # 2. Generate all combinations of k test blocks
         all_block_indices = list(range(self.n_splits))
@@ -208,7 +217,8 @@ class CombinatorialPurgedKFold(BaseCrossValidator):
                     if end > test_start and start < test_start:
                         end = test_start - self.purge_limit
                     
-                    # If train block is immediately after a test block, EMBARGO the start
+                    # If train block is immediately after a test block, 
+                    # then EMBARGO the start
                     if start < test_end and end > test_end:
                         start = test_end + self.embargo_limit
                 
