@@ -10,6 +10,9 @@ class DatabaseManager:
         self.create_tables()
 
     def create_tables(self):
+        self.conn.execute("PRAGMA journal_mode = WAL;")
+        self.conn.execute("PRAGMA synchronous = NORMAL;")
+
         cursor = self.conn.cursor()
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS tickers (
@@ -46,7 +49,7 @@ class DatabaseManager:
         """)
         self.conn.commit()
 
-    def add_ticker(self, ticker, start_date=None, start_year=None, interval='1h'):
+    def add_ticker(self, ticker, start_date=None, start_year=None, interval='1h', commit=True):
         """
         Adds a new ticker to the database.
         Fetches historical data using quarterly_pull (for 1h) or direct download (for 1d).
@@ -55,7 +58,7 @@ class DatabaseManager:
         cursor.execute("SELECT id FROM tickers WHERE ticker = ?", (ticker,))
         if cursor.fetchone():
             print(f"Ticker {ticker} already exists. Updating instead.")
-            self.update_ticker(ticker)
+            self.update_ticker(ticker, commit=commit)
             return
 
         # Determine start date
@@ -110,10 +113,13 @@ class DatabaseManager:
 
         # Insert data
         self._insert_price_data(ticker_id, df)
-        self.conn.commit()
+
+        if commit:
+            self.conn.commit()
+
         print(f"Added {ticker} with {len(df)} records.")
 
-    def update_ticker(self, ticker):
+    def update_ticker(self, ticker, commit=True):
         """
         Updates an existing ticker with new data since the last entry.
         """
@@ -187,8 +193,24 @@ class DatabaseManager:
         self._insert_price_data(ticker_id, new_data)
         
         cursor.execute("UPDATE tickers SET last_updated = ? WHERE id = ?", (datetime.now(), ticker_id))
-        self.conn.commit()
+
+        if commit:
+            self.conn.commit()
+
         print(f"Updated {ticker} with {len(new_data)} new records.")
+
+    def update_tickers_batch(self, tickers_list):
+        """
+        Updates multiple tickers and commits once at the end.
+        """
+        for ticker in tickers_list:
+            try:
+                self.update_ticker(ticker, commit=False)
+            except Exception as e:
+                print(f"Error updating {ticker} in batch: {e}")
+
+        self.conn.commit()
+        print(f"Batch update completed for {len(tickers_list)} tickers.")
 
     def _insert_price_data(self, ticker_id, df):
         # Flatten MultiIndex columns if present
