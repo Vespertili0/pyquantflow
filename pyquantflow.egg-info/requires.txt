@@ -1,9 +1,0 @@
-pandas
-numpy
-yfinance
-backtesting
-scikit-learn
-skfolio
-jax
-mlflow
-optuna
