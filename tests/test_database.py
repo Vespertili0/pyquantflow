@@ -93,5 +93,36 @@ class TestDatabaseManager(unittest.TestCase):
         last_updated = cursor.fetchone()[0]
         self.assertIsNotNone(last_updated)
 
+    @patch.object(DatabaseManager, 'update_ticker')
+    def test_update_tickers_batch(self, mock_update_ticker):
+        tickers = ["TEST1.AX", "TEST2.AX", "TEST3.AX"]
+
+        # Test that update_tickers_batch calls update_ticker with commit=False for each ticker
+        self.db.update_tickers_batch(tickers)
+
+        # Assert that update_ticker was called the correct number of times
+        self.assertEqual(mock_update_ticker.call_count, len(tickers))
+
+        # Assert that each call had commit=False
+        for ticker in tickers:
+            mock_update_ticker.assert_any_call(ticker, commit=False)
+
+    @patch.object(DatabaseManager, 'update_ticker')
+    def test_update_tickers_batch_handles_exceptions(self, mock_update_ticker):
+        tickers = ["TEST1.AX", "ERROR.AX", "TEST3.AX"]
+
+        # Make it throw an exception for ERROR.AX but not for others
+        def side_effect(ticker, commit=False):
+            if ticker == "ERROR.AX":
+                raise Exception("Mock error")
+
+        mock_update_ticker.side_effect = side_effect
+
+        # Should not raise an exception overall
+        self.db.update_tickers_batch(tickers)
+
+        # Should still process all tickers
+        self.assertEqual(mock_update_ticker.call_count, len(tickers))
+
 if __name__ == '__main__':
     unittest.main()
