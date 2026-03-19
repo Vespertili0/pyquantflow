@@ -2,9 +2,12 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
+*.egg-info/
 .Python
 env/
 venv/
 .env
 .DS_Store
 stocks.db
+mlruns/
+mlflow.db
