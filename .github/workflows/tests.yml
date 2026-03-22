@@ -1,4 +1,4 @@
-name: Python Application Test with GitHub Actions
+name: Tests
 
 permissions:
   contents: read
