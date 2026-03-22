@@ -17,19 +17,20 @@ from pyquantflow.model.training import HyperparameterOptimiser
 
 logger = logging.getLogger(__name__)
 
+
 class BaseModelEngine(ABC):
     """
     Abstract base class for model lifecycle management.
     Enforces a structure for validation and registration.
     """
-    
+
     @abstractmethod
     def validate(
-        self, 
-        model: Any, 
-        X: Union[pd.DataFrame, np.ndarray], 
+        self,
+        model: Any,
+        X: Union[pd.DataFrame, np.ndarray],
         y: Union[pd.Series, np.ndarray],
-        metric: Callable
+        metric: Callable,
     ) -> Dict[str, float]:
         """
         Validate the model on a hold-out set.
@@ -39,12 +40,12 @@ class BaseModelEngine(ABC):
 
     @abstractmethod
     def register_mlflow_evaluation(
-        self, 
-        model: Any, 
-        params: Dict[str, Any], 
-        metrics: Dict[str, float], 
+        self,
+        model: Any,
+        params: Dict[str, Any],
+        metrics: Dict[str, float],
         experiment_name: Optional[str] = None,
-        run_name: Optional[str] = None
+        run_name: Optional[str] = None,
     ) -> None:
         """
         Register the model, parameters, and metrics to a tracking server (e.g. MLflow).
@@ -66,18 +67,18 @@ class ClassifierEngine(BaseModelEngine):
         self.best_estimator_ = None
 
     def validate(
-        self, 
-        model: Any, 
-        X: Union[pd.DataFrame, np.ndarray], 
+        self,
+        model: Any,
+        X: Union[pd.DataFrame, np.ndarray],
         y: Union[pd.Series, np.ndarray],
         metric: Callable = f1_score,
-        metric_kwargs: Optional[dict] = None
+        metric_kwargs: Optional[dict] = None,
     ) -> Dict[str, float]:
         """
         Computes the metric score on X, y.
         """
         metric_kwargs = metric_kwargs or {}
-        
+
         # Ensure model is fitted (assumed to be done by caller or prior step)
         # We try to handle proba if the metric suggests it, similar to training.py
         if hasattr(model, "predict_proba") and (
@@ -89,18 +90,18 @@ class ClassifierEngine(BaseModelEngine):
                 preds = preds[:, 1]
         else:
             preds = model.predict(X)
-            
+
         score = metric(y, preds, **metric_kwargs)
         return {metric.__name__: score}
 
     def register_mlflow_evaluation(
-        self, 
+        self,
         model: Any,
-        X: Union[pd.DataFrame, np.ndarray], 
+        X: Union[pd.DataFrame, np.ndarray],
         y: Union[pd.Series, np.ndarray],
         params: Dict[str, Any],
         tags: Dict[str, str],
-#        metrics: Dict[str, float], 
+        #        metrics: Dict[str, float],
         experiment_name: Optional[str] = None,
         run_name: Optional[str] = None,
         evaluator_config: Optional[dict] = None,
@@ -112,9 +113,9 @@ class ClassifierEngine(BaseModelEngine):
             evaluator_config = {
                 "log_explainer": True,
                 "explainer_type": "exact",
-                "average": "weighted"
+                "average": "weighted",
             }
-        
+
         # Create evaluation dataset
         if isinstance(X, np.ndarray):
             X_df = pd.DataFrame(X)
@@ -132,14 +133,12 @@ class ClassifierEngine(BaseModelEngine):
         # Set or create experiment
         if experiment_name:
             mlflow.set_experiment(experiment_name)
-        
+
         with mlflow.start_run(run_name=run_name):
             # Log model
             signature = infer_signature(X, model.predict(X))
             model_info = mlflow.sklearn.log_model(
-                model, 
-                name="model", 
-                signature=signature
+                model, name="model", signature=signature
             )
             mlflow.log_params(params)
             if tags is not None:
@@ -151,13 +150,13 @@ class ClassifierEngine(BaseModelEngine):
                 eval_data,
                 targets="label",
                 model_type="classifier",
-                evaluator_config=evaluator_config
+                evaluator_config=evaluator_config,
             )
-            
+
             logger.info("Model registered to MLflow successfully.")
             print(
                 f"Model registered to MLflow experiment '{experiment_name}' ",
-                f"with run_name '{run_name}'."
+                f"with run_name '{run_name}'.",
             )
 
     def run_pipeline(
@@ -177,7 +176,7 @@ class ClassifierEngine(BaseModelEngine):
         metric_kwargs: Optional[dict] = None,
         experiment_name: Optional[str] = None,
         run_name: Optional[str] = None,
-        tags: Optional[Dict[str, str]] = None
+        tags: Optional[Dict[str, str]] = None,
     ) -> None:
         """
         Executes the full pipeline.
@@ -195,9 +194,9 @@ class ClassifierEngine(BaseModelEngine):
             metric=metric,
             n_trials=n_trials,
             timeout=timeout,
-            metric_kwargs=metric_kwargs
+            metric_kwargs=metric_kwargs,
         )
-        
+
         best_params = study.best_params
         best_value = study.best_value
         print(f"Optimization complete. Best CV Score: {best_value}")
@@ -220,17 +219,13 @@ class ClassifierEngine(BaseModelEngine):
                 fit_params[f"{final_step_name}__sample_weight"] = sample_weight
             else:
                 fit_params["sample_weight"] = sample_weight
-                
+
         self.best_estimator_.fit(X_train[features], y_train, **fit_params)
-        
+
         # 4. Validate on Hold-out Test Set
         print("Validating on hold-out test set...")
         validation_metrics = self.validate(
-            self.best_estimator_, 
-            X_test[features], 
-            y_test, 
-            metric, 
-            metric_kwargs
+            self.best_estimator_, X_test[features], y_test, metric, metric_kwargs
         )
         print(f"Validation Metrics: {validation_metrics}")
 
@@ -243,9 +238,9 @@ class ClassifierEngine(BaseModelEngine):
             y=y_test,
             params=best_params,
             tags=tags,
-#            metrics=validation_metrics,
+            #            metrics=validation_metrics,
             experiment_name=experiment_name,
-            run_name=run_name
+            run_name=run_name,
         )
 
         return None

@@ -1,6 +1,7 @@
 from backtesting import Strategy
 import pandas as pd
 
+
 class StrategyFactory:
     def __init__(self, indicators=None, ml_model=None, rules=None):
         self.indicators = indicators or []

@@ -1,5 +1,10 @@
 ![](logo.png)
+
 # pyquantflow
+
+[![Python Version](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue)](https://www.python.org/)
+[![Tests](https://github.com/Vespertili0/pyquantflow/actions/workflows/tests.yml/badge.svg)](https://github.com/Vespertili0/pyquantflow/actions/workflows/tests.yml)
+[![Codecov](https://codecov.io/gh/Vespertili0/pyquantflow/branch/main/graph/badge.svg)](https://codecov.io/gh/Vespertili0/pyquantflow)
 
 **Strategise. Backtest. Decide.**
 
@@ -29,10 +34,10 @@ Initialise your local SQLite database and fetch historical data for your favouri
 ```python
 from pyquantflow.data.database import DatabaseManager
 
-db = DatabaseManager('example_stocks.db')
-db.add_ticker('AAPL', start_year=2023, interval='1d')
+db = DatabaseManager("example_stocks.db")
+db.add_ticker("AAPL", start_year=2023, interval="1d")
 
-data = db.get_data('AAPL')
+data = db.get_data("AAPL")
 ```
 
 ### 2. Add Indicator via pandas-pipe
@@ -44,25 +49,25 @@ from pyquantflow.data.utils import pipe_indicator
 from pyquantflow.data.features.indicator import ICHIMOKU
 import talib
 
-data_indicator = (
-    data.pipe(
-        pipe_indicator, 
-        indicator=ICHIMOKU,
-        input_map={'high': 'High', 'low': 'Low', 'close': 'Close'},
-        output_names=[
-            'Tenkan', 'Kijun', 
-            'SpanA_Projected', 'SpanB_Projected', 
-            'SpanA_Live', 'SpanB_Live', 
-            'Chikou'
-        ]
-    )
-    .pipe(
-        pipe_indicator, 
-        indicator=talib.EMA,
-        input_map={'real': 'Close'},
-        output_names=['EMA_120'],
-        **{'timeperiod': 120}
-    )
+data_indicator = data.pipe(
+    pipe_indicator,
+    indicator=ICHIMOKU,
+    input_map={"high": "High", "low": "Low", "close": "Close"},
+    output_names=[
+        "Tenkan",
+        "Kijun",
+        "SpanA_Projected",
+        "SpanB_Projected",
+        "SpanA_Live",
+        "SpanB_Live",
+        "Chikou",
+    ],
+).pipe(
+    pipe_indicator,
+    indicator=talib.EMA,
+    input_map={"real": "Close"},
+    output_names=["EMA_120"],
+    **{"timeperiod": 120}
 )
 ```
 
@@ -71,7 +76,6 @@ data_indicator = (
 Train ML-models following concepts introduced by *Marcos Lopez de Prado's* book "Advances in Financial Machine Learning" (2018), utilising target labelling (e.g. trend-scan, triple-barrier), feature engineering (e.g. fractional differentiation), and purged cross-validation. Using [`optuna`](https://github.com/optuna/optuna), hyperparameters of the ML-models are optimised and the final model is logged to [`mlflow`](https://github.com/mlflow/mlflow) via a modern MLOps workflow.
 
 ```python
-
 from pyquantflow.data.labels.triple_barrier import apply_triple_barrier
 
 from pyquantflow.model.cross_validation import PurgedKFoldCV
@@ -80,17 +84,16 @@ from pyquantflow.model.manager import ClassifierEngine
 
 # 1. Apply Triple-Barrier Labelling
 # Defines horizontal (Profit/Loss) and vertical (Time) barriers
-data['label'] = apply_triple_barrier(
-    data.Close, 
-    sl_col=data.Close * 0.98, # 2% Stop Loss
-    tp_mult=3,               # 3x Risk/Reward
-    horizon=10               # 10-bar limit
+data["label"] = apply_triple_barrier(
+    data.Close,
+    sl_col=data.Close * 0.98,  # 2% Stop Loss
+    tp_mult=3,  # 3x Risk/Reward
+    horizon=10,  # 10-bar limit
 )
 
 # 2. MLOps Workflow
 # Integrate PurgedKFoldCV to handle serial correlation in time-series data
 # ce.run_pipeline(..., cv=PurgedKFoldCV())
-
 ```
 
 ### 4. Run Statistical-Backtesting
@@ -109,14 +112,21 @@ from pyquantflow.strategies.example_strategy import SmaCross
 from pyquantflow.data.database import DatabaseManager
 
 # Get data
-db = DatabaseManager('example_stocks.db')
-data = db.get_data('AAPL')
+db = DatabaseManager("example_stocks.db")
+data = db.get_data("AAPL")
 
 # Run backtest
 backtester = BatchBacktester()
 # Note: Ensure data is not empty before running backtest
 if not data.empty:
-    results = backtester.run_single_backtest(df=data, strategy_class=SmaCross, cash=10000, commission=.002, trade_on_close=False, finalize_trades=True)
+    results = backtester.run_single_backtest(
+        df=data,
+        strategy_class=SmaCross,
+        cash=10000,
+        commission=0.002,
+        trade_on_close=False,
+        finalize_trades=True,
+    )
     print(f"Return: {results['Return [%]']:.2f}%")
 else:
     print("No data available for backtest.")
@@ -132,8 +142,8 @@ from pyquantflow.strategies.example_strategy import SmaCross
 from pyquantflow.data.database import DatabaseManager
 
 # Get data for multiple tickers
-db = DatabaseManager('example_stocks.db')
-tickers = ['AAPL', 'MSFT']
+db = DatabaseManager("example_stocks.db")
+tickers = ["AAPL", "MSFT"]
 data_map = {}
 for ticker in tickers:
     data = db.get_data(ticker)
@@ -142,8 +152,10 @@ for ticker in tickers:
 
 # Run batch backtest
 # results can be saved to 'backtest_results.db' by calling save_batch_results()
-backtester = BatchBacktester(results_db_path='backtest_results.db')
-avg_metrics = backtester.run_batch_backtest(strategy_class=SmaCross, data=data_map, cash=10000, commission=.002)
+backtester = BatchBacktester(results_db_path="backtest_results.db")
+avg_metrics = backtester.run_batch_backtest(
+    strategy_class=SmaCross, data=data_map, cash=10000, commission=0.002
+)
 backtester.save_batch_results()
 
 print("Average Metrics:", avg_metrics)

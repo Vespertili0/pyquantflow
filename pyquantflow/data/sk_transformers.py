@@ -1,7 +1,5 @@
 from sklearn.base import BaseEstimator, TransformerMixin
-from sklearn.utils.validation import check_is_fitted
 import pandas as pd
-import numpy as np
 from .features.sadf import get_sadf_jax as gsadf_values
 from .labels.trend_scanning import trend_scanning
 from .features.fractional_differentiation import frac_diff_ffd
@@ -13,6 +11,7 @@ class FractionalDiffTransformer(BaseEstimator, TransformerMixin):
     Sklearn wrapper for Fractional Differentiation (FFD).
     Transforms a price series into a stationary series while preserving memory.
     """
+
     def __init__(self, d=0.4, thres=1e-3):
         self.d = d
         self.thres = thres
@@ -26,10 +25,10 @@ class FractionalDiffTransformer(BaseEstimator, TransformerMixin):
     def transform(self, X):
         """
         Applies fractional differentiation.
-        
+
         Args:
             X (pd.Series or pd.DataFrame): Time series data.
-            
+
         Returns:
             pd.Series or pd.DataFrame: Fractionally differentiated data.
         """
@@ -52,6 +51,7 @@ class TrendScanningTransformer(BaseEstimator, TransformerMixin):
     Sklearn wrapper for Trend Scanning.
     Transforms a price series into t-statistics indicating trend strength.
     """
+
     def __init__(self, windows=[5, 10, 15, 20, 30, 40, 60, 80, 100, 120, 150, 180]):
         self.windows = windows
 
@@ -61,10 +61,10 @@ class TrendScanningTransformer(BaseEstimator, TransformerMixin):
     def transform(self, X):
         """
         Applies trend scanning.
-        
+
         Args:
             X (pd.Series or pd.DataFrame): Price series.
-            
+
         Returns:
             pd.Series or pd.DataFrame: t-statistics.
         """
@@ -85,6 +85,7 @@ class GSADFTransformer(BaseEstimator, TransformerMixin):
     Sklearn wrapper for GSADF (Generalized SADF).
     Transforms a log-price series into GSADF statistics for bubble detection.
     """
+
     def __init__(self, min_length=None, add_trend=False, lags=1):
         self.min_length = min_length
         self.add_trend = add_trend
@@ -96,10 +97,10 @@ class GSADFTransformer(BaseEstimator, TransformerMixin):
     def transform(self, X):
         """
         Calculates GSADF statistics.
-        
+
         Args:
             X (pd.Series or pd.DataFrame): Log-price series.
-            
+
         Returns:
             pd.Series or pd.DataFrame: GSADF statistics.
         """
@@ -108,28 +109,34 @@ class GSADFTransformer(BaseEstimator, TransformerMixin):
                 series = X.iloc[:, 0]
             else:
                 # Apply column-wise
-                return X.apply(lambda col: gsadf_values(
-                    col, model='linear', min_length=self.min_length, lags=self.lags
-                ))
+                return X.apply(
+                    lambda col: gsadf_values(
+                        col, model="linear", min_length=self.min_length, lags=self.lags
+                    )
+                )
         else:
             series = X
 
-        return gsadf_values(series, model='linear', min_length=self.min_length, lags=self.lags)
+        return gsadf_values(
+            series, model="linear", min_length=self.min_length, lags=self.lags
+        )
 
 
 class TripleBarrierLabeler(BaseEstimator, TransformerMixin):
     """
     Sklearn wrapper for Triple Barrier Labeling.
-    
-    NOTE: Unlike standard transformers, this requires specific column names 
-    if X is a DataFrame (price vs volatility), or assumes fixed barriers if 
+
+    NOTE: Unlike standard transformers, this requires specific column names
+    if X is a DataFrame (price vs volatility), or assumes fixed barriers if
     volatility is missing.
-    
+
     This is typically used to generate 'y' (targets) rather than transform 'X',
     but wrapping it allows for integration into data prep pipelines.
     """
-    def __init__(self, price_col='close', vol_col=None, 
-                 vertical_barrier_steps=10, pt=1.0, sl=1.0):
+
+    def __init__(
+        self, price_col="close", vol_col=None, vertical_barrier_steps=10, pt=1.0, sl=1.0
+    ):
         self.price_col = price_col
         self.vol_col = vol_col
         self.vertical_barrier_steps = vertical_barrier_steps
@@ -142,18 +149,18 @@ class TripleBarrierLabeler(BaseEstimator, TransformerMixin):
     def transform(self, X):
         """
         Generates labels.
-        
+
         Args:
-            X (pd.DataFrame or pd.Series): 
+            X (pd.DataFrame or pd.Series):
                 - If DataFrame: Must contain `price_col`. If `vol_col` is set,
                   must also contain `vol_col` for dynamic barriers.
                 - If Series: Treated as price. Volatility is assumed None (fixed barriers).
-        
+
         Returns:
             pd.Series: Labels (-1, 0, 1).
         """
         volatility = None
-        
+
         if isinstance(X, pd.DataFrame):
             # Extract Price
             if self.price_col not in X.columns:
@@ -161,24 +168,30 @@ class TripleBarrierLabeler(BaseEstimator, TransformerMixin):
                 prices = X.iloc[:, 0]
             else:
                 prices = X[self.price_col]
-            
+
             # Extract Volatility if specified
             if self.vol_col is not None:
                 if self.vol_col in X.columns:
                     volatility = X[self.vol_col]
                 else:
-                    raise ValueError(f"Volatility column '{self.vol_col}' not found in X.")
+                    raise ValueError(
+                        f"Volatility column '{self.vol_col}' not found in X."
+                    )
         else:
             # Assume Series is Price
             prices = X
             # Volatility remains None
-            
+
         # Default to sl_col as fixed 0.01 if no volatility is provided
-        sl_col = volatility if volatility is not None else pd.Series(self.sl, index=prices.index)
+        sl_col = (
+            volatility
+            if volatility is not None
+            else pd.Series(self.sl, index=prices.index)
+        )
 
         return triple_barrier_labels(
             prices=prices,
             sl_col=sl_col,
             tp_mult=self.pt,
-            horizon=self.vertical_barrier_steps
+            horizon=self.vertical_barrier_steps,
         )

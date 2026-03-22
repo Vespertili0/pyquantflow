@@ -4,9 +4,11 @@ from pyquantflow.strategies.basestrategy import StrategyFactory
 import pandas as pd
 import numpy as np
 
+
 # Define a standalone indicator function because lambdas don't have __name__
 def SMA10(values):
     return pd.Series(values).rolling(10).mean()
+
 
 class TestStrategyFactory(unittest.TestCase):
     def test_create_strategy_with_rules(self):
@@ -22,11 +24,11 @@ class TestStrategyFactory(unittest.TestCase):
 
             # Simple logic
             if strategy.data.Close[-1] > sma[-1]:
-                 if not strategy.position:
-                     strategy.buy()
+                if not strategy.position:
+                    strategy.buy()
             elif strategy.data.Close[-1] < sma[-1]:
-                 if strategy.position:
-                     strategy.sell()
+                if strategy.position:
+                    strategy.sell()
 
         # Initialize factory with an indicator and a rule
         factory = StrategyFactory(indicators=[SMA10], rules=[simple_rule])
@@ -45,7 +47,7 @@ class TestStrategyFactory(unittest.TestCase):
         if os.path.exists(source_db_path):
             try:
                 db_manager = DatabaseManager(db_path=source_db_path)
-                for ticker in ['FMG.AX', 'CBA.AX']:
+                for ticker in ["FMG.AX", "CBA.AX"]:
                     df = db_manager.get_data(ticker)
                     if not df.empty and len(df) >= 100:
                         data = df
@@ -60,20 +62,24 @@ class TestStrategyFactory(unittest.TestCase):
             returns = np.random.normal(0, 0.01, 100)
             price_path = 10 * np.exp(np.cumsum(returns))
 
-            data = pd.DataFrame({
-                'Open': price_path,
-                'High': price_path * 1.01,
-                'Low': price_path * 0.99,
-                'Close': price_path,
-                'Volume': 1000
-            }, index=pd.date_range('2023-01-01', periods=100))
+            data = pd.DataFrame(
+                {
+                    "Open": price_path,
+                    "High": price_path * 1.01,
+                    "Low": price_path * 0.99,
+                    "Close": price_path,
+                    "Volume": 1000,
+                },
+                index=pd.date_range("2023-01-01", periods=100),
+            )
 
-        bt = Backtest(data, MyStrategy, cash=10000, commission=.002)
+        bt = Backtest(data, MyStrategy, cash=10000, commission=0.002)
         stats = bt.run()
 
         self.assertIsNotNone(stats)
         # Check that we made some trades or at least didn't crash
         # print(stats)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     unittest.main()

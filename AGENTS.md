@@ -5,7 +5,7 @@ A local-first stock analysis and backtesting framework designed for data persist
 
 ## Key Constraints & Environment
 - **OS**: Linux
-- **Core Libraries**: 
+- **Core Libraries**:
   - `yfinance`: For fetching market data.
   - `backtesting`: For event-driven backtesting execution.
   - `pandas` & `numpy`: For data manipulation and numerical operations.

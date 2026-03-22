@@ -42,7 +42,7 @@ def get_sample_weights(t1, returns=None):
     # 1. Map timestamps to integer array indices
     start_idx = np.arange(len(bars))
     # Find where the end time falls in the bar index
-    end_idx = np.searchsorted(bars, t1.values, side='right')
+    end_idx = np.searchsorted(bars, t1.values, side="right")
 
     # 2. Fast Concurrency (c_t) via Difference Array
     # Add +1 when an event starts, -1 when it ends
@@ -74,7 +74,7 @@ def get_sample_weights(t1, returns=None):
             u_i[i] = 0.0
 
     # 5. Combine with Returns (Optional but highly recommended)
-    weights = pd.Series(u_i, index=t1.index, name='weight')
+    weights = pd.Series(u_i, index=t1.index, name="weight")
 
     if returns is not None:
         # Temporarily drop tz from returns to align indices

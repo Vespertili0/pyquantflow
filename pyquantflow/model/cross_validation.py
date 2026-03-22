@@ -10,20 +10,20 @@ class PurgedKFoldCV(BaseCrossValidator):
     sklearn-compatible Purged K-Fold cross-validator with embargo.
 
     This cross validator splits time-series data while properly addressing leakage
-    by purging observations in the training set whose evaluation period overlaps 
+    by purging observations in the training set whose evaluation period overlaps
     with the test set, and optionally embargoing periods after the test set.
 
     Supports single-asset and multi-asset datasets (via MultiIndex).
-    Works with triple-barrier event end times (`t1`). Can accept `t1` as an 
-    external `pd.Series` or dynamically extract it from the input features DataFrame 
+    Works with triple-barrier event end times (`t1`). Can accept `t1` as an
+    external `pd.Series` or dynamically extract it from the input features DataFrame
     `X` if a column name string is provided.
-    
+
     Parameters
     ----------
     n_splits : int, default=5
         Number of folds. Must be at least 2.
     t1 : pd.Series or str, optional
-        Event end times (should have the same index as X). 
+        Event end times (should have the same index as X).
         If a string is passed, it is assumed to be the column name in `X`
         containing the event end times. If None, purging is completely disabled
         but embargoing still applies.
@@ -31,26 +31,31 @@ class PurgedKFoldCV(BaseCrossValidator):
         Fraction of the dataset's unique times to embargo after each test fold
         to prevent subsequent train fold leakage.
     datetime_level : str or int, default="datetime"
-        Name or index of the datetime level in a MultiIndex. Ignored if `X` 
+        Name or index of the datetime level in a MultiIndex. Ignored if `X`
         has a standard DatetimeIndex.
     """
-    def __init__(self, 
-                 n_splits: int = 5, 
-                 t1: Optional[Union[pd.Series, str]] = None, 
-                 embargo_pct: float = 0.01, 
-                 datetime_level: Union[str, int] = "datetime") -> None:
+
+    def __init__(
+        self,
+        n_splits: int = 5,
+        t1: Optional[Union[pd.Series, str]] = None,
+        embargo_pct: float = 0.01,
+        datetime_level: Union[str, int] = "datetime",
+    ) -> None:
         self.n_splits = n_splits
         self.t1 = t1
         self.embargo_pct = embargo_pct
         self.datetime_level = datetime_level
 
-    def get_n_splits(self, 
-                     X: Optional[Union[pd.DataFrame, pd.Series, np.ndarray]] = None, 
-                     y: Optional[Union[pd.Series, np.ndarray]] = None, 
-                     groups: Optional[np.ndarray] = None) -> int:
+    def get_n_splits(
+        self,
+        X: Optional[Union[pd.DataFrame, pd.Series, np.ndarray]] = None,
+        y: Optional[Union[pd.Series, np.ndarray]] = None,
+        groups: Optional[np.ndarray] = None,
+    ) -> int:
         """
         Returns the number of splitting iterations in the cross-validator.
-        
+
         Parameters
         ----------
         X : array-like of shape (n_samples, n_features), optional
@@ -61,7 +66,7 @@ class PurgedKFoldCV(BaseCrossValidator):
         groups : array-like of shape (n_samples,), optional
             Group labels for the samples used while splitting the dataset into
             train/test set.
-            
+
         Returns
         -------
         int
@@ -72,12 +77,12 @@ class PurgedKFoldCV(BaseCrossValidator):
     def _extract_times(self, X: pd.DataFrame) -> pd.Index:
         """
         Extract the datetime index from X.
-        
+
         Parameters
         ----------
         X : pd.DataFrame
             The input DataFrame containing a standard DatetimeIndex or MultiIndex.
-            
+
         Returns
         -------
         pd.Index
@@ -88,25 +93,26 @@ class PurgedKFoldCV(BaseCrossValidator):
             return idx.get_level_values(self.datetime_level)
         return idx
 
-    def split(self, 
-              X: pd.DataFrame, 
-              y: Optional[Union[pd.Series, np.ndarray]] = None, 
-              groups: Optional[np.ndarray] = None
-        ) -> Generator[Tuple[np.ndarray, np.ndarray], None, None]:
+    def split(
+        self,
+        X: pd.DataFrame,
+        y: Optional[Union[pd.Series, np.ndarray]] = None,
+        groups: Optional[np.ndarray] = None,
+    ) -> Generator[Tuple[np.ndarray, np.ndarray], None, None]:
         """
         Generate indices to split data into training and test sets.
-        
+
         Parameters
         ----------
         X : pd.DataFrame
-            Training data containing the features. The index must either be 
+            Training data containing the features. The index must either be
             a chronological DatetimeIndex or a MultiIndex with a datetime level.
         y : pd.Series or np.ndarray, optional
             The target variable for supervised learning problems.
         groups : np.ndarray, optional
             Group labels for the samples used while splitting the dataset into
             train/test set. Not used by this splitter, maintained for compatibility.
-            
+
         Yields
         ------
         train : np.ndarray
@@ -118,11 +124,11 @@ class PurgedKFoldCV(BaseCrossValidator):
         times = pd.to_datetime(pd.Series(self._extract_times(X)))
         if times.dt.tz is not None:
             times = times.dt.tz_localize(None)
-        
+
         # 2. Get chronological boundaries (No need to sort X itself!)
         unique_times = np.sort(times.unique())
         n_unique = len(unique_times)
-        
+
         fold_size = n_unique // self.n_splits
         embargo = int(n_unique * self.embargo_pct)
 
@@ -132,7 +138,7 @@ class PurgedKFoldCV(BaseCrossValidator):
                 t1_series = X[self.t1]
             else:
                 t1_series = self.t1
-            # .reindex ensures perfect alignment 
+            # .reindex ensures perfect alignment
             # even if X has duplicate indices or is unsorted
             t1_times = pd.Series(t1_series).reindex(X.index).values
             t1_times = pd.to_datetime(t1_times)
@@ -145,7 +151,7 @@ class PurgedKFoldCV(BaseCrossValidator):
             # Define time windows
             test_start = k * fold_size
             test_end = (k + 1) * fold_size if k < self.n_splits - 1 else n_unique
-            
+
             test_times = unique_times[test_start:test_end]
             test_min = test_times.min()
             test_max = test_times.max()
@@ -158,7 +164,7 @@ class PurgedKFoldCV(BaseCrossValidator):
             test_mask = times.isin(test_times).values
             embargo_mask = times.isin(embargo_times).values
 
-            # CORRECTED PURGE MASK: 
+            # CORRECTED PURGE MASK:
             # Drop if sample started before test ends AND expires after test begins
             if self.t1 is not None:
                 purge_mask = (times <= test_max) & (t1_times >= test_min)
@@ -181,21 +187,21 @@ class CombinatorialPurgedKFold(BaseCrossValidator):
     def split(self, X, y=None, groups=None):
         n_samples = len(X)
         indices = np.arange(n_samples)
-        
+
         # 1. Split indices into N blocks
         block_size = n_samples // self.n_splits
         block_bounds = [
             (i * block_size, (i + 1) * block_size) for i in range(self.n_splits)
         ]
         # Ensure last block covers remainder
-        block_bounds[-1] = (block_bounds[-1][0], n_samples) 
-        
+        block_bounds[-1] = (block_bounds[-1][0], n_samples)
+
         # 2. Generate all combinations of k test blocks
         all_block_indices = list(range(self.n_splits))
         for test_blocks in combinations(all_block_indices, self.n_test_splits):
             test_indices = []
             train_indices = []
-            
+
             # Sort test blocks to handle purging/embargoing logically
             test_blocks = sorted(test_blocks)
             train_blocks = [i for i in all_block_indices if i not in test_blocks]
@@ -208,20 +214,20 @@ class CombinatorialPurgedKFold(BaseCrossValidator):
             # Construct Train Set with Purging & Embargoing
             for i in train_blocks:
                 start, end = block_bounds[i]
-                
+
                 # Check for overlap with any test block
                 for j in test_blocks:
                     test_start, test_end = block_bounds[j]
-                    
+
                     # If train block is immediately before a test block, PURGE the end
                     if end > test_start and start < test_start:
                         end = test_start - self.purge_limit
-                    
-                    # If train block is immediately after a test block, 
+
+                    # If train block is immediately after a test block,
                     # then EMBARGO the start
                     if start < test_end and end > test_end:
                         start = test_end + self.embargo_limit
-                
+
                 if start < end:
                     train_indices.extend(indices[start:end])
 
@@ -229,4 +235,5 @@ class CombinatorialPurgedKFold(BaseCrossValidator):
 
     def get_n_splits(self, X=None, y=None, groups=None):
         from math import comb
+
         return comb(self.n_splits, self.n_test_splits)

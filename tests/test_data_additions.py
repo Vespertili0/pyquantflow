@@ -1,10 +1,12 @@
 import unittest
 import numpy as np
 import pandas as pd
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 from pyquantflow.data.features.fractional_differentiation import frac_diff_ffd
 from pyquantflow.data.labels.trend_scanning import trend_scanning
-from pyquantflow.data.labels.triple_barrier import apply_triple_barrier as triple_barrier_labels
+from pyquantflow.data.labels.triple_barrier import (
+    apply_triple_barrier as triple_barrier_labels,
+)
 from pyquantflow.data.features.sadf import get_sadf_jax as gsadf_values
 from pyquantflow.data.features.indicator import ICHIMOKU
 from pyquantflow.data.utils import pipe_indicator
@@ -13,11 +15,12 @@ from pyquantflow.data.sk_transformers import (
     FractionalDiffTransformer,
     TrendScanningTransformer,
     GSADFTransformer,
-    TripleBarrierLabeler
+    TripleBarrierLabeler,
 )
 
 import os
 from pyquantflow.data.database import DatabaseManager
+
 
 class TestDataAdditions(unittest.TestCase):
     def setUp(self):
@@ -29,7 +32,7 @@ class TestDataAdditions(unittest.TestCase):
             try:
                 db_manager = DatabaseManager(db_path=source_db_path)
                 # Try FMG.AX first, then CBA.AX, else fallback
-                for ticker in ['FMG.AX', 'CBA.AX']:
+                for ticker in ["FMG.AX", "CBA.AX"]:
                     df = db_manager.get_data(ticker)
                     if not df.empty and len(df) >= 100:  # Need enough data for tests
                         self.ohlc_data = df
@@ -61,13 +64,16 @@ class TestDataAdditions(unittest.TestCase):
 
         volume = np.random.randint(1000, 100000, n)
 
-        df = pd.DataFrame({
-            "Open": open_,
-            "High": high,
-            "Low": low,
-            "Close": price_path,
-            "Volume": volume
-        }, index=dates)
+        df = pd.DataFrame(
+            {
+                "Open": open_,
+                "High": high,
+                "Low": low,
+                "Close": price_path,
+                "Volume": volume,
+            },
+            index=dates,
+        )
         return df
 
     def test_frac_diff_ffd(self):
@@ -99,7 +105,7 @@ class TestDataAdditions(unittest.TestCase):
         # Actually checking middle values
         middle = len(series) // 2
         if not np.isnan(result.iloc[middle]):
-             self.assertIsInstance(result.iloc[middle], float)
+            self.assertIsInstance(result.iloc[middle], float)
 
     def test_triple_barrier_labels(self):
         """Test Triple Barrier Method."""
@@ -108,23 +114,31 @@ class TestDataAdditions(unittest.TestCase):
 
         sl_col = pd.Series(0.01, index=series.index)
         # Test with fixed barriers
-        labels_fixed = triple_barrier_labels(series, sl_col=sl_col, tp_mult=1.0, horizon=10)
+        labels_fixed = triple_barrier_labels(
+            series, sl_col=sl_col, tp_mult=1.0, horizon=10
+        )
         self.assertIsInstance(labels_fixed, pd.DataFrame)
-        self.assertIn('label', labels_fixed.columns)
-        self.assertTrue(set(labels_fixed['label'].dropna().unique()).issubset({0, 1, 2}))
+        self.assertIn("label", labels_fixed.columns)
+        self.assertTrue(
+            set(labels_fixed["label"].dropna().unique()).issubset({0, 1, 2})
+        )
 
         # Test with dynamic barriers
-        labels_dynamic = triple_barrier_labels(series, sl_col=volatility, tp_mult=1.0, horizon=10)
+        labels_dynamic = triple_barrier_labels(
+            series, sl_col=volatility, tp_mult=1.0, horizon=10
+        )
         self.assertIsInstance(labels_dynamic, pd.DataFrame)
-        self.assertIn('label', labels_dynamic.columns)
-        self.assertTrue(set(labels_dynamic['label'].dropna().unique()).issubset({0, 1, 2}))
+        self.assertIn("label", labels_dynamic.columns)
+        self.assertTrue(
+            set(labels_dynamic["label"].dropna().unique()).issubset({0, 1, 2})
+        )
 
     def test_gsadf_values(self):
         """Test GSADF."""
         # Use log prices as expected by GSADF
         series = np.log(self.ohlc_data["Close"])
 
-        result = gsadf_values(series, model='linear', min_length=20, lags=1)
+        result = gsadf_values(series, model="linear", min_length=20, lags=1)
 
         self.assertIsInstance(result, pd.Series)
         # the result series starts at index min_length+lags+2 roughly, so len(result) < len(series)
@@ -142,7 +156,7 @@ class TestDataAdditions(unittest.TestCase):
 
         result = ICHIMOKU(high, low, close)
 
-        self.assertEqual(len(result), 7) # Returns tuple of 7 arrays
+        self.assertEqual(len(result), 7)  # Returns tuple of 7 arrays
         tenkan, kijun, span_a, span_b, span_a_shift, span_b_shift, chikou = result
 
         self.assertEqual(len(tenkan), len(close))
@@ -154,17 +168,25 @@ class TestDataAdditions(unittest.TestCase):
 
         # Test with Ichimoku
         # output_names needs to match the tuple return count of ICHIMOKU (7)
-        output_names = ['tenkan', 'kijun', 'span_a', 'span_b', 'span_a_s', 'span_b_s', 'chikou']
+        output_names = [
+            "tenkan",
+            "kijun",
+            "span_a",
+            "span_b",
+            "span_a_s",
+            "span_b_s",
+            "chikou",
+        ]
 
         df_new = pipe_indicator(
             df,
             ICHIMOKU,
-            input_map={'high': 'High', 'low': 'Low', 'close': 'Close'},
-            output_names=output_names
+            input_map={"high": "High", "low": "Low", "close": "Close"},
+            output_names=output_names,
         )
 
         for name in output_names:
-            if name != 'chikou':
+            if name != "chikou":
                 self.assertIn(name, df_new.columns)
 
     def test_sk_transformers(self):
@@ -177,7 +199,7 @@ class TestDataAdditions(unittest.TestCase):
         res = transformer.fit_transform(series)
         self.assertIsInstance(res, pd.Series)
 
-        res_df = transformer.fit_transform(df[["Close"]]) # single col DF
+        res_df = transformer.fit_transform(df[["Close"]])  # single col DF
         self.assertTrue(isinstance(res_df, (pd.Series, pd.DataFrame)))
 
         # Trend Scanning
@@ -191,11 +213,11 @@ class TestDataAdditions(unittest.TestCase):
         self.assertIsInstance(res_gsadf, pd.Series)
 
         # Triple Barrier
-        tb_trans = TripleBarrierLabeler(price_col='Close', vertical_barrier_steps=5)
+        tb_trans = TripleBarrierLabeler(price_col="Close", vertical_barrier_steps=5)
         res_tb = tb_trans.fit_transform(df)
         self.assertIsInstance(res_tb, pd.DataFrame)
 
-    @patch('pyquantflow.data.quarterly_pull.yf.download')
+    @patch("pyquantflow.data.quarterly_pull.yf.download")
     def test_fetch_quarterly_data(self, mock_download):
         """Test fetch_quarterly_data with mocked yfinance."""
         # Setup mock return
@@ -206,19 +228,19 @@ class TestDataAdditions(unittest.TestCase):
         # If mock_df is tz-naive, tz_convert might fail if it thinks it's already naive, or work if it assumes UTC.
         # Actually in pandas, you usually need to localize first if it's naive, or convert if it's aware.
         # Let's make it tz-aware (UTC) to be safe, as yfinance usually returns UTC.
-        mock_df.index = mock_df.index.tz_localize('UTC')
+        mock_df.index = mock_df.index.tz_localize("UTC")
 
         mock_download.return_value = mock_df
 
         ticker = "AAPL"
         time_dict = {2023: [1]}
 
-        result = fetch_quarterly_data(ticker, time_dict, period='quarterly')
+        result = fetch_quarterly_data(ticker, time_dict, period="quarterly")
 
         self.assertIsInstance(result, pd.DataFrame)
         self.assertTrue(mock_download.called)
         # Check if tz conversion happened
-        self.assertEqual(str(result.index.tz), 'Australia/Sydney')
+        self.assertEqual(str(result.index.tz), "Australia/Sydney")
 
     def test_merge_last_hour(self):
         """Test merge_last_hour logic."""
@@ -226,12 +248,15 @@ class TestDataAdditions(unittest.TestCase):
         # 10:00, 11:00 ... 15:00, 16:00 (last hour)
         # We need at least 2 rows
         dates = pd.date_range("2023-01-01 15:00", periods=2, freq="h")
-        df = pd.DataFrame({
-            "High": [100, 102],
-            "Low": [90, 95],
-            "Close": [95, 98],
-            "Volume": [1000, 500]
-        }, index=dates)
+        df = pd.DataFrame(
+            {
+                "High": [100, 102],
+                "Low": [90, 95],
+                "Close": [95, 98],
+                "Volume": [1000, 500],
+            },
+            index=dates,
+        )
 
         merged = merge_last_hour(df)
 
@@ -247,5 +272,6 @@ class TestDataAdditions(unittest.TestCase):
         # Volume = sum(1000, 500) = 1500
         self.assertEqual(merged.iloc[0]["Volume"], 1500)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     unittest.main()
