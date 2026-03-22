@@ -2,9 +2,17 @@
 
 # pyquantflow
 
-[![Python Version](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue)](https://www.python.org/)
-[![Tests](https://github.com/Vespertili0/pyquantflow/actions/workflows/tests.yml/badge.svg)](https://github.com/Vespertili0/pyquantflow/actions/workflows/tests.yml)
-[![Codecov](https://codecov.io/gh/Vespertili0/pyquantflow/branch/main/graph/badge.svg)](https://codecov.io/gh/Vespertili0/pyquantflow)
+<p align="center">
+  <a href="https://www.python.org/">
+    <img src="https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue" alt="Python Version">
+  </a>
+  <a href="https://github.com/Vespertili0/pyquantflow/actions/workflows/tests.yml">
+    <img src="https://github.com/Vespertili0/pyquantflow/actions/workflows/tests.yml/badge.svg" alt="Tests">
+  </a>
+  <a href="https://codecov.io/gh/Vespertili0/pyquantflow">
+    <img src="https://codecov.io/gh/Vespertili0/pyquantflow/branch/main/graph/badge.svg" alt="Codecov">
+  </a>
+</p>
 
 **Strategise. Backtest. Decide.**
 
