@@ -8,14 +8,14 @@ on:
 
 jobs:
   build-and-release:
-    name: Build and create GitHub Release
+    name: Build, Test, and Release
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - name: Set up Python
-      uses: actions/setup-python@v3
+      uses: actions/setup-python@v5
       with:
         python-version: "3.12"
 
@@ -27,8 +27,15 @@ jobs:
     - name: Build a binary wheel and a source tarball
       run: python -m build
 
+    - name: Verify build
+      run: |
+        pip install dist/*.whl
+        mkdir tmp_test
+        cd tmp_test
+        python -c "import pyquantflow; print('Successfully imported pyquantflow version:', pyquantflow.__version__)"
+
     - name: Create GitHub Release
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v2
       if: startsWith(github.ref, 'refs/tags/')
       with:
         files: |
