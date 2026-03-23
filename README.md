@@ -1,8 +1,9 @@
 ![](logo.png)
 
-# pyquantflow
-
 <p align="center">
+  <a href="https://github.com/Vespertili0/pyquantflow/releases">
+    <img src="https://img.shields.io/github/v/release/Vespertili0/pyquantflow?color=orange" alt="Latest Release">
+  </a>
   <a href="https://www.python.org/">
     <img src="https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue" alt="Python Version">
   </a>
@@ -14,7 +15,7 @@
   </a>
 </p>
 
-**Strategise. Backtest. Decide.**
+# pyquantflow
 
 A local-first stock analysis and backtesting framework designed for data persistence and strategy validation. Built on top of `yfinance` and `backtesting.py`, it gives you control over your data and your strategies. Further, it bridges the gap between simple technical analysis and Financial Machine Learning.
 
