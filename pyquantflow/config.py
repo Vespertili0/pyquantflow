@@ -1,7 +1,7 @@
 import os
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_DIR = os.path.join(BASE_DIR, 'db_files')
+DB_DIR = os.path.join(BASE_DIR, "db_files")
 
 if not os.path.exists(DB_DIR):
     os.makedirs(DB_DIR)

@@ -6,18 +6,18 @@ from sklearn.model_selection import BaseCrossValidator
 from sklearn.metrics import f1_score
 
 
-
 class HyperparameterOptimiser:
     """
     A factory class to manage Optuna studies for Sklearn model development.
     Supports stopping early (Pruning) if cross-validation folds perform poorly.
     """
+
     def __init__(
-        self, 
-        study_name: str, 
-        storage_uri: str = None, 
+        self,
+        study_name: str,
+        storage_uri: str = None,
         direction: str = "maximize",
-        sampler: Optional[optuna.samplers.BaseSampler] = None
+        sampler: Optional[optuna.samplers.BaseSampler] = None,
     ):
         """
         Args:
@@ -29,33 +29,33 @@ class HyperparameterOptimiser:
         self.storage_uri = storage_uri
         self.direction = direction
         self.sampler = sampler or optuna.samplers.TPESampler(seed=42)
-        
+
         # Initialize the study as a class attribute immediately
         self.study = optuna.create_study(
             study_name=self.study_name,
             storage=self.storage_uri,
             direction=self.direction,
             load_if_exists=True,
-            sampler=self.sampler
+            sampler=self.sampler,
         )
 
     def run(
-        self, 
-        X: pd.DataFrame, 
-        y: Union[pd.Series, np.ndarray, pd.DataFrame], 
+        self,
+        X: pd.DataFrame,
+        y: Union[pd.Series, np.ndarray, pd.DataFrame],
         features: list[str],
-        model_factory: Callable[[optuna.Trial], Any], 
-        cv: BaseCrossValidator, 
+        model_factory: Callable[[optuna.Trial], Any],
+        cv: BaseCrossValidator,
         weight_col: Optional[str] = None,
         t1_col: Optional[str] = None,
         metric: Callable = f1_score,
         n_trials: int = 50,
         timeout: Optional[int] = None,
-        metric_kwargs: Optional[dict] = None
+        metric_kwargs: Optional[dict] = None,
     ) -> optuna.Study:
         """
         Executes the optimization loop using the existing self.study attribute.
-        
+
         Args:
             X, y: Training data (X must be a pandas DataFrame containing features & metadata).
             features: List of column names in X to strictly use as training features.
@@ -74,13 +74,12 @@ class HyperparameterOptimiser:
 
             # Loop over CV splits using the Numpy arrays
             for step, (train_idx, val_idx) in enumerate(cv.split(X, y)):
-                
                 # Slice entire rows to capture metadata
                 X_train_fold = X.iloc[train_idx]
-                X_val_fold   = X.iloc[val_idx]
+                X_val_fold = X.iloc[val_idx]
 
-                y_train_fold = y.iloc[train_idx] if hasattr(y, 'iloc') else y[train_idx]
-                y_val_fold   = y.iloc[val_idx] if hasattr(y, 'iloc') else y[val_idx]
+                y_train_fold = y.iloc[train_idx] if hasattr(y, "iloc") else y[train_idx]
+                y_val_fold = y.iloc[val_idx] if hasattr(y, "iloc") else y[val_idx]
 
                 fit_params = {}
                 if weight_col and weight_col in X_train_fold.columns:
@@ -94,7 +93,7 @@ class HyperparameterOptimiser:
 
                 # Isolate pure features for fitting and predicting
                 X_train_features = X_train_fold[features]
-                X_val_features   = X_val_fold[features]
+                X_val_features = X_val_fold[features]
 
                 model.fit(X_train_features, y_train_fold, **fit_params)
 
@@ -115,7 +114,7 @@ class HyperparameterOptimiser:
                 # Report & Prune based on mean of current folds (or simply current fold)
                 # Reporting the running average gives a smoother pruning curve
                 trial.report(np.mean(fold_scores), step=step)
-                
+
                 if trial.should_prune():
                     raise optuna.exceptions.TrialPruned()
 
@@ -123,5 +122,5 @@ class HyperparameterOptimiser:
 
         # Optimize the existing study object
         self.study.optimize(objective, n_trials=n_trials, timeout=timeout)
-        
+
         return self.study

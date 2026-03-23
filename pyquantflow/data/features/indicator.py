@@ -3,21 +3,22 @@ import pandas as pd
 
 
 def ICHIMOKU(
-    high: np.ndarray, 
-    low: np.ndarray, 
-    close: np.ndarray = None, 
-    tenkan_period: int = 9, 
-    kijun_period: int = 26, 
+    high: np.ndarray,
+    low: np.ndarray,
+    close: np.ndarray = None,
+    tenkan_period: int = 9,
+    kijun_period: int = 26,
     senkou_b_period: int = 52,
-    displacement: int = 26
+    displacement: int = 26,
 ) -> tuple:
     """
     Computes Ichimoku Cloud elements in a TA-Lib style.
-    
+
     Args:
         high (np.ndarray or pd.Series): High prices.
         low (np.ndarray or pd.Series): Low prices.
-        close (np.ndarray or pd.Series, optional): Close prices (needed for Chikou Span).
+        close (np.ndarray or pd.Series, optional): Close prices (needed for Chikou
+            Span).
         tenkan_period (int): Period for Conversion Line (default 9).
         kijun_period (int): Period for Base Line (default 26).
         senkou_b_period (int): Period for Leading Span B (default 52).
@@ -28,19 +29,19 @@ def ICHIMOKU(
             (
                 tenkan_sen,      # Conversion Line
                 kijun_sen,       # Base Line
-                span_a,          # Leading Span A (Projected value recorded at current time)
-                span_b,          # Leading Span B (Projected value recorded at current time)
-                span_a_shifted,  # Leading Span A (Shifted forward to align with current price)
-                span_b_shifted,  # Leading Span B (Shifted forward to align with current price)
-                chikou_span      # Lagging Span (Close shifted backwards) - None if close not provided
+                span_a,          # Leading Span A (Projected recorded at current time)
+                span_b,          # Leading Span B (Projected recorded at current time)
+                span_a_shifted,  # Leading Span A (Shifted forward to align)
+                span_b_shifted,  # Leading Span B (Shifted forward to align)
+                chikou_span      # Lagging Span (Close shifted backwards) - None
             )
     """
-    
+
     # Convert to Pandas Series for efficient rolling window calculations
     # This handles both numpy array and pandas series inputs gracefully
     high_s = pd.Series(high)
     low_s = pd.Series(low)
-    
+
     # --- 1. Tenkan-sen (Conversion Line) ---
     tenkan_high = high_s.rolling(window=tenkan_period).max()
     tenkan_low = low_s.rolling(window=tenkan_period).min()
@@ -68,9 +69,9 @@ def ICHIMOKU(
 
     # --- 6. Chikou Span (Lagging Span) ---
     chikou_span = None
-#    if close is not None:
-#        close_s = pd.Series(close)
-#        chikou_span = close_s.shift(-displacement).to_numpy()
+    #    if close is not None:
+    #        close_s = pd.Series(close)
+    #        chikou_span = close_s.shift(-displacement).to_numpy()
 
     # Return tuple of numpy arrays (TA-Lib style)
     return (
@@ -80,7 +81,7 @@ def ICHIMOKU(
         span_b.to_numpy(),
         span_a_shifted.to_numpy(),
         span_b_shifted.to_numpy(),
-        chikou_span
+        chikou_span,
     )
 
 
@@ -104,43 +105,44 @@ def ROGERSATCHELL(high, low, open, close, timeperiod=30):
     """
     # 1. Input Validation (TA-Lib style strictness)
     # Ensure inputs are float arrays to prevent integer division errors
-    h = np.asarray(high, dtype=np.float64)
-    l = np.asarray(low, dtype=np.float64)
-    o = np.asarray(open, dtype=np.float64)
-    c = np.asarray(close, dtype=np.float64)
+    h_var = np.asarray(high, dtype=np.float64)
+    l_var = np.asarray(low, dtype=np.float64)
+    o_var = np.asarray(open, dtype=np.float64)
+    c_var = np.asarray(close, dtype=np.float64)
 
-    if not (h.shape == l.shape == o.shape == c.shape):
+    if not (h_var.shape == l_var.shape == o_var.shape == c_var.shape):
         raise ValueError("All input arrays must have the same shape.")
 
-    n = h.shape[0]
+    n = h_var.shape[0]
     if timeperiod > n:
         # If data is shorter than window, return all NaNs
         return np.full(n, np.nan)
 
-    # 2. Vectorized Math (Rogers-Satchell Formula)
+    # 2. Vectorised Math (Rogers-Satchell Formula)
     # rs = log(h/c)*log(h/o) + log(l/c)*log(l/o)
-    # Use log(a/b) = log(a) - log(b) which is slightly safer/faster 
-       
+    # Use log(a/b) = log(a) - log(b) which is slightly safer/faster
+
     # term1 = ln(High / Close) * ln(High / Open)
-    term1 = np.log(h / c) * np.log(h / o)
-    
+    term1 = np.log(h_var / c_var) * np.log(h_var / o_var)
+
     # term2 = ln(Low / Close) * ln(Low / Open)
-    term2 = np.log(l / c) * np.log(l / o)
-    
+    term2 = np.log(l_var / c_var) * np.log(l_var / o_var)
+
     rs_daily = term1 + term2
 
-    # 3. The Optimization: Rolling Sum via Cumsum Trick
+    # 3. The Optimisation: Rolling Sum via Cumsum Trick
     # Sum[i:i+w] = CumSum[i+w] - CumSum[i]
     ret = np.cumsum(rs_daily, dtype=float)
     ret[timeperiod:] = ret[timeperiod:] - ret[:-timeperiod]
-      
+
     # 4. Variance to Volatility
     # Divide by window size and sqrt
     vol = np.sqrt(ret / timeperiod)
 
     # 5. Padding
-    # TA-Lib convention: if window is 30, indices 0..28 are NaN. Index 29 is the first valid value.
+    # TA-Lib convention: if window is 30, indices 0..28 are NaN.
+    # Index 29 is the first valid value.
     # Usually TA-Lib returns NaN for indices 0 to timeperiod-2.
-    vol[:timeperiod-1] = np.nan
-    
+    vol[: timeperiod - 1] = np.nan
+
     return vol

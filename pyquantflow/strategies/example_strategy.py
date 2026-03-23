@@ -2,6 +2,7 @@ from backtesting import Strategy
 from backtesting.lib import crossover
 from backtesting.test import SMA
 
+
 class SmaCross(Strategy):
     n1 = 10
     n2 = 20

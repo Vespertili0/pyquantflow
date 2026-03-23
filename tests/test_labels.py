@@ -4,6 +4,7 @@ import numpy as np
 from pyquantflow.data.labels.triple_barrier import apply_triple_barrier
 from pyquantflow.data.labels.sample_weights import get_sample_weights
 
+
 class TestLabelsAndWeights(unittest.TestCase):
     def setUp(self):
         np.random.seed(42)
@@ -13,13 +14,15 @@ class TestLabelsAndWeights(unittest.TestCase):
 
     def test_triple_barrier_and_sample_weights(self):
         # 1. Test Triple Barrier
-        barrier_data = apply_triple_barrier(self.prices, self.sl_col, tp_mult=3, horizon=10)
+        barrier_data = apply_triple_barrier(
+            self.prices, self.sl_col, tp_mult=3, horizon=10
+        )
         self.assertIsInstance(barrier_data, pd.DataFrame)
-        self.assertIn('t1', barrier_data.columns)
-        self.assertIn('label', barrier_data.columns)
+        self.assertIn("t1", barrier_data.columns)
+        self.assertIn("label", barrier_data.columns)
 
         # t1 dtype should explicitly match index dtype or be a proper datetime array to avoid warnings
-        t1 = barrier_data['t1']
+        t1 = barrier_data["t1"]
         returns = self.prices.pct_change()
 
         # 2. Test Sample Weights
@@ -34,5 +37,6 @@ class TestLabelsAndWeights(unittest.TestCase):
         # The result should not be entirely NaNs
         self.assertFalse(weights.isna().all())
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     unittest.main()
