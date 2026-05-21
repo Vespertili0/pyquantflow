@@ -93,9 +93,19 @@ class AssetOrganiser:
             y=self.multi_asset_train[self.target_features],
             sample_weight=sw,
         )
+        self.transform_test_set()
+
+        return None
+
+    def transform_test_set(self) -> None:
+        """
+        Predict-transforms the test set using the fitted classifier.
+        """
         self.multi_asset_transformed_test = self.classifier.transform(
             self.multi_asset_test
         )
+
+        return None
 
     def add_model_predictions(
         self,
