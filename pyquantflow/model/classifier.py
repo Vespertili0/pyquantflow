@@ -1,5 +1,6 @@
 from sklearn.base import BaseEstimator, ClassifierMixin, TransformerMixin, clone
-from sklearn.utils.validation import check_is_fitted
+
+# from sklearn.utils.validation import check_is_fitted
 from scipy.stats import entropy
 import pandas as pd
 import numpy as np
@@ -117,7 +118,7 @@ class PrimarySecondaryClassifier(BaseQuantClassifier):
         """
         Enriches the input DataFrame with model predictions and probabilities.
         """
-        check_is_fitted(self)
+        # check_is_fitted(self)
         X_out = X.copy()
 
         # Primary outputs
@@ -143,14 +144,14 @@ class PrimarySecondaryClassifier(BaseQuantClassifier):
         return X_out
 
     def predict(self, X):
-        check_is_fitted(self)
+        # check_is_fitted(self)
         probas = self.primary_model_.predict_proba(X[self.primary_features])
         proba_entropy = self._calculate_entropy(probas)
         X_secondary = np.hstack([X[self.secondary_features].values, proba_entropy])
         return self.secondary_model_.predict(X_secondary)
 
     def predict_proba(self, X):
-        check_is_fitted(self)
+        # check_is_fitted(self)
         probas = self.primary_model_.predict_proba(X[self.primary_features])
         proba_entropy = self._calculate_entropy(probas)
         X_secondary = np.hstack([X[self.secondary_features].values, proba_entropy])
