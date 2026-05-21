@@ -44,18 +44,28 @@ class PrimarySecondaryClassifier(BaseQuantClassifier):
         primary_features,
         secondary_features,
         cv_generator=None,
+        prefitted=True,
     ):
         self.primary_model = primary_model
         self.secondary_model = secondary_model
         self.primary_features = primary_features
         self.secondary_features = secondary_features
         self.cv_generator = cv_generator
+        self.prefitted = prefitted
+
+        if self.prefitted:
+            self.primary_model_ = self.primary_model
+            self.secondary_model_ = self.secondary_model
+        else:
+            self.primary_model_ = None
+            self.secondary_model_ = None
 
     def _calculate_entropy(self, probas):
         # Calculate Shannon Entropy: H = -sum(p * log(p))
         return entropy(probas, axis=1).reshape(-1, 1)
 
     def fit(self, X, y, sample_weight=None):
+        self.prefitted = False
         self.primary_model_ = clone(self.primary_model)
         self.secondary_model_ = clone(self.secondary_model)
 
