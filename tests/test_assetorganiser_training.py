@@ -107,5 +107,67 @@ class TestDataHierarchyIntegration(unittest.TestCase):
         self.assertTrue(hasattr(final_pipe.steps[-1][1], "classes_"))
 
 
+class TestAssetOrganiserFlexibility(unittest.TestCase):
+    def setUp(self):
+        dates = pd.date_range("2020-01-01", periods=10)
+        df_a = pd.DataFrame(
+            {
+                "feature1": np.random.randn(10),
+                "target": np.random.randint(0, 2, 10),
+            },
+            index=dates,
+        )
+        df_a.index.name = "datetime"
+        self.data_map = {"AAA": df_a}
+
+        # Create multi_asset format DataFrame manually
+        self.multi_asset = df_a.copy()
+        self.multi_asset["ticker"] = "AAA"
+        self.multi_asset = self.multi_asset.reset_index().set_index(["datetime", "ticker"])
+
+    def test_both_provided_raises_value_error(self):
+        with self.assertRaises(ValueError):
+            AssetOrganiser(
+                data_map=self.data_map,
+                multi_asset=self.multi_asset,
+                cutoff_date="2020-01-08",
+                target_features=["target"],
+            )
+
+    def test_neither_provided_raises_value_error(self):
+        with self.assertRaises(ValueError):
+            AssetOrganiser(
+                cutoff_date="2020-01-08",
+                target_features=["target"],
+            )
+
+    def test_missing_cutoff_date_raises_value_error(self):
+        with self.assertRaises(ValueError):
+            AssetOrganiser(
+                data_map=self.data_map,
+                target_features=["target"],
+            )
+
+    def test_missing_target_features_raises_value_error(self):
+        with self.assertRaises(ValueError):
+            AssetOrganiser(
+                data_map=self.data_map,
+                cutoff_date="2020-01-08",
+            )
+
+    def test_multi_asset_split_immediately(self):
+        organiser = AssetOrganiser(
+            multi_asset=self.multi_asset,
+            cutoff_date="2020-01-08",
+            target_features=["target"],
+        )
+        # Should be split immediately in __init__
+        self.assertIsNotNone(organiser.multi_asset_train)
+        self.assertIsNotNone(organiser.multi_asset_test)
+        # Verify sizes (7 train, 3 test)
+        self.assertEqual(len(organiser.multi_asset_train), 7)
+        self.assertEqual(len(organiser.multi_asset_test), 3)
+
+
 if __name__ == "__main__":
     unittest.main()

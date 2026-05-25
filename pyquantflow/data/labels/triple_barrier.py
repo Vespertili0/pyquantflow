@@ -2,16 +2,19 @@ import numpy as np
 import pandas as pd
 
 
-def apply_triple_barrier(prices, sl_col, tp_mult, horizon):
+def apply_triple_barrier(
+    prices: pd.Series, sl_col: pd.Series, tp_mult: float, horizon: int
+) -> pd.DataFrame:
     """
     prices: pd.Series of prices (Index must be Datetime)
     sl_col: pd.Series of stop-loss levels (absolute price levels)
     tp_mult: float, multiplier applied to distance between price and SL to compute TP
     horizon: int, number of bars before timeout
 
-    Returns: pd.DataFrame with ['label', 't1']
+    Returns: pd.DataFrame with ['label', 't1', 'tbl_return']
              label: {0: SL hit, 1: timeout, 2: TP hit}
              t1: Datetime when the barrier was resolved
+             tbl_return: Simple return between time t and t1
     """
     n = len(prices)
     prices_arr = prices.values
@@ -64,14 +67,27 @@ def apply_triple_barrier(prices, sl_col, tp_mult, horizon):
     labels[timeout_mask] = 1
     t1_offsets[timeout_mask] = horizon
 
-    # 4. Calculate actual t1 timestamps
+    # 4. Calculate actual t1 timestamps and tbl_return
     base_idx = np.arange(n)
     final_idx = base_idx + t1_offsets
 
     t1_times = pd.Series(pd.NaT, index=prices.index, dtype=prices.index.dtype)
+    tbl_return = np.full(n, np.nan) # Array to hold returns
 
-    # Map valid integer indices back to the price index timestamps
+    # Map valid integer indices back to the price index timestamps and compute return
     valid_t1 = ~np.isnan(final_idx) & (final_idx < n)
-    t1_times.iloc[valid_t1] = prices.index[final_idx[valid_t1].astype(int)]
+    valid_int_idx = final_idx[valid_t1].astype(int)
 
-    return pd.DataFrame({"label": labels, "t1": t1_times}, index=prices.index)
+    # Assign t1 Datetime
+    t1_times.iloc[valid_t1] = prices.index[valid_int_idx]
+
+    # Calculate simple return: (P_t1 / P_t) - 1
+    # prices_arr[valid_int_idx] is the price at resolution
+    # prices_arr[valid_t1] is the price at entry
+    tbl_return[valid_t1] = (prices_arr[valid_int_idx] / prices_arr[valid_t1]) - 1.0
+
+    return pd.DataFrame({
+        "label": labels,
+        "t1": t1_times,
+        "tbl_return": tbl_return
+    }, index=prices.index)

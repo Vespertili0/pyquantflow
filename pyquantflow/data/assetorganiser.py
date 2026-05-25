@@ -17,17 +17,18 @@ class AssetOrganiser:
 
     def __init__(
         self,
-        data_map: Dict[str, pd.DataFrame],
-        cutoff_date: str,
-        target_features: List[str],
+        data_map: Optional[Dict[str, pd.DataFrame]] = None,
+        cutoff_date: Optional[str] = None,
+        target_features: Optional[List[str]] = None,
         weight_col: Optional[str] = None,
         classifier: Optional[BaseQuantClassifier] = None,
+        multi_asset: Optional[pd.DataFrame] = None,
     ) -> None:
         """
-        Initializes the AssetOrganiser.
+        Initialises the AssetOrganiser.
 
         Args:
-            data_map (Dict[str, pd.DataFrame]): Dictionary mapping tickers to
+            data_map (Optional[Dict[str, pd.DataFrame]]): Dictionary mapping tickers to
                 their respective DataFrames.
             cutoff_date (str): The date string (e.g., 'YYYY-MM-DD') separating
                 train and test sets.
@@ -36,17 +37,30 @@ class AssetOrganiser:
                 containing target weights.
             classifier (Optional[BaseQuantClassifier]): Optional model pipeline to fit
                 and transform the data.
+            multi_asset (Optional[pd.DataFrame]): Pre-constructed multi-asset DataFrame.
         """
+        if data_map is None and multi_asset is None:
+            raise ValueError("Either 'data_map' or 'multi_asset' must be provided.")
+        if data_map is not None and multi_asset is not None:
+            raise ValueError("Cannot provide both 'data_map' and 'multi_asset'.")
+        if cutoff_date is None:
+            raise ValueError("'cutoff_date' is required.")
+        if target_features is None:
+            raise ValueError("'target_features' is required.")
+
         self.classifier: Optional[BaseQuantClassifier] = classifier
-        self.data_map: Dict[str, pd.DataFrame] = data_map
+        self.data_map: Optional[Dict[str, pd.DataFrame]] = data_map
         self.cutoff_date: str = cutoff_date
         self.target_features: List[str] = target_features
         self.weight_col: Optional[str] = weight_col
 
-        self.multi_asset: Optional[pd.DataFrame] = None
+        self.multi_asset: Optional[pd.DataFrame] = multi_asset
         self.multi_asset_train: Optional[pd.DataFrame] = None
         self.multi_asset_test: Optional[pd.DataFrame] = None
         self.multi_asset_transformed_test: Optional[pd.DataFrame] = None
+
+        if self.multi_asset is not None:
+            self._split_train_test()
 
     def _split_train_test(self) -> None:
         """
@@ -62,11 +76,12 @@ class AssetOrganiser:
 
     def prepare_multi_asset_frame(self) -> None:
         """
-        converts data_map to Date-Ticker multi-index dataframe
+        Converts data_map to Date-Ticker multi-index DataFrame or splits multi_asset if already provided.
         """
-        self.multi_asset = align_and_ffill_multiasset(
-            restructure_map_2_multiasset_df(self.data_map)
-        )
+        if self.data_map is not None:
+            self.multi_asset = align_and_ffill_multiasset(
+                restructure_map_2_multiasset_df(self.data_map)
+            )
         self._split_train_test()
 
         return None
