@@ -58,7 +58,7 @@ def _rolling_ols_t_stat(prices, window):
 
 def trend_scanning(
     series: pd.Series, windows: list | int = [5, 10, 20, 40, 80, 120]
-) -> pd.Series:
+) -> pd.DataFrame:
     """
     Performs Trend Scanning by calculating the t-statistic of the slope
     over multiple look-forward windows and selecting the one with the
@@ -70,7 +70,9 @@ def trend_scanning(
                               If a single int is provided, it is treated as a list of one.
 
     Returns:
-        pd.Series: The t-statistic of the trend from the most significant window.
+        pd.DataFrame: A DataFrame containing:
+            - t_value: The t-statistic of the trend from the most significant window.
+            - t1: The end timestamp of the optimal trend window.
     """
     # 1. Prepare Data
     arr = jnp.array(series.values, dtype=jnp.float64)
@@ -110,6 +112,7 @@ def trend_scanning(
     valid_rows = ~np.isnan(abs_t).all(axis=1)
 
     final_values = np.full(n, np.nan)
+    t1_times = pd.Series(pd.NaT, index=series.index, dtype=series.index.dtype)
 
     if np.any(valid_rows):
         # Filter down to valid rows to avoid 'All-NaN slice' warning
@@ -126,4 +129,17 @@ def trend_scanning(
 
         final_values[valid_rows] = selected_values
 
-    return pd.Series(final_values, index=series.index, name="t_value")
+        # Compute t1 timestamps
+        windows_arr = np.array(windows)
+        chosen_windows = windows_arr[best_window_idx]
+
+        # End index for each valid row
+        full_row_indices = np.where(valid_rows)[0]
+        end_indices = full_row_indices + chosen_windows - 1
+
+        # Ensure end_indices are within bounds
+        end_indices = np.clip(end_indices, 0, n - 1)
+
+        t1_times.iloc[valid_rows] = series.index[end_indices]
+
+    return pd.DataFrame({"t_value": final_values, "t1": t1_times}, index=series.index)

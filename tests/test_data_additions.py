@@ -97,15 +97,15 @@ class TestDataAdditions(unittest.TestCase):
 
         result = trend_scanning(series, windows=windows)
 
-        self.assertIsInstance(result, pd.Series)
+        self.assertIsInstance(result, pd.DataFrame)
+        self.assertIn("t_value", result.columns)
+        self.assertIn("t1", result.columns)
         self.assertEqual(len(result), len(series))
-        # Should have values (ignoring initial/final NaNs depending on implementation details)
-        # Trend scanning looks forward, so the end might be NaN
-        self.assertTrue(np.isnan(result.iloc[-1]) or result.iloc[-1] == 0 or True)
+
         # Actually checking middle values
         middle = len(series) // 2
-        if not np.isnan(result.iloc[middle]):
-            self.assertIsInstance(result.iloc[middle], float)
+        if not np.isnan(result["t_value"].iloc[middle]):
+            self.assertIsInstance(result["t_value"].iloc[middle], float)
 
     def test_triple_barrier_labels(self):
         """Test Triple Barrier Method."""
@@ -205,7 +205,8 @@ class TestDataAdditions(unittest.TestCase):
         # Trend Scanning
         ts_trans = TrendScanningTransformer(windows=[10])
         res_ts = ts_trans.fit_transform(series)
-        self.assertIsInstance(res_ts, pd.Series)
+        self.assertIsInstance(res_ts, pd.DataFrame)
+        self.assertIn("t_value", res_ts.columns)
 
         # GSADF
         gsadf_trans = GSADFTransformer(min_length=20)
