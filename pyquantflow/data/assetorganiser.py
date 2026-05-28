@@ -4,6 +4,7 @@ from scipy.stats import entropy
 from sklearn.base import BaseEstimator
 from ..model.classifier import BaseQuantClassifier
 from .utils import align_and_ffill_multiasset, restructure_map_2_multiasset_df
+from .labels import get_cusum_events, calibrate_cusum_alpha
 
 
 class AssetOrganiser:
@@ -85,6 +86,144 @@ class AssetOrganiser:
         self._split_train_test()
 
         return None
+
+    def downsample_to_events(
+        self,
+        events: pd.DatetimeIndex | list | set | Dict[str, pd.DatetimeIndex],
+    ) -> None:
+        """
+        Down-samples the multi-asset DataFrame to keep only the dates matching
+        the specified events for each ticker.
+
+        Parameters
+        ----------
+        events : pd.DatetimeIndex | list | set | Dict[str, pd.DatetimeIndex]
+            A DatetimeIndex, list, or set of timestamps to down-sample to globally,
+            or a dictionary mapping ticker symbols to their specific event DatetimeIndexes.
+        """
+        if self.multi_asset is None:
+            self.prepare_multi_asset_frame()
+
+        datetimes = self.multi_asset.index.get_level_values("datetime")
+
+        if isinstance(events, (pd.DatetimeIndex, list, set)):
+            event_set = {pd.Timestamp(dt) for dt in events}
+            mask = [pd.Timestamp(dt) in event_set for dt in datetimes]
+        elif isinstance(events, dict):
+            event_sets = {
+                tk: {pd.Timestamp(dt) for dt in idx} for tk, idx in events.items()
+            }
+            tickers = self.multi_asset.index.get_level_values("ticker")
+            mask = [
+                pd.Timestamp(dt) in event_sets[tk] if tk in event_sets else False
+                for dt, tk in zip(datetimes, tickers)
+            ]
+        else:
+            raise TypeError(
+                "events must be a DatetimeIndex, list, set, or dict of ticker to DatetimeIndex."
+            )
+
+        self.multi_asset = self.multi_asset[mask]
+        self._split_train_test()
+
+        return None
+
+    def downsample_to_cusum_events(
+        self,
+        target_events_train: int | Dict[str, int],
+        price_col: str = "close",
+        span: int = 100,
+        alpha_min: float = 0.5,
+        alpha_max: float = 3.0,
+        alpha_step: float = 0.1,
+    ) -> Dict[str, float]:
+        """
+        Calibrates optimal alpha scalars on the training set (Event Budgeting)
+        and down-samples the multi-asset DataFrame using causal dynamic thresholds.
+
+        Parameters
+        ----------
+        target_events_train : int | Dict[str, int]
+            The target event count for the training fold. If int, applied to all tickers.
+            If dict, maps ticker to specific target count.
+        price_col : str, default='close'
+            The name of the price column in the DataFrame to run CUSUM on.
+        span : int, default=100
+            The EWMA span for calculating dynamic volatility.
+        alpha_min : float, default=0.5
+            Minimum alpha multiplier.
+        alpha_max : float, default=3.0
+            Maximum alpha multiplier.
+        alpha_step : float, default=0.1
+            Grid search step size.
+
+        Returns
+        -------
+        Dict[str, float]
+            A dictionary mapping ticker symbols to their calibrated optimal alpha values.
+        """
+        if self.multi_asset is None:
+            self.prepare_multi_asset_frame()
+
+        tickers = self.multi_asset.index.get_level_values("ticker").unique()
+        calibrated_alphas = {}
+
+        # 1. Calibrate on the training set strictly (Pipeline Isolation)
+        if self.multi_asset_train is None:
+            raise ValueError(
+                "Training data is not prepared. Call prepare_multi_asset_frame() first."
+            )
+
+        for tk in tickers:
+            # Check target events budget
+            if isinstance(target_events_train, dict):
+                if tk not in target_events_train:
+                    raise KeyError(f"Ticker '{tk}' not found in target_events_train.")
+                target = target_events_train[tk]
+            else:
+                target = int(target_events_train)
+
+            # Extract training prices for ticker
+            try:
+                ticker_train_prices = self.multi_asset_train.xs(tk, level="ticker")[
+                    price_col
+                ]
+            except KeyError:
+                # If ticker has no data in training fold, use default alpha
+                calibrated_alphas[tk] = alpha_min
+                continue
+
+            # Run calibration strictly on training set prices
+            alpha = calibrate_cusum_alpha(
+                prices=ticker_train_prices,
+                target_events=target,
+                alpha_min=alpha_min,
+                alpha_max=alpha_max,
+                alpha_step=alpha_step,
+                span=span,
+            )
+            calibrated_alphas[tk] = alpha
+
+        # 2. Run CUSUM filter with dynamic, volatility-adjusted threshold
+        # using the calibrated/frozen alphas across the ENTIRE dataset (no leakage)
+        events_map = {}
+        for tk in tickers:
+            alpha = calibrated_alphas[tk]
+            prices_all = self.multi_asset.xs(tk, level="ticker")[price_col]
+
+            # Calculate causal EWMA volatility on entire price series
+            returns_all = prices_all.pct_change()
+            vol_all = returns_all.ewm(span=span).std()
+            threshold_all = alpha * vol_all
+
+            # Filter events
+            events = get_cusum_events(prices_all, threshold_all)
+            events_map[tk] = events
+
+        # 3. Down-sample the organiser's multi-asset DataFrame using these events
+        self.downsample_to_events(events_map)
+
+        return calibrated_alphas
 
     def fit_quant_classifier(self) -> None:
         """
