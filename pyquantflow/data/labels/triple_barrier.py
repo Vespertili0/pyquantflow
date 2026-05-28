@@ -72,7 +72,7 @@ def apply_triple_barrier(
     final_idx = base_idx + t1_offsets
 
     t1_times = pd.Series(pd.NaT, index=prices.index, dtype=prices.index.dtype)
-    tbl_return = np.full(n, np.nan) # Array to hold returns
+    tbl_return = np.full(n, np.nan)  # Array to hold returns
 
     # Map valid integer indices back to the price index timestamps and compute return
     valid_t1 = ~np.isnan(final_idx) & (final_idx < n)
@@ -86,8 +86,6 @@ def apply_triple_barrier(
     # prices_arr[valid_t1] is the price at entry
     tbl_return[valid_t1] = (prices_arr[valid_int_idx] / prices_arr[valid_t1]) - 1.0
 
-    return pd.DataFrame({
-        "label": labels,
-        "t1": t1_times,
-        "tbl_return": tbl_return
-    }, index=prices.index)
+    return pd.DataFrame(
+        {"label": labels, "t1": t1_times, "tbl_return": tbl_return}, index=prices.index
+    )

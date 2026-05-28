@@ -123,7 +123,9 @@ class TestAssetOrganiserFlexibility(unittest.TestCase):
         # Create multi_asset format DataFrame manually
         self.multi_asset = df_a.copy()
         self.multi_asset["ticker"] = "AAA"
-        self.multi_asset = self.multi_asset.reset_index().set_index(["datetime", "ticker"])
+        self.multi_asset = self.multi_asset.reset_index().set_index(
+            ["datetime", "ticker"]
+        )
 
     def test_both_provided_raises_value_error(self):
         with self.assertRaises(ValueError):
