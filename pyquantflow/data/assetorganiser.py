@@ -4,7 +4,7 @@ from scipy.stats import entropy
 from sklearn.base import BaseEstimator
 from ..model.classifier import BaseQuantClassifier
 from .utils import align_and_ffill_multiasset, restructure_map_2_multiasset_df
-from .labels import get_cusum_events, calibrate_cusum_alpha
+from .labels import get_cusum_events, calibrate_cusum_alpha, BaseLabelFactory
 
 
 class AssetOrganiser:
@@ -24,6 +24,7 @@ class AssetOrganiser:
         weight_col: Optional[str] = None,
         classifier: Optional[BaseQuantClassifier] = None,
         multi_asset: Optional[pd.DataFrame] = None,
+        label_factory: Optional[BaseLabelFactory] = None,
     ) -> None:
         """
         Initialises the AssetOrganiser.
@@ -39,6 +40,7 @@ class AssetOrganiser:
             classifier (Optional[BaseQuantClassifier]): Optional model pipeline to fit
                 and transform the data.
             multi_asset (Optional[pd.DataFrame]): Pre-constructed multi-asset DataFrame.
+            label_factory (Optional[BaseLabelFactory]): Factory for generating labels and weights.
         """
         if data_map is None and multi_asset is None:
             raise ValueError("Either 'data_map' or 'multi_asset' must be provided.")
@@ -54,6 +56,7 @@ class AssetOrganiser:
         self.cutoff_date: str = cutoff_date
         self.target_features: List[str] = target_features
         self.weight_col: Optional[str] = weight_col
+        self.label_factory: Optional[BaseLabelFactory] = label_factory
 
         self.multi_asset: Optional[pd.DataFrame] = multi_asset
         self.multi_asset_train: Optional[pd.DataFrame] = None
@@ -224,6 +227,122 @@ class AssetOrganiser:
         self.downsample_to_events(events_map)
 
         return calibrated_alphas
+
+    def apply_continuous_labels(self, price_col: str = "close") -> None:
+        """
+        Applies the label_factory strictly on the continuous, un-sampled price series.
+        Injects the resulting 'label' and 't1' columns into the multi_asset DataFrame.
+        """
+        if self.multi_asset is None:
+            self.prepare_multi_asset_frame()
+
+        if self.label_factory is None:
+            raise ValueError("No label_factory provided.")
+
+        tickers = self.multi_asset.index.get_level_values("ticker").unique()
+        all_labels = []
+
+        for tk in tickers:
+            ticker_df = self.multi_asset.xs(tk, level="ticker")
+            labels_df = self.label_factory.generate_labels(
+                ticker_df, price_col=price_col
+            )
+            # Add ticker level back to index for concatenation
+            labels_df["ticker"] = tk
+            labels_df = labels_df.reset_index().set_index(["datetime", "ticker"])
+            all_labels.append(labels_df)
+
+        labels_concat = pd.concat(all_labels)
+
+        # Drop existing label/t1 columns if they exist to prevent duplicates
+        drop_cols = [c for c in labels_concat.columns if c in self.multi_asset.columns]
+        if drop_cols:
+            self.multi_asset = self.multi_asset.drop(columns=drop_cols)
+
+        # Merge labels back into multi_asset
+        self.multi_asset = self.multi_asset.join(labels_concat, how="left")
+        self._split_train_test()
+
+    def apply_sample_weights(self, price_col: str = "close") -> None:
+        """
+        Calculates sample weights strictly on the currently filtered multi_asset DataFrame.
+        This must be run AFTER down-sampling (e.g., CUSUM) to correctly calculate concurrency.
+        """
+        if self.multi_asset is None:
+            raise ValueError("Multi-asset DataFrame not initialized.")
+
+        if self.label_factory is None:
+            raise ValueError("No label_factory provided.")
+
+        if "t1" not in self.multi_asset.columns:
+            raise KeyError(
+                "The column 't1' is missing. Please run apply_continuous_labels() first."
+            )
+
+        tickers = self.multi_asset.index.get_level_values("ticker").unique()
+        all_weights = []
+
+        for tk in tickers:
+            ticker_df = self.multi_asset.xs(tk, level="ticker")
+            t1 = ticker_df["t1"]
+            returns = ticker_df[price_col].pct_change()
+
+            weights = self.label_factory.generate_weights(t1, returns)
+            weights.name = self.weight_col if self.weight_col else "weight"
+
+            weights_df = weights.to_frame()
+            weights_df["ticker"] = tk
+            weights_df = weights_df.reset_index().set_index(["datetime", "ticker"])
+            all_weights.append(weights_df)
+
+        weights_concat = pd.concat(all_weights)
+
+        col_name = self.weight_col if self.weight_col else "weight"
+        if col_name in self.multi_asset.columns:
+            self.multi_asset = self.multi_asset.drop(columns=[col_name])
+
+        self.multi_asset = self.multi_asset.join(weights_concat, how="left")
+
+        # If no explicit weight_col was passed during __init__, update it so the pipeline knows
+        if not self.weight_col:
+            self.weight_col = col_name
+
+        self._split_train_test()
+
+    def build_learning_pipeline(
+        self,
+        target_events_train: int | Dict[str, int],
+        price_col: str = "close",
+        span: int = 100,
+        alpha_min: float = 0.5,
+        alpha_max: float = 3.0,
+        alpha_step: float = 0.1,
+    ) -> Dict[str, float]:
+        """
+        Orchestrates the preparation pipeline to strictly prevent sequential data hazards:
+        1. Computes continuous labels (avoiding look-ahead scaling errors).
+        2. Down-samples the dataset based on dynamic CUSUM events.
+        3. Calculates sample weights based on the surviving active bets (concurrency).
+
+        Returns
+        -------
+        Dict[str, float]
+            Calibrated alpha thresholds from the CUSUM down-sampling phase.
+        """
+        self.apply_continuous_labels(price_col=price_col)
+
+        alphas = self.downsample_to_cusum_events(
+            target_events_train=target_events_train,
+            price_col=price_col,
+            span=span,
+            alpha_min=alpha_min,
+            alpha_max=alpha_max,
+            alpha_step=alpha_step,
+        )
+
+        self.apply_sample_weights(price_col=price_col)
+
+        return alphas
 
     def fit_quant_classifier(self) -> None:
         """

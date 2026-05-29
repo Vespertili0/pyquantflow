@@ -85,24 +85,39 @@ data_indicator = data.pipe(
 Train ML-models following concepts introduced by *Marcos Lopez de Prado's* book "Advances in Financial Machine Learning" (2018), utilising target labelling (e.g. trend-scan, triple-barrier), feature engineering (e.g. fractional differentiation), and purged cross-validation. Using [`optuna`](https://github.com/optuna/optuna), hyperparameters of the ML-models are optimised and the final model is logged to [`mlflow`](https://github.com/mlflow/mlflow) via a modern MLOps workflow.
 
 ```python
-from pyquantflow.data.labels.triple_barrier import apply_triple_barrier
-
-from pyquantflow.model.cross_validation import PurgedKFoldCV
+from pyquantflow.data.assetorganiser import AssetOrganiser
+from pyquantflow.data.labels.factory import TripleBarrierLabelFactory
 from pyquantflow.model.training import HyperparameterOptimiser
 from pyquantflow.model.manager import ClassifierEngine
 
-# 1. Apply Triple-Barrier Labelling
-# Defines horizontal (Profit/Loss) and vertical (Time) barriers
-data["label"] = apply_triple_barrier(
-    data.Close,
-    sl_col=data.Close * 0.98,  # 2% Stop Loss
-    tp_mult=3,  # 3x Risk/Reward
-    horizon=10,  # 10-bar limit
+# 1. Define the Labelling Strategy
+label_factory = TripleBarrierLabelFactory(pt_mult=3.0, sl_mult=2.0, horizon=10)
+
+# 2. Initialise the Asset Organiser
+# We assume data_map is a dict of ticker: dataframe
+organiser = AssetOrganiser(
+    data_map=data_map,
+    cutoff_date="2023-01-01",
+    target_features=["label"],
+    label_factory=label_factory,
 )
 
-# 2. MLOps Workflow
-# Integrate PurgedKFoldCV to handle serial correlation in time-series data
-# ce.run_pipeline(..., cv=PurgedKFoldCV())
+# 3. Build the Learning Pipeline
+# This strictly orchestrates:
+#   a) Continuous Label Generation
+#   b) Dynamic CUSUM Down-sampling
+#   c) Sample Weighting via Concurrency
+organiser.prepare_multi_asset_frame()
+calibrated_alphas = organiser.build_learning_pipeline(
+    target_events_train=1000, price_col="Close"
+)
+
+# 4. Extract Payload for MLOps Engine
+payload = organiser.get_classifierengine_payload(features=["Close", "EMA_120"])
+
+# 5. Run MLOps Workflow
+engine = ClassifierEngine(optimiser=HyperparameterOptimiser(study_name="example"))
+# engine.run_pipeline(**payload, ...)
 ```
 
 ### 4. Run Statistical-Backtesting
