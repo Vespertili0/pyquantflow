@@ -261,6 +261,9 @@ class AssetOrganiser:
 
         # Merge labels back into multi_asset
         self.multi_asset = self.multi_asset.join(labels_concat, how="left")
+
+        # Drop rows with NaN/NaT values in the label-related columns
+        self.multi_asset = self.multi_asset.dropna(subset=labels_concat.columns)
         self._split_train_test()
 
     def apply_sample_weights(self, price_col: str = "Close") -> None:

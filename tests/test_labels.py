@@ -61,6 +61,48 @@ class TestLabelsAndWeights(unittest.TestCase):
         valid_custom = labels_custom["label"].dropna()
         self.assertTrue(set(valid_custom.unique()).issubset({0.0, 1.0}))
 
+    def test_asset_organiser_label_dropping(self):
+        # Verify that AssetOrganiser drops rows with NaN/NaT values in label-related columns
+        from pyquantflow.data.assetorganiser import AssetOrganiser
+        from pyquantflow.data.labels import TripleBarrierLabelFactory
+
+        # Create mock data map with 100 days of price data
+        df = pd.DataFrame(
+            {
+                "Close": self.prices,
+                "feature1": np.random.randn(100),
+                "target": np.random.randint(0, 2, 100),
+            },
+            index=self.dates,
+        )
+        df.index.name = "datetime"
+        data_map = {"AAA": df}
+
+        factory = TripleBarrierLabelFactory(pt_mult=1.0, sl_mult=1.0, horizon=5)
+        organiser = AssetOrganiser(
+            data_map=data_map,
+            cutoff_date="2021-06-01",
+            target_features=["target"],
+            label_factory=factory,
+        )
+        organiser.prepare_multi_asset_frame()
+
+        # Before applying labels, multi_asset has 100 rows
+        initial_len = len(organiser.multi_asset)
+        self.assertEqual(initial_len, 100)
+
+        # Apply continuous labels (which should drop rows with NaN values in the label-related columns)
+        organiser.apply_continuous_labels(price_col="Close")
+
+        # The length of multi_asset should be less than 100 because the most recent datapoints
+        # (near the end of the series within the horizon) will have NaN values and thus be dropped
+        new_len = len(organiser.multi_asset)
+        self.assertTrue(new_len < 100)
+
+        # Ensure no NaN values exist in the label-related columns
+        self.assertFalse(organiser.multi_asset["label"].isna().any())
+        self.assertFalse(organiser.multi_asset["t1"].isna().any())
+
 
 if __name__ == "__main__":
     unittest.main()
