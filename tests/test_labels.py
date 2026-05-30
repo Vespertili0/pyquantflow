@@ -103,6 +103,45 @@ class TestLabelsAndWeights(unittest.TestCase):
         self.assertFalse(organiser.multi_asset["label"].isna().any())
         self.assertFalse(organiser.multi_asset["t1"].isna().any())
 
+    def test_asset_organiser_weight_dropping(self):
+        # Verify that AssetOrganiser drops rows with NaN values in weights column
+        from pyquantflow.data.assetorganiser import AssetOrganiser
+        from pyquantflow.data.labels import TripleBarrierLabelFactory
+
+        # Create mock data map with 100 days of price data
+        df = pd.DataFrame(
+            {
+                "Close": self.prices,
+                "feature1": np.random.randn(100),
+                "target": np.random.randint(0, 2, 100),
+            },
+            index=self.dates,
+        )
+        df.index.name = "datetime"
+        data_map = {"AAA": df}
+
+        factory = TripleBarrierLabelFactory(pt_mult=1.0, sl_mult=1.0, horizon=5)
+        organiser = AssetOrganiser(
+            data_map=data_map,
+            cutoff_date="2021-06-01",
+            target_features=["target"],
+            label_factory=factory,
+            weight_col="my_weight",
+        )
+        organiser.prepare_multi_asset_frame()
+        organiser.apply_continuous_labels(price_col="Close")
+
+        # Now apply sample weights
+        # Note: the first element of the returns will be NaN (due to pct_change)
+        # resulting in a NaN weight. This first row should be dropped.
+        len_before_weights = len(organiser.multi_asset)
+        organiser.apply_sample_weights(price_col="Close")
+        len_after_weights = len(organiser.multi_asset)
+
+        # Ensure that the row with NaN weight was dropped
+        self.assertEqual(len_after_weights, len_before_weights - 1)
+        self.assertFalse(organiser.multi_asset["my_weight"].isna().any())
+
 
 if __name__ == "__main__":
     unittest.main()

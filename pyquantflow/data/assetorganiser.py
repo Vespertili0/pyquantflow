@@ -306,6 +306,9 @@ class AssetOrganiser:
 
         self.multi_asset = self.multi_asset.join(weights_concat, how="left")
 
+        # Drop rows with NaN values in the weights column
+        self.multi_asset = self.multi_asset.dropna(subset=[col_name])
+
         # If no explicit weight_col was passed during __init__, update it so the pipeline knows
         if not self.weight_col:
             self.weight_col = col_name
