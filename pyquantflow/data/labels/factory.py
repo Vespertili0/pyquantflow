@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 from abc import ABC, abstractmethod
 from typing import List, Union
 
@@ -14,7 +15,9 @@ class BaseLabelFactory(ABC):
     """
 
     @abstractmethod
-    def generate_labels(self, ticker_df: pd.DataFrame, price_col: str = "Close") -> pd.DataFrame:
+    def generate_labels(
+        self, ticker_df: pd.DataFrame, price_col: str = "Close"
+    ) -> pd.DataFrame:
         """
         Generates labels and resolution timestamps (t1) from a ticker's DataFrame.
 
@@ -82,18 +85,17 @@ class TripleBarrierLabelFactory(BaseLabelFactory):
         self.horizon = horizon
         self.vol_span = vol_span
 
-    def generate_labels(self, ticker_df: pd.DataFrame, price_col: str = "Close") -> pd.DataFrame:
+    def generate_labels(
+        self, ticker_df: pd.DataFrame, price_col: str = "Close"
+    ) -> pd.DataFrame:
         prices = ticker_df[price_col]
-        
+
         # Determine Stop-Loss dynamically based on volatility
         vol = prices.pct_change().ewm(span=self.vol_span).std()
         sl_col = prices - prices * vol * self.sl_mult
-        
+
         labels_df = apply_triple_barrier(
-            prices=prices,
-            sl_col=sl_col,
-            tp_mult=self.pt_mult,
-            horizon=self.horizon
+            prices=prices, sl_col=sl_col, tp_mult=self.pt_mult, horizon=self.horizon
         )
         return labels_df
 
@@ -106,29 +108,41 @@ class TrendScanningLabelFactory(BaseLabelFactory):
     Concrete factory implementing the Trend Scanning labelling method.
     """
 
-    def __init__(self, windows: Union[List[int], int] = [5, 10, 20, 40, 80, 120]):
+    def __init__(
+        self,
+        windows: Union[List[int], int] = [5, 10, 20, 40, 80, 120],
+        bins: Union[List[float], np.ndarray] = [-10.0, 12.0],
+    ):
         """
         Initialises the TrendScanningLabelFactory.
 
         Args:
             windows (list | int): Look-forward window sizes to scan.
+            bins (list | np.ndarray): Bin boundaries for np.digitize to categorise trends.
         """
         if isinstance(windows, int):
             self.windows = [windows]
         else:
             self.windows = windows
+        self.bins = bins
 
-    def generate_labels(self, ticker_df: pd.DataFrame, price_col: str = "Close") -> pd.DataFrame:
+    def generate_labels(
+        self, ticker_df: pd.DataFrame, price_col: str = "Close"
+    ) -> pd.DataFrame:
         prices = ticker_df[price_col]
-        
-        labels_df = trend_scanning(
-            series=prices,
-            windows=self.windows
-        )
-        # Rename 't_value' to 'label' for standardisation
-        if 't_value' in labels_df.columns:
-            labels_df = labels_df.rename(columns={'t_value': 'label'})
-            
+
+        labels_df = trend_scanning(series=prices, windows=self.windows)
+
+        # Categorise 't_value' into 'label' for standardisation while retaining 't_value'
+        if "t_value" in labels_df.columns:
+            t_vals = labels_df["t_value"]
+            valid = t_vals.notna()
+            labels_df["label"] = np.nan
+            if valid.any():
+                labels_df.loc[valid, "label"] = np.digitize(
+                    t_vals.loc[valid].values, self.bins
+                ).astype(float)
+
         return labels_df
 
     def generate_weights(self, t1: pd.Series, returns: pd.Series) -> pd.Series:

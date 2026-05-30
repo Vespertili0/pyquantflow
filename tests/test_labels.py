@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 from pyquantflow.data.labels.triple_barrier import apply_triple_barrier
 from pyquantflow.data.labels.sample_weights import get_sample_weights
+from pyquantflow.data.labels import TrendScanningLabelFactory
 
 
 class TestLabelsAndWeights(unittest.TestCase):
@@ -36,6 +37,29 @@ class TestLabelsAndWeights(unittest.TestCase):
 
         # The result should not be entirely NaNs
         self.assertFalse(weights.isna().all())
+
+    def test_trend_scanning_label_factory(self):
+        # Create a mock ticker DataFrame
+        ticker_df = pd.DataFrame({"Close": self.prices}, index=self.dates)
+
+        # 1. Test with default bins [-10, 12]
+        factory = TrendScanningLabelFactory(windows=[5, 10], bins=[-10.0, 12.0])
+        labels_df = factory.generate_labels(ticker_df, price_col="Close")
+
+        self.assertIn("label", labels_df.columns)
+        self.assertIn("t_value", labels_df.columns)
+        self.assertIn("t1", labels_df.columns)
+
+        # Verify that classes are generated and valid values belong to {0.0, 1.0, 2.0}
+        valid_labels = labels_df["label"].dropna()
+        self.assertTrue(len(valid_labels) > 0)
+        self.assertTrue(set(valid_labels.unique()).issubset({0.0, 1.0, 2.0}))
+
+        # 2. Test with custom bins (e.g. [0.0] for binary mapping if user needs it, or custom ternary)
+        factory_custom = TrendScanningLabelFactory(windows=[5], bins=[0.0])
+        labels_custom = factory_custom.generate_labels(ticker_df, price_col="Close")
+        valid_custom = labels_custom["label"].dropna()
+        self.assertTrue(set(valid_custom.unique()).issubset({0.0, 1.0}))
 
 
 if __name__ == "__main__":

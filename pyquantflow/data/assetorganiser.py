@@ -228,7 +228,7 @@ class AssetOrganiser:
 
         return calibrated_alphas
 
-    def apply_continuous_labels(self, price_col: str = "close") -> None:
+    def apply_continuous_labels(self, price_col: str = "Close") -> None:
         """
         Applies the label_factory strictly on the continuous, un-sampled price series.
         Injects the resulting 'label' and 't1' columns into the multi_asset DataFrame.
@@ -263,7 +263,7 @@ class AssetOrganiser:
         self.multi_asset = self.multi_asset.join(labels_concat, how="left")
         self._split_train_test()
 
-    def apply_sample_weights(self, price_col: str = "close") -> None:
+    def apply_sample_weights(self, price_col: str = "Close") -> None:
         """
         Calculates sample weights strictly on the currently filtered multi_asset DataFrame.
         This must be run AFTER down-sampling (e.g., CUSUM) to correctly calculate concurrency.
@@ -312,7 +312,7 @@ class AssetOrganiser:
     def build_learning_pipeline(
         self,
         target_events_train: int | Dict[str, int],
-        price_col: str = "close",
+        price_col: str = "Close",
         span: int = 100,
         alpha_min: float = 0.5,
         alpha_max: float = 3.0,
