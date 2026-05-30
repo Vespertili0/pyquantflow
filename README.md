@@ -117,7 +117,7 @@ payload = organiser.get_classifierengine_payload(features=["Close", "EMA_120"])
 
 # 5. Run MLOps Workflow
 engine = ClassifierEngine(optimiser=HyperparameterOptimiser(study_name="example"))
-# engine.run_pipeline(**payload, ...)
+# engine.run_pipeline(**payload, balance_classes=True, ...)
 ```
 
 ### 4. Run Statistical-Backtesting

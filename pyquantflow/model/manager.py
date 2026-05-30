@@ -177,6 +177,7 @@ class ClassifierEngine(BaseModelEngine):
         experiment_name: Optional[str] = None,
         run_name: Optional[str] = None,
         tags: Optional[Dict[str, str]] = None,
+        balance_classes: bool = True,
     ) -> None:
         """
         Executes the full pipeline.
@@ -195,6 +196,7 @@ class ClassifierEngine(BaseModelEngine):
             n_trials=n_trials,
             timeout=timeout,
             metric_kwargs=metric_kwargs,
+            balance_classes=balance_classes,
         )
 
         best_params = study.best_params
@@ -214,6 +216,14 @@ class ClassifierEngine(BaseModelEngine):
         if weight_col and weight_col in X_train.columns:
             # Extract sample weight and find the target estimator step in the pipeline
             sample_weight = X_train[weight_col].values
+
+            if balance_classes:
+                from sklearn.utils.class_weight import compute_sample_weight
+
+                y_array = np.ravel(y_train)
+                class_weights = compute_sample_weight("balanced", y_array)
+                sample_weight = sample_weight * class_weights
+
             if hasattr(self.best_estimator_, "steps"):
                 final_step_name = self.best_estimator_.steps[-1][0]
                 fit_params[f"{final_step_name}__sample_weight"] = sample_weight

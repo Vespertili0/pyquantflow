@@ -92,6 +92,7 @@ class TestDataHierarchyIntegration(unittest.TestCase):
             model_factory=mock_factory,
             cv=cv,
             n_trials=2,  # Very small optuna run
+            balance_classes=True,
         )
 
         # 4. Verify that the final retrained model received the weights
