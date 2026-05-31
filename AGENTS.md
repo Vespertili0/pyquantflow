@@ -42,6 +42,7 @@ A GitHub Actions workflow is set up in `.github/workflows/tests.yml`. It runs `u
 - Unified DataFrame dataflow architecture is implemented: `AssetOrganiser` feeds raw DataFrames and column references (like `weight_col`, `t1_col`) to `ClassifierEngine` and `HyperparameterOptimiser`, preventing indexing errors and allowing dynamic extraction of sample weights inside CV folds.
 - `StrategyLab` portfolio journey simulations and cross-validation pipelines (WalkForward, CPCV) are operational.
 - A Streamlit dashboard is available to visualise ingested data and backtest outcomes.
+- CUSUM input processing is decoupled from the `Close` price column, allowing the caller to supply any pre-processed column for CUSUM filtering, with optional support for external volatility columns (e.g., Rogers-Satchell).
 
 ## Reminders
 - [ ] Run tests via `python -m unittest discover tests` and ensure `requirements.txt` dependencies are installed before testing.

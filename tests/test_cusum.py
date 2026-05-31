@@ -16,9 +16,10 @@ class TestCUSUMFilter(unittest.TestCase):
         )
 
     def test_cusum_constant_threshold(self):
-        # Apply CUSUM with constant threshold
+        # Apply CUSUM with constant threshold on prepared returns
+        returns = self.prices.pct_change()
         threshold = 0.02
-        events = get_cusum_events(self.prices, threshold=threshold)
+        events = get_cusum_events(returns, threshold=threshold)
 
         self.assertIsInstance(events, pd.DatetimeIndex)
         # Since it is a random walk, we expect some events to trigger
@@ -29,14 +30,14 @@ class TestCUSUMFilter(unittest.TestCase):
 
         # Confirm all returned events exist in the original index
         for event in events:
-            self.assertIn(event, self.prices.index)
+            self.assertIn(event, returns.index)
 
     def test_cusum_dynamic_threshold(self):
         # Create a dynamic threshold Series (e.g. rolling volatility)
         returns = self.prices.pct_change()
         dynamic_threshold = returns.ewm(span=20).std() * 2.0
 
-        events = get_cusum_events(self.prices, threshold=dynamic_threshold)
+        events = get_cusum_events(returns, threshold=dynamic_threshold)
         self.assertIsInstance(events, pd.DatetimeIndex)
         self.assertTrue(len(events) > 0)
 
@@ -49,8 +50,9 @@ class TestCUSUMFilter(unittest.TestCase):
     def test_calibrate_cusum_alpha(self):
         # Target 5 events
         target = 5
+        returns = self.prices.pct_change()
         alpha = calibrate_cusum_alpha(
-            prices=self.prices,
+            series=returns,
             target_events=target,
             alpha_min=0.5,
             alpha_max=3.0,
@@ -62,12 +64,11 @@ class TestCUSUMFilter(unittest.TestCase):
         self.assertTrue(0.5 <= alpha <= 3.0)
 
         # Run CUSUM with the calibrated alpha to check if event count is near target
-        returns = self.prices.pct_change()
         vol = returns.ewm(span=20).std()
         threshold = alpha * vol
-        events = get_cusum_events(self.prices, threshold)
+        events = get_cusum_events(returns, threshold)
 
-        # Difference should be minimized
+        # Difference should be minimised
         self.assertTrue(abs(len(events) - target) <= 5)
 
 
@@ -149,6 +150,10 @@ class TestAssetOrganiserDownsampling(unittest.TestCase):
         self.assertIn((pd.Timestamp("2020-01-05"), "BBB"), idx)
 
     def test_downsample_to_cusum_events(self):
+        # Pre-calculate returns column beforehand
+        for tk, df in self.data_map.items():
+            df["returns"] = df["close"].pct_change()
+
         # Setup organiser with cutoff
         organiser = AssetOrganiser(
             data_map=self.data_map,
@@ -160,7 +165,7 @@ class TestAssetOrganiserDownsampling(unittest.TestCase):
         # 60 train days, 40 test days. Target 5 events on train set.
         calibrated_alphas = organiser.downsample_to_cusum_events(
             target_events_train=5,
-            price_col="close",
+            filter_col="returns",
             span=20,
         )
 
@@ -178,6 +183,34 @@ class TestAssetOrganiserDownsampling(unittest.TestCase):
         # Confirm splits exist
         self.assertIsNotNone(organiser.multi_asset_train)
         self.assertIsNotNone(organiser.multi_asset_test)
+
+    def test_downsample_to_cusum_events_external_vol(self):
+        # Pre-calculate returns and simulated volatility beforehand
+        for tk, df in self.data_map.items():
+            df["returns"] = df["close"].pct_change()
+            df["rs_vol"] = df["returns"].ewm(span=20).std()
+
+        # Setup organiser with cutoff
+        organiser = AssetOrganiser(
+            data_map=self.data_map,
+            cutoff_date="2020-03-01",
+            target_features=["target"],
+        )
+        organiser.prepare_multi_asset_frame()
+
+        # Call with both filter_col and vol_col
+        calibrated_alphas = organiser.downsample_to_cusum_events(
+            target_events_train=5,
+            filter_col="returns",
+            vol_col="rs_vol",
+            span=20,
+        )
+
+        self.assertIsInstance(calibrated_alphas, dict)
+        self.assertIn("AAA", calibrated_alphas)
+        self.assertIn("BBB", calibrated_alphas)
+        self.assertIsInstance(calibrated_alphas["AAA"], float)
+        self.assertTrue(len(organiser.multi_asset) < 200)
 
     def test_invalid_type_raises_error(self):
         organiser = AssetOrganiser(

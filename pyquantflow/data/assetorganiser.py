@@ -134,7 +134,8 @@ class AssetOrganiser:
     def downsample_to_cusum_events(
         self,
         target_events_train: int | Dict[str, int],
-        price_col: str = "close",
+        filter_col: str,
+        vol_col: Optional[str] = None,
         span: int = 100,
         alpha_min: float = 0.5,
         alpha_max: float = 3.0,
@@ -149,8 +150,11 @@ class AssetOrganiser:
         target_events_train : int | Dict[str, int]
             The target event count for the training fold. If int, applied to all tickers.
             If dict, maps ticker to specific target count.
-        price_col : str, default='close'
-            The name of the price column in the DataFrame to run CUSUM on.
+        filter_col : str
+            The name of the column in the DataFrame to run CUSUM on.
+        vol_col : Optional[str], default=None
+            Optional pre-calculated volatility column name. If None, dynamic EWMA
+            volatility is calculated on filter_col.
         span : int, default=100
             The EWMA span for calculating dynamic volatility.
         alpha_min : float, default=0.5
@@ -186,20 +190,30 @@ class AssetOrganiser:
             else:
                 target = int(target_events_train)
 
-            # Extract training prices for ticker
+            # Extract training series/volatility for ticker
             try:
-                ticker_train_prices = self.multi_asset_train.xs(tk, level="ticker")[
-                    price_col
+                ticker_train_series = self.multi_asset_train.xs(tk, level="ticker")[
+                    filter_col
                 ]
             except KeyError:
                 # If ticker has no data in training fold, use default alpha
                 calibrated_alphas[tk] = alpha_min
                 continue
 
-            # Run calibration strictly on training set prices
+            ticker_train_vol = None
+            if vol_col:
+                try:
+                    ticker_train_vol = self.multi_asset_train.xs(tk, level="ticker")[
+                        vol_col
+                    ]
+                except KeyError:
+                    pass
+
+            # Run calibration strictly on training set series
             alpha = calibrate_cusum_alpha(
-                prices=ticker_train_prices,
+                series=ticker_train_series,
                 target_events=target,
+                volatility=ticker_train_vol,
                 alpha_min=alpha_min,
                 alpha_max=alpha_max,
                 alpha_step=alpha_step,
@@ -212,15 +226,18 @@ class AssetOrganiser:
         events_map = {}
         for tk in tickers:
             alpha = calibrated_alphas[tk]
-            prices_all = self.multi_asset.xs(tk, level="ticker")[price_col]
+            series_all = self.multi_asset.xs(tk, level="ticker")[filter_col]
 
-            # Calculate causal EWMA volatility on entire price series
-            returns_all = prices_all.pct_change()
-            vol_all = returns_all.ewm(span=span).std()
+            # Use pre-calculated volatility if specified
+            if vol_col:
+                vol_all = self.multi_asset.xs(tk, level="ticker")[vol_col]
+            else:
+                vol_all = series_all.ewm(span=span).std()
+
             threshold_all = alpha * vol_all
 
             # Filter events
-            events = get_cusum_events(prices_all, threshold_all)
+            events = get_cusum_events(series_all, threshold_all)
             events_map[tk] = events
 
         # 3. Down-sample the organiser's multi-asset DataFrame using these events
@@ -318,7 +335,9 @@ class AssetOrganiser:
     def build_learning_pipeline(
         self,
         target_events_train: int | Dict[str, int],
+        filter_col: str,
         price_col: str = "Close",
+        vol_col: Optional[str] = None,
         span: int = 100,
         alpha_min: float = 0.5,
         alpha_max: float = 3.0,
@@ -339,7 +358,8 @@ class AssetOrganiser:
 
         alphas = self.downsample_to_cusum_events(
             target_events_train=target_events_train,
-            price_col=price_col,
+            filter_col=filter_col,
+            vol_col=vol_col,
             span=span,
             alpha_min=alpha_min,
             alpha_max=alpha_max,
