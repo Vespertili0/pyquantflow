@@ -94,7 +94,7 @@ class HyperparameterOptimiser:
 
                     y_array = np.ravel(y_train_fold)
                     class_weights = compute_sample_weight("balanced", y_array)
-                    
+
                     if sample_weight is not None:
                         sample_weight = sample_weight * class_weights
                     else:
