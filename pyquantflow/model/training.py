@@ -94,6 +94,9 @@ class HyperparameterOptimiser:
                         class_weights = compute_sample_weight("balanced", y_array)
                         sample_weight = sample_weight * class_weights
 
+                    if sample_weight.sum() > 0:
+                        sample_weight = sample_weight / sample_weight.mean()
+
                     # Extract final step name if pipeline, else just use sample_weight
                     if hasattr(model, "steps"):
                         final_step_name = model.steps[-1][0]
