@@ -84,16 +84,23 @@ class HyperparameterOptimiser:
                 y_val_fold = y.iloc[val_idx] if hasattr(y, "iloc") else y[val_idx]
 
                 fit_params = {}
+                sample_weight = None
+
                 if weight_col and weight_col in X_train_fold.columns:
-                    sample_weight = X_train_fold[weight_col].values
+                    sample_weight = X_train_fold[weight_col].values.copy()
 
-                    if balance_classes:
-                        from sklearn.utils.class_weight import compute_sample_weight
+                if balance_classes:
+                    from sklearn.utils.class_weight import compute_sample_weight
 
-                        y_array = np.ravel(y_train_fold)
-                        class_weights = compute_sample_weight("balanced", y_array)
+                    y_array = np.ravel(y_train_fold)
+                    class_weights = compute_sample_weight("balanced", y_array)
+                    
+                    if sample_weight is not None:
                         sample_weight = sample_weight * class_weights
+                    else:
+                        sample_weight = class_weights
 
+                if sample_weight is not None:
                     if sample_weight.sum() > 0:
                         sample_weight = sample_weight / sample_weight.mean()
 

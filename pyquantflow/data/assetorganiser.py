@@ -317,6 +317,13 @@ class AssetOrganiser:
 
         weights_concat = pd.concat(all_weights)
 
+        # Globally rescale weights so their mean is 1.0 to prevent underflow 
+        # from uniqueness * absolute returns resulting in very small floats.
+        if weights_concat["weight"].sum() > 0:
+            weights_concat["weight"] = (
+                weights_concat["weight"] / weights_concat["weight"].mean()
+            )
+
         col_name = self.weight_col if self.weight_col else "weight"
         if col_name in self.multi_asset.columns:
             self.multi_asset = self.multi_asset.drop(columns=[col_name])
