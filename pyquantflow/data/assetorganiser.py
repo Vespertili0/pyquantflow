@@ -475,25 +475,43 @@ class AssetOrganiser:
         self._split_train_test()
 
     def get_classifierengine_payload(
-        self, features: List[str]
+        self,
+        features: List[str],
+        tickers: Optional[List[str]] = None,
     ) -> Dict[str, pd.DataFrame | List[str] | str | None]:
         """
         Extracts the prepared data and metadata into a dictionary suitable for
         unpacking (**kwargs) directly into `ClassifierEngine.run_pipeline`.
+
+        Args:
+            features (List[str]): List of column names to be used as features.
+            tickers (Optional[List[str]]): Optional list of tickers to filter the returned datasets.
+                If None, the full multi-asset DataFrame is returned.
+
+        Returns:
+            Dict[str, pd.DataFrame | List[str] | str | None]: The payload dictionary.
         """
         if self.multi_asset_train is None or self.multi_asset_test is None:
             self.prepare_multi_asset_frame()
 
         # Remove weight_col from features list to strictly separate metadata
-        if self.weight_col and self.weight_col in features:
-            features.remove(self.weight_col)
+        features_copy = list(features)
+        if self.weight_col and self.weight_col in features_copy:
+            features_copy.remove(self.weight_col)
+
+        X_train = self.multi_asset_train
+        X_test = self.multi_asset_test
+
+        if tickers is not None:
+            X_train = X_train[X_train.index.get_level_values("ticker").isin(tickers)]
+            X_test = X_test[X_test.index.get_level_values("ticker").isin(tickers)]
 
         return {
-            "X_train": self.multi_asset_train,
-            "y_train": self.multi_asset_train[self.target_features],
-            "X_test": self.multi_asset_test,
-            "y_test": self.multi_asset_test[self.target_features],
-            "features": features,
+            "X_train": X_train,
+            "y_train": X_train[self.target_features],
+            "X_test": X_test,
+            "y_test": X_test[self.target_features],
+            "features": features_copy,
             "weight_col": self.weight_col,
         }
 
