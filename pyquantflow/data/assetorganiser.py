@@ -515,6 +515,67 @@ class AssetOrganiser:
             "weight_col": self.weight_col,
         }
 
+    def to_tsfeatures_format(
+        self,
+        value_col: str,
+        subset: str = "all",
+    ) -> pd.DataFrame:
+        """
+        Transforms the multi-asset DataFrame into the format required by Nixtla's `tsfeatures`.
+
+        The output DataFrame will contain the columns:
+        - `unique_id`: mapped from the 'ticker' index level.
+        - `ds`: mapped from the 'datetime' index level.
+        - `y`: mapped from the specified value_col.
+
+        Args:
+            value_col (str): The column name to extract as target 'y' (e.g., 'Close').
+            subset (str): The data subset to transform: 'all', 'train', or 'test'.
+
+        Returns:
+            pd.DataFrame: Long-format DataFrame ready for tsfeatures analysis.
+        """
+        if subset == "all":
+            df = self.multi_asset
+            if df is None:
+                self.prepare_multi_asset_frame()
+                df = self.multi_asset
+        elif subset == "train":
+            df = self.multi_asset_train
+            if df is None:
+                self.prepare_multi_asset_frame()
+                df = self.multi_asset_train
+        elif subset == "test":
+            df = self.multi_asset_test
+            if df is None:
+                self.prepare_multi_asset_frame()
+                df = self.multi_asset_test
+        else:
+            raise ValueError(f"Unknown subset: {subset}. Must be 'all', 'train', or 'test'.")
+
+        if df is None:
+            raise ValueError("No multi-asset DataFrame available to transform.")
+
+        if value_col not in df.columns:
+            raise KeyError(f"Column '{value_col}' not found in the DataFrame.")
+
+        # Reset index to extract datetime and ticker levels
+        df_reset = df.reset_index()
+
+        # Rename to match tsfeatures requirements:
+        # unique_id: time series identifier (ticker)
+        # ds: datetimes
+        # y: value column
+        df_ts = df_reset.rename(
+            columns={
+                "ticker": "unique_id",
+                "datetime": "ds",
+                value_col: "y",
+            }
+        )
+
+        return df_ts[["unique_id", "ds", "y"]].copy()
+
     def get_transformed_multiasset_testdata(self) -> pd.DataFrame:
         """
         Returns the transformed test data containing predictions.

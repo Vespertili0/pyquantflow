@@ -216,6 +216,38 @@ class TestAssetOrganiserFlexibility(unittest.TestCase):
         self.assertEqual(set(payload_filtered["y_train"].index.get_level_values("ticker").unique()), {"AAA"})
         self.assertEqual(set(payload_filtered["y_test"].index.get_level_values("ticker").unique()), {"AAA"})
 
+    def test_to_tsfeatures_format(self):
+        organiser = AssetOrganiser(
+            multi_asset=self.multi_asset,
+            cutoff_date="2020-01-08",
+            target_features=["target"],
+        )
+
+        # Test exporting entire dataset
+        df_all = organiser.to_tsfeatures_format(value_col="feature1", subset="all")
+        self.assertEqual(list(df_all.columns), ["unique_id", "ds", "y"])
+        self.assertEqual(len(df_all), 10)
+        self.assertTrue((df_all["unique_id"] == "AAA").all())
+
+        # Test exporting train dataset
+        df_train = organiser.to_tsfeatures_format(value_col="feature1", subset="train")
+        self.assertEqual(list(df_train.columns), ["unique_id", "ds", "y"])
+        self.assertEqual(len(df_train), 7)
+
+        # Test exporting test dataset
+        df_test = organiser.to_tsfeatures_format(value_col="feature1", subset="test")
+        self.assertEqual(list(df_test.columns), ["unique_id", "ds", "y"])
+        self.assertEqual(len(df_test), 3)
+
+        # Test raising ValueError on invalid subset
+        with self.assertRaises(ValueError):
+            organiser.to_tsfeatures_format(value_col="feature1", subset="invalid")
+
+        # Test raising KeyError on invalid value_col
+        with self.assertRaises(KeyError):
+            organiser.to_tsfeatures_format(value_col="nonexistent", subset="all")
+
+
 
 if __name__ == "__main__":
     unittest.main()
