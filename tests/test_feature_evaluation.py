@@ -91,6 +91,7 @@ class TestFeatureEvaluation(unittest.TestCase):
             target_col="target",
             weight_col="weight",
             cv=KFold(n_splits=2),
+            memory_threshold=-1.0,
         )
 
         clusters = evaluator.cluster_entities(
@@ -124,6 +125,52 @@ class TestFeatureEvaluation(unittest.TestCase):
         self.assertIn("MDA", results[first_regime])
         self.assertIn("SFI", results[first_regime])
         self.assertTrue(len(results[first_regime]["MDA"]) > 0)
+
+    def test_feature_evaluator_gate1_pruning(self):
+        # Create a dataframe with one high memory feature (AR(1)) and one low memory feature (white noise)
+        idx = pd.MultiIndex.from_product(
+            [pd.date_range("2020-01-01", periods=100), ["AAPL"]],
+            names=["datetime", "ticker"],
+        )
+
+        np.random.seed(42)
+        ar1 = [0.0]
+        for _ in range(99):
+            ar1.append(0.8 * ar1[-1] + np.random.randn())
+
+        df = pd.DataFrame(
+            {
+                "ar1_feat": ar1,
+                "white_noise": np.random.randn(100),
+                "target": np.random.choice([0, 1], 100),
+            },
+            index=idx,
+        )
+
+        evaluator = FeatureEvaluator(
+            features=["ar1_feat", "white_noise"],
+            target_col="target",
+            memory_threshold=0.10,
+            significance_level=0.05,
+        )
+
+        df_trans = evaluator.fit_transform_features(df)
+
+        # ar1_feat should be kept (acf1 ~ 0.8, is stationary so d=0.0)
+        # white_noise should be dropped (acf1 ~ 0.0, is stationary so d=0.0)
+        self.assertIn("ar1_feat", evaluator.features)
+        self.assertNotIn("white_noise", evaluator.features)
+        self.assertIn("ar1_feat", df_trans.columns)
+        self.assertNotIn("white_noise", df_trans.columns)
+
+    def test_feature_evaluator_freq_parameter(self):
+        # Verify freq is set correctly
+        evaluator = FeatureEvaluator(
+            features=["feat1"],
+            target_col="target",
+            freq=5,
+        )
+        self.assertEqual(evaluator.freq, 5)
 
 
 if __name__ == "__main__":

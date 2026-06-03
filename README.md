@@ -137,6 +137,8 @@ evaluator = FeatureEvaluator(
     weight_col="weight",
     t1_col="t1",
     cv=PurgedKFoldCV(n_splits=5, t1="t1"),
+    freq=252,  # Logical financial frequency (e.g. business days in a year)
+    memory_threshold=0.10,  # Minimum ACF1 to preserve memory in Gate 1 pruning
 )
 
 # 2. Gate 1: Transform to Stationary & Memory-Preserving Features
