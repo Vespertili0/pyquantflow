@@ -1,14 +1,14 @@
 import pandas as pd
 import numpy as np
 import scipy.stats
-import scipy.signal
 import scipy.spatial.distance
 import scipy.cluster.hierarchy
 from sklearn.base import BaseEstimator, TransformerMixin, clone
 from sklearn.metrics import silhouette_score
 from typing import List, Dict, Optional, Callable, Union
+from tsfeatures import tsfeatures
 
-# Import FFD logic (already implemented in pyquantflow)
+# Import FFD logic
 from pyquantflow.data.features.fractional_differentiation import frac_diff_ffd
 
 
@@ -25,10 +25,10 @@ def _adf_test_stat(series: pd.Series, lags: int = 1) -> float:
     y_lag = y[:-1]
     Y = dy[lags:]
     n = len(Y)
-    
+
     X = np.zeros((n, lags + 2))
     X[:, 0] = y_lag[lags - 1 : -1]  # y_{t-1}
-    X[:, 1] = 1.0                   # constant
+    X[:, 1] = 1.0  # constant
     for i in range(lags):
         X[:, 2 + i] = dy[lags - 1 - i : -1 - i]  # lagged differences
 
@@ -85,15 +85,16 @@ def _adf_p_value(t_stat: float) -> float:
 
 class StationaryTransformer(BaseEstimator, TransformerMixin):
     """
-    Transforms non-stationary features using Fractional Differentiation (FFD) 
+    Transforms non-stationary features using Fractional Differentiation (FFD)
     and applies a causal rolling z-score to standardise volatility regimes.
     """
+
     def __init__(
-        self, 
+        self,
         d_grid: np.ndarray = np.arange(0.0, 1.05, 0.05),
         significance_level: float = 0.05,
         rolling_z_window: int = 20,
-        ffd_thres: float = 1e-4
+        ffd_thres: float = 1e-4,
     ):
         self.d_grid = d_grid
         self.significance_level = significance_level
@@ -107,15 +108,19 @@ class StationaryTransformer(BaseEstimator, TransformerMixin):
         Groups by 'ticker' if X is a MultiIndex DataFrame to prevent leakage.
         """
         is_multi_index = isinstance(X.index, pd.MultiIndex)
-        
+
         for col in X.columns:
             optimal_d = 1.0
             for d in self.d_grid:
                 # Apply FFD. Groupby prevents bleeding data across assets.
                 if is_multi_index:
                     try:
-                        diff_series = X[col].groupby(level="ticker", group_keys=False).apply(
-                            lambda s: frac_diff_ffd(s, d=d, thres=self.ffd_thres)
+                        diff_series = (
+                            X[col]
+                            .groupby(level="ticker", group_keys=False)
+                            .apply(
+                                lambda s: frac_diff_ffd(s, d=d, thres=self.ffd_thres)
+                            )
                         )
                     except Exception:
                         # Fallback if groupby fails for some reason
@@ -126,13 +131,13 @@ class StationaryTransformer(BaseEstimator, TransformerMixin):
                 # Evaluate stationarity globally across the differenced panel
                 t_stat = _adf_test_stat(diff_series)
                 p_value = _adf_p_value(t_stat)
-                
+
                 if p_value <= self.significance_level:
                     optimal_d = d
                     break
-                    
+
             self.optimal_d_[col] = optimal_d
-            
+
         return self
 
     def transform(self, X: pd.DataFrame) -> pd.DataFrame:
@@ -141,21 +146,23 @@ class StationaryTransformer(BaseEstimator, TransformerMixin):
         """
         X_out = pd.DataFrame(index=X.index)
         is_multi_index = isinstance(X.index, pd.MultiIndex)
-        
+
         for col in X.columns:
             d = self.optimal_d_.get(col, 1.0)
-            
+
             # 1. Apply FFD
             if is_multi_index:
                 try:
-                    diff_series = X[col].groupby(level="ticker", group_keys=False).apply(
-                        lambda s: frac_diff_ffd(s, d=d, thres=self.ffd_thres)
+                    diff_series = (
+                        X[col]
+                        .groupby(level="ticker", group_keys=False)
+                        .apply(lambda s: frac_diff_ffd(s, d=d, thres=self.ffd_thres))
                     )
                 except Exception:
                     diff_series = frac_diff_ffd(X[col], d=d, thres=self.ffd_thres)
             else:
                 diff_series = frac_diff_ffd(X[col], d=d, thres=self.ffd_thres)
-                
+
             # 2. Causal Rolling Z-Score Normalisation
             if is_multi_index:
                 roll = diff_series.groupby(level="ticker")
@@ -164,21 +171,22 @@ class StationaryTransformer(BaseEstimator, TransformerMixin):
             else:
                 mean = diff_series.rolling(self.rolling_z_window).mean()
                 std = diff_series.rolling(self.rolling_z_window).std()
-                
+
             # To avoid division by zero for constant periods
             std = std.replace(0, np.nan)
             z_score = (diff_series - mean) / std
-            
+
             X_out[col] = z_score
-            
+
         return X_out
 
 
 class FeatureEvaluator:
     """
-    A pipeline manager for financial feature diagnosis, transformation, 
+    A pipeline manager for financial feature diagnosis, transformation,
     clustering, and out-of-sample evaluation.
     """
+
     def __init__(
         self,
         features: List[str],
@@ -186,7 +194,7 @@ class FeatureEvaluator:
         weight_col: Optional[str] = None,
         t1_col: Optional[str] = None,
         cv: Optional[BaseEstimator] = None,
-        significance_level: float = 0.05
+        significance_level: float = 0.05,
     ):
         self.features = features
         self.target_col = target_col
@@ -197,134 +205,153 @@ class FeatureEvaluator:
         self.stationary_transformer = StationaryTransformer(
             significance_level=self.significance_level
         )
-        
+
     def fit_transform_features(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Diagnoses stationarity and transforms features per asset.
-        Drops rows with NaN values resulting from FFD lag.
+        NaNs generated by FFD are propagated forward.
         """
         X = df[self.features]
-        
+
         self.stationary_transformer.fit(X)
         X_trans = self.stationary_transformer.transform(X)
-        
+
         # Merge back with targets and metadata
         cols_to_keep = [self.target_col]
         if self.weight_col:
             cols_to_keep.append(self.weight_col)
         if self.t1_col:
             cols_to_keep.append(self.t1_col)
-            
+
         df_out = pd.concat([X_trans, df[cols_to_keep]], axis=1)
-        
-        # Drop rows where any of the newly transformed features are NaN (due to FFD/rolling window)
-        df_out = df_out.dropna(subset=self.features)
+
+        # We do NOT drop NaNs here. They are propagated to preserve panel integrity.
         return df_out
 
     def compute_time_series_profiles(
-        self, 
-        df: pd.DataFrame, 
-        columns: List[str], 
-        groupby_level: Optional[str] = "ticker"
+        self,
+        df: pd.DataFrame,
+        columns: List[str],
+        groupby_level: Optional[str] = "ticker",
     ) -> pd.DataFrame:
         """
-        Computes statistical descriptors (ADF stat, ACF1, spectral entropy) for each time series.
+        Uses Nixtla's tsfeatures to compute statistical metrics.
+        Reshapes the MultiIndex panel data into ['unique_id', 'ds', 'y']
+        before passing to tsfeatures.
         """
-        results = []
-        
-        # Helper function to compute descriptors for a single Series
-        def _profile_series(series: pd.Series) -> Dict[str, float]:
-            s_clean = series.dropna()
-            if len(s_clean) < 10:
-                return {"adf_stat": np.nan, "adf_p_value": np.nan, "acf1": np.nan, "spectral_entropy": np.nan}
-                
-            # ADF
-            t_stat = _adf_test_stat(s_clean)
-            p_val = _adf_p_value(t_stat)
-            
-            # ACF1
-            acf1 = s_clean.autocorr(lag=1)
-            
-            # Spectral Entropy
-            f, pxx = scipy.signal.periodogram(s_clean.values)
-            pxx_norm = pxx / pxx.sum()
-            # Add a small epsilon to avoid log(0)
-            pxx_norm = pxx_norm[pxx_norm > 0]
-            entropy = scipy.stats.entropy(pxx_norm)
-            
-            return {
-                "adf_stat": t_stat,
-                "adf_p_value": p_val,
-                "acf1": acf1,
-                "spectral_entropy": entropy
-            }
-
-        if groupby_level and isinstance(df.index, pd.MultiIndex):
-            for col in columns:
-                # Group by entity, compute profile, then average metrics across entities
-                profiles = df[col].groupby(level=groupby_level).apply(_profile_series)
-                
-                # Convert list of dicts to DataFrame for easy median aggregation
-                profiles_df = pd.DataFrame(profiles.tolist())
-                median_profile = profiles_df.median().to_dict()
-                median_profile['feature'] = col
-                results.append(median_profile)
+        if groupby_level == "ticker":
+            # Use-Case B: Asset Clustering. unique_id = ticker (or ticker::feature)
+            df_reset = df[columns].reset_index()
+            if len(columns) == 1:
+                col = columns[0]
+                df_ts = df_reset.rename(
+                    columns={"ticker": "unique_id", "datetime": "ds", col: "y"}
+                )
+                df_ts = df_ts[["unique_id", "ds", "y"]].dropna(subset=["y"])
+            else:
+                # Multiple columns: unique_id becomes ticker::feature
+                df_melt = pd.melt(
+                    df_reset,
+                    id_vars=["datetime", "ticker"],
+                    value_vars=columns,
+                    var_name="feature",
+                    value_name="y",
+                )
+                df_melt["unique_id"] = (
+                    df_melt["ticker"].astype(str)
+                    + "::"
+                    + df_melt["feature"].astype(str)
+                )
+                df_ts = df_melt.rename(columns={"datetime": "ds"})[
+                    ["unique_id", "ds", "y"]
+                ].dropna(subset=["y"])
         else:
-            for col in columns:
-                profile = _profile_series(df[col])
-                profile['feature'] = col
-                results.append(profile)
-                
-        return pd.DataFrame(results).set_index('feature')
+            # Use-Case A: Feature Diagnostics. unique_id = feature
+            df_reset = df[columns].reset_index()
+            if "datetime" in df_reset.columns:
+                id_vars = ["datetime"]
+                if "ticker" in df_reset.columns:
+                    id_vars.append("ticker")
+            else:
+                df_reset["datetime"] = np.arange(len(df_reset))
+                id_vars = ["datetime"]
+
+            df_melt = pd.melt(
+                df_reset,
+                id_vars=id_vars,
+                value_vars=columns,
+                var_name="unique_id",
+                value_name="y",
+            )
+            df_ts = df_melt.rename(columns={"datetime": "ds"})[
+                ["unique_id", "ds", "y"]
+            ].dropna(subset=["y"])
+
+        # Run tsfeatures
+        profiles = tsfeatures(df_ts, freq=1)
+        return profiles.set_index("unique_id")
 
     def cluster_entities(
-        self, 
-        df: pd.DataFrame, 
-        columns: List[str], 
-        n_clusters: Optional[int] = None
-    ) -> Dict[int, List[str]]:
+        self,
+        data: pd.DataFrame,
+        method: str = "correlation",
+        n_clusters: Optional[int] = None,
+    ) -> Dict[int, List[Union[str, int]]]:
         """
-        Groups features hierarchically to neutralise the substitution effect.
-        Uses distance metric: d = sqrt(0.5 * (1 - rho)).
-        If n_clusters is None, determines ONIC using silhouette scores.
+        Groups entities hierarchically.
+        If method == 'correlation', clusters the columns of data (features).
+        If method == 'euclidean', clusters the rows of data (assets).
         """
-        X = df[columns]
-        
-        # 1. Compute Pearson correlation matrix
-        corr = X.corr(method='pearson')
-        
-        # 2. Convert to distance matrix
-        dist_matrix = np.sqrt(0.5 * (1 - corr.clip(-1, 1)))
-        
-        # Extract condensed distance matrix required by linkage
-        condensed_dist = scipy.spatial.distance.squareform(dist_matrix, checks=False)
-        
-        # 3. Hierarchical Linkage
-        Z = scipy.cluster.hierarchy.linkage(condensed_dist, method='ward')
-        
-        # 4. Determine ONIC if n_clusters is None
+        if method == "correlation":
+            corr = data.corr(method="pearson")
+            dist_matrix = np.sqrt(0.5 * (1 - corr.clip(-1, 1)))
+            labels_list = data.columns.tolist()
+            condensed_dist = scipy.spatial.distance.squareform(
+                dist_matrix.values, checks=False
+            )
+        elif method == "euclidean":
+            from sklearn.preprocessing import StandardScaler
+
+            scaled_data = StandardScaler().fit_transform(data)
+            condensed_dist = scipy.spatial.distance.pdist(
+                scaled_data, metric="euclidean"
+            )
+            labels_list = data.index.tolist()
+        else:
+            raise ValueError(f"Unknown clustering method: {method}")
+
+        Z = scipy.cluster.hierarchy.linkage(condensed_dist, method="ward")
+
         if n_clusters is None:
             best_score = -1.0
             best_n = 2
-            max_clusters = max(2, len(columns) - 1)
-            for k in range(2, max_clusters + 1):
-                labels = scipy.cluster.hierarchy.fcluster(Z, k, criterion='maxclust')
-                score = silhouette_score(dist_matrix, labels, metric='precomputed')
-                if score > best_score:
-                    best_score = score
-                    best_n = k
-            n_clusters = best_n
-            
-        # 5. Extract clusters
-        labels = scipy.cluster.hierarchy.fcluster(Z, n_clusters, criterion='maxclust')
-        
+            max_clusters = max(2, len(labels_list) - 1)
+            if len(labels_list) <= 2:
+                n_clusters = len(labels_list)
+            else:
+                if method == "correlation":
+                    dist_sq = dist_matrix.values
+                else:
+                    dist_sq = scipy.spatial.distance.squareform(condensed_dist)
+
+                for k in range(2, max_clusters + 1):
+                    labels = scipy.cluster.hierarchy.fcluster(
+                        Z, k, criterion="maxclust"
+                    )
+                    if len(np.unique(labels)) > 1:
+                        score = silhouette_score(dist_sq, labels, metric="precomputed")
+                        if score > best_score:
+                            best_score = score
+                            best_n = k
+                n_clusters = best_n
+
+        labels = scipy.cluster.hierarchy.fcluster(Z, n_clusters, criterion="maxclust")
         clusters = {}
-        for i, col in enumerate(columns):
-            c_id = labels[i]
-            if c_id not in clusters:
-                clusters[c_id] = []
-            clusters[c_id].append(col)
-            
+        for i, lbl in enumerate(labels_list):
+            if labels[i] not in clusters:
+                clusters[labels[i]] = []
+            clusters[labels[i]].append(lbl)
+
         return clusters
 
     def evaluate_importance(
@@ -333,121 +360,171 @@ class FeatureEvaluator:
         estimator: BaseEstimator,
         metric: Callable,
         metric_kwargs: Optional[dict] = None,
-        balance_classes: bool = True
-    ) -> Dict[str, pd.DataFrame]:
+        balance_classes: bool = True,
+    ) -> Dict[int, Dict[str, pd.DataFrame]]:
         """
-        Runs OOS Clustered MDA and Clustered SFI using the shared CV splits.
+        Runs the Macro-Regime Loop.
+        1. Clusters assets into regimes based on their statistical profiles.
+        2. Iteratively performs Clustered MDA and SFI on each regime's data slice.
         """
         metric_kwargs = metric_kwargs or {}
-        
-        # 1. Group Features
-        clusters = self.cluster_entities(df, self.features)
-        
-        X = df[self.features]
-        y = df[self.target_col]
-        
-        mda_scores = {c_id: [] for c_id in clusters.keys()}
-        sfi_scores = {c_id: [] for c_id in clusters.keys()}
-        
-        for step, (train_idx, val_idx) in enumerate(self.cv.split(df, y)):
-            X_train = X.iloc[train_idx]
-            X_val = X.iloc[val_idx]
-            y_train = y.iloc[train_idx]
-            y_val = y.iloc[val_idx]
-            
-            fit_params = {}
-            if self.weight_col and self.weight_col in df.columns:
-                sample_weight = df[self.weight_col].iloc[train_idx].values.copy()
-                
-                if balance_classes:
-                    from sklearn.utils.class_weight import compute_sample_weight
-                    class_weights = compute_sample_weight("balanced", np.ravel(y_train))
-                    sample_weight = sample_weight * class_weights
-                
-                if sample_weight.sum() > 0:
-                    sample_weight = sample_weight / sample_weight.mean()
-                
-                if hasattr(estimator, "steps"):
-                    final_step = estimator.steps[-1][0]
-                    fit_params[f"{final_step}__sample_weight"] = sample_weight
-                else:
-                    fit_params["sample_weight"] = sample_weight
+        groupby_level = "ticker"
 
-            # --- SFI (Single Feature Importance) ---
-            for c_id, cols in clusters.items():
-                est_sfi = clone(estimator)
-                est_sfi.fit(X_train[cols], y_train, **fit_params)
-                
-                if metric.__name__ in ("log_loss", "roc_auc_score") and hasattr(est_sfi, "predict_proba"):
-                    preds = est_sfi.predict_proba(X_val[cols])
-                    if preds.ndim > 1 and preds.shape[1] == 2:
-                        preds = preds[:, 1]
-                else:
-                    preds = est_sfi.predict(X_val[cols])
-                    
-                score = metric(y_val, preds, **metric_kwargs)
-                sfi_scores[c_id].append(score)
-                
-            # --- MDA (Mean Decrease Accuracy) ---
-            # Train model on ALL features
-            est_mda = clone(estimator)
-            est_mda.fit(X_train, y_train, **fit_params)
-            
-            # Baseline score
-            if metric.__name__ in ("log_loss", "roc_auc_score") and hasattr(est_mda, "predict_proba"):
-                base_preds = est_mda.predict_proba(X_val)
-                if base_preds.ndim > 1 and base_preds.shape[1] == 2:
-                    base_preds = base_preds[:, 1]
+        # 1. Macro-Regime Profiling & Asset Clustering
+        if isinstance(df.index, pd.MultiIndex) and groupby_level in df.index.names:
+            profiles = self.compute_time_series_profiles(
+                df, self.features, groupby_level=groupby_level
+            )
+
+            if len(self.features) == 1:
+                entity_profiles = profiles.fillna(0)
             else:
-                base_preds = est_mda.predict(X_val)
-            baseline_score = metric(y_val, base_preds, **metric_kwargs)
-            
-            # Perturb each cluster
-            for c_id, cols in clusters.items():
-                X_val_pert = X_val.copy()
-                for col in cols:
-                    np.random.shuffle(X_val_pert[col].values)
-                    
-                if metric.__name__ in ("log_loss", "roc_auc_score") and hasattr(est_mda, "predict_proba"):
-                    pert_preds = est_mda.predict_proba(X_val_pert)
-                    if pert_preds.ndim > 1 and pert_preds.shape[1] == 2:
-                        pert_preds = pert_preds[:, 1]
-                else:
-                    pert_preds = est_mda.predict(X_val_pert)
-                    
-                pert_score = metric(y_val, pert_preds, **metric_kwargs)
-                
-                # MDA: Baseline performance - Perturbed performance
-                # Note: If metric is an error (like log_loss), lower is better. 
-                # So perturbation increases error. 
-                # degradation = pert_score - baseline_score
-                if metric.__name__ == "log_loss":
-                    mda = pert_score - baseline_score
-                else:
-                    mda = baseline_score - pert_score
-                mda_scores[c_id].append(mda)
+                idx_df = profiles.index.to_series().str.split("::", n=1, expand=True)
+                idx_df.columns = ["ticker", "feature"]
+                profiles_copy = profiles.copy()
+                profiles_copy.index = pd.MultiIndex.from_arrays(
+                    [idx_df["ticker"], idx_df["feature"]]
+                )
+                entity_profiles = profiles_copy.unstack(level="feature")
+                entity_profiles.columns = [
+                    f"{col[0]}_{col[1]}" for col in entity_profiles.columns
+                ]
+                entity_profiles = entity_profiles.fillna(0)
 
-        # Aggregate results
-        results = {}
-        
-        sfi_agg = []
-        for c_id, cols in clusters.items():
-            sfi_agg.append({
-                "cluster_id": c_id,
-                "features": ", ".join(cols),
-                "sfi_mean": np.mean(sfi_scores[c_id]),
-                "sfi_std": np.std(sfi_scores[c_id])
-            })
-        results["SFI"] = pd.DataFrame(sfi_agg).set_index("cluster_id")
-        
-        mda_agg = []
-        for c_id, cols in clusters.items():
-            mda_agg.append({
-                "cluster_id": c_id,
-                "features": ", ".join(cols),
-                "mda_mean": np.mean(mda_scores[c_id]),
-                "mda_std": np.std(mda_scores[c_id])
-            })
-        results["MDA"] = pd.DataFrame(mda_agg).set_index("cluster_id")
-        
-        return results
+            regime_clusters = self.cluster_entities(entity_profiles, method="euclidean")
+        else:
+            regime_clusters = {0: [None]}
+
+        regime_results = {}
+
+        for regime_id, entities in regime_clusters.items():
+            if entities == [None]:
+                df_regime = df.copy()
+            else:
+                df_regime = df[
+                    df.index.get_level_values(groupby_level).isin(entities)
+                ].copy()
+
+            if len(df_regime) == 0:
+                continue
+
+            # 2. Cluster Features (Multicollinearity neutralisation for this regime)
+            feature_clusters = self.cluster_entities(
+                df_regime[self.features], method="correlation"
+            )
+
+            X = df_regime[self.features]
+            y = df_regime[self.target_col]
+
+            mda_scores = {c_id: [] for c_id in feature_clusters.keys()}
+            sfi_scores = {c_id: [] for c_id in feature_clusters.keys()}
+
+            for step, (train_idx, val_idx) in enumerate(self.cv.split(df_regime, y)):
+                X_train = X.iloc[train_idx]
+                X_val = X.iloc[val_idx]
+                y_train = y.iloc[train_idx]
+                y_val = y.iloc[val_idx]
+
+                fit_params = {}
+                if self.weight_col and self.weight_col in df_regime.columns:
+                    sample_weight = (
+                        df_regime[self.weight_col].iloc[train_idx].values.copy()
+                    )
+                    if balance_classes:
+                        from sklearn.utils.class_weight import compute_sample_weight
+
+                        class_weights = compute_sample_weight(
+                            "balanced", np.ravel(y_train)
+                        )
+                        sample_weight = sample_weight * class_weights
+                    if sample_weight.sum() > 0:
+                        sample_weight = sample_weight / sample_weight.mean()
+
+                    if hasattr(estimator, "steps"):
+                        final_step = estimator.steps[-1][0]
+                        fit_params[f"{final_step}__sample_weight"] = sample_weight
+                    else:
+                        fit_params["sample_weight"] = sample_weight
+
+                # --- SFI ---
+                for c_id, cols in feature_clusters.items():
+                    est_sfi = clone(estimator)
+                    est_sfi.fit(X_train[cols], y_train, **fit_params)
+
+                    if metric.__name__ in ("log_loss", "roc_auc_score") and hasattr(
+                        est_sfi, "predict_proba"
+                    ):
+                        preds = est_sfi.predict_proba(X_val[cols])
+                        if preds.ndim > 1 and preds.shape[1] == 2:
+                            preds = preds[:, 1]
+                    else:
+                        preds = est_sfi.predict(X_val[cols])
+
+                    score = metric(y_val, preds, **metric_kwargs)
+                    sfi_scores[c_id].append(score)
+
+                # --- MDA ---
+                est_mda = clone(estimator)
+                est_mda.fit(X_train, y_train, **fit_params)
+
+                if metric.__name__ in ("log_loss", "roc_auc_score") and hasattr(
+                    est_mda, "predict_proba"
+                ):
+                    base_preds = est_mda.predict_proba(X_val)
+                    if base_preds.ndim > 1 and base_preds.shape[1] == 2:
+                        base_preds = base_preds[:, 1]
+                else:
+                    base_preds = est_mda.predict(X_val)
+                baseline_score = metric(y_val, base_preds, **metric_kwargs)
+
+                for c_id, cols in feature_clusters.items():
+                    X_val_pert = X_val.copy()
+                    for col in cols:
+                        np.random.shuffle(X_val_pert[col].values)
+
+                    if metric.__name__ in ("log_loss", "roc_auc_score") and hasattr(
+                        est_mda, "predict_proba"
+                    ):
+                        pert_preds = est_mda.predict_proba(X_val_pert)
+                        if pert_preds.ndim > 1 and pert_preds.shape[1] == 2:
+                            pert_preds = pert_preds[:, 1]
+                    else:
+                        pert_preds = est_mda.predict(X_val_pert)
+
+                    pert_score = metric(y_val, pert_preds, **metric_kwargs)
+
+                    if metric.__name__ == "log_loss":
+                        mda = pert_score - baseline_score
+                    else:
+                        mda = baseline_score - pert_score
+                    mda_scores[c_id].append(mda)
+
+            # Aggregate results for this regime
+            results = {}
+            sfi_agg = []
+            for c_id, cols in feature_clusters.items():
+                sfi_agg.append(
+                    {
+                        "cluster_id": c_id,
+                        "features": ", ".join(cols),
+                        "sfi_mean": np.mean(sfi_scores[c_id]),
+                        "sfi_std": np.std(sfi_scores[c_id]),
+                    }
+                )
+            results["SFI"] = pd.DataFrame(sfi_agg).set_index("cluster_id")
+
+            mda_agg = []
+            for c_id, cols in feature_clusters.items():
+                mda_agg.append(
+                    {
+                        "cluster_id": c_id,
+                        "features": ", ".join(cols),
+                        "mda_mean": np.mean(mda_scores[c_id]),
+                        "mda_std": np.std(mda_scores[c_id]),
+                    }
+                )
+            results["MDA"] = pd.DataFrame(mda_agg).set_index("cluster_id")
+
+            regime_results[regime_id] = results
+
+        return regime_results

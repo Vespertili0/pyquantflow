@@ -7,3 +7,4 @@ skfolio
 jax
 mlflow
 optuna
+tsfeatures

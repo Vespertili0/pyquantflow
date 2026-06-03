@@ -122,12 +122,12 @@ engine = ClassifierEngine(optimiser=HyperparameterOptimiser(study_name="example"
 
 ### 4. Evaluate Financial Features
 
-Before sending features to the hyperparameter optimiser, evaluate their out-of-sample predictive power using the Dual-Gate Filtering Protocol. The `FeatureEvaluator` automatically applies fractional differentiation, neutralises multicollinearity via hierarchical clustering, and measures out-of-sample importance (MDA and SFI) using purged cross-validation.
+Before sending features to the hyperparameter optimiser, evaluate their out-of-sample predictive power using the Dual-Gate Filtering Protocol. The `FeatureEvaluator` automatically applies fractional differentiation, neutralises multicollinearity via hierarchical clustering, and measures out-of-sample importance (MDA and SFI) using purged cross-validation. It leverages Nixtla's `tsfeatures` to cluster assets into distinct regimes and safely propagates NaNs into downstream natively NaN-aware estimators.
 
 ```python
 from pyquantflow.model import FeatureEvaluator
 from pyquantflow.model.cross_validation import PurgedKFoldCV
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import HistGradientBoostingClassifier
 from sklearn.metrics import log_loss
 
 # 1. Initialise the Evaluator
@@ -140,15 +140,20 @@ evaluator = FeatureEvaluator(
 )
 
 # 2. Gate 1: Transform to Stationary & Memory-Preserving Features
+# NaNs from fractional differentiation are strictly propagated forward.
 transformed_df = evaluator.fit_transform_features(multi_asset_df)
 
 # 3. Gate 2: Evaluate Out-Of-Sample Importance (Clustered MDA / SFI)
+# The macro-regime loop iteratively performs CV per statistical regime.
 importance_results = evaluator.evaluate_importance(
     df=transformed_df,
-    estimator=RandomForestClassifier(max_depth=3, n_estimators=50),
+    estimator=HistGradientBoostingClassifier(),
     metric=log_loss,
 )
-print(importance_results["MDA"])
+
+# Extract MDA for the first regime
+first_regime = list(importance_results.keys())[0]
+print(f"Regime {first_regime} MDA:\n", importance_results[first_regime]["MDA"])
 ```
 
 ### 5. Run Statistical-Backtesting
