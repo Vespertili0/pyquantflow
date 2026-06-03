@@ -223,15 +223,15 @@ class FeatureEvaluator:
         X_trans = self.stationary_transformer.transform(X)
 
         # Gate 1 Pruning: memory check (ACF1)
-        # We call compute_time_series_profiles with groupby_level=None to evaluate globally
-        profiles = self.compute_time_series_profiles(
-            X_trans, columns=self.features, groupby_level=None
-        )
-
+        # We use pandas natively to evaluate ACF1 globally, bypassing tsfeatures for speed on edge devices
         valid_features = []
         for feat in self.features:
-            if feat in profiles.index and "acf1" in profiles.columns:
-                acf1_val = profiles.loc[feat, "acf1"]
+            try:
+                acf1_val = X_trans[feat].autocorr(lag=1)
+            except Exception:
+                acf1_val = np.nan
+
+            if pd.notna(acf1_val):
                 if acf1_val > self.memory_threshold:
                     valid_features.append(feat)
                 else:
@@ -242,7 +242,7 @@ class FeatureEvaluator:
                         f"(ACF1 = {acf1_val:.4f} <= threshold {self.memory_threshold:.4f}) and was dropped."
                     )
             else:
-                # Keep the feature if ACF1 profiling is unavailable
+                # Keep the feature if ACF1 profiling is unavailable or returns NaN
                 valid_features.append(feat)
 
         self.features = valid_features
@@ -320,7 +320,7 @@ class FeatureEvaluator:
             ].dropna(subset=["y"])
 
         # Run tsfeatures
-        profiles = tsfeatures(df_ts, freq=self.freq)
+        profiles = tsfeatures(df_ts, freq=self.freq, threads=1)
         return profiles.set_index("unique_id")
 
     def cluster_entities(

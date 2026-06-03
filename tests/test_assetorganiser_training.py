@@ -99,12 +99,6 @@ class TestDataHierarchyIntegration(unittest.TestCase):
         final_pipe = engine.best_estimator_
         self.assertIsNotNone(final_pipe)
 
-        # We can't easily intercept the internal optuna loops without breaking encapsulation,
-        # but we can verify the final fit step correctly stripped features and targets
-        # and would have attempted to pass sample_weights.
-        # (Since we used a real DecisionTree, it will raise an error internally if sample_weights
-        # were misaligned in length, proving the extraction math works).
-
         self.assertTrue(hasattr(final_pipe.steps[-1][1], "classes_"))
 
 

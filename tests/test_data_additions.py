@@ -24,7 +24,6 @@ from pyquantflow.data.database import DatabaseManager
 
 class TestDataAdditions(unittest.TestCase):
     def setUp(self):
-        # Attempt to load from stocks.db
         source_db_path = os.path.join(os.path.dirname(__file__), "stocks.db")
         self.ohlc_data = None
 
