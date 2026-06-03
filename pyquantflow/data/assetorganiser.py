@@ -318,18 +318,25 @@ class AssetOrganiser:
         weights_concat = pd.concat(all_weights)
 
         # Globally rescale weights so their mean is 1.0
-        if weights_concat["weight"].sum() > 0:
-            weights_concat["weight"] = (
-                weights_concat["weight"] / weights_concat["weight"].mean()
+        if weights_concat[self.weight_col if self.weight_col else "weight"].sum() > 0:
+            weights_concat[self.weight_col if self.weight_col else "weight"] = (
+                weights_concat[self.weight_col if self.weight_col else "weight"]
+                / weights_concat[
+                    self.weight_col if self.weight_col else "weight"
+                ].mean()
             )
 
         # Clip the extreme tails to prevent overfitting and zero-weights
         # Lower bound of 0.01 keeps highly concurrent events barely visible.
         # Upper bound caps the maximum influence of a single event to a
         # safe multiple (e.g., 10x or the 99th percentile).
-        upper_cap = weights_concat["weight"].quantile(0.99)
-        weights_concat["weight"] = weights_concat["weight"].clip(
-            lower=0.01, upper=upper_cap
+        upper_cap = weights_concat[
+            self.weight_col if self.weight_col else "weight"
+        ].quantile(0.99)
+        weights_concat[self.weight_col if self.weight_col else "weight"] = (
+            weights_concat[self.weight_col if self.weight_col else "weight"].clip(
+                lower=0.01, upper=upper_cap
+            )
         )
 
         col_name = self.weight_col if self.weight_col else "weight"

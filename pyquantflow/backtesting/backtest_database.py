@@ -50,4 +50,3 @@ class BacktestDatabaseManager:
         )
 
         self.conn.commit()
-        # print(f"Saved results for {ticker} to DB.")

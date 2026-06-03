@@ -55,13 +55,13 @@ class TestCUSUMFilter(unittest.TestCase):
             series=returns,
             target_events=target,
             alpha_min=0.5,
-            alpha_max=3.0,
+            alpha_max=6.0,
             alpha_step=0.1,
             span=20,
         )
 
         self.assertIsInstance(alpha, float)
-        self.assertTrue(0.5 <= alpha <= 3.0)
+        self.assertTrue(0.5 <= alpha <= 6.0)
 
         # Run CUSUM with the calibrated alpha to check if event count is near target
         vol = returns.ewm(span=20).std()
