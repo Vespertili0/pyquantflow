@@ -4,126 +4,96 @@ import pandas as pd
 import numpy as np
 from functools import partial
 
-# Set JAX to 64-bit precision for financial calculations
+# Enable 64-bit precision
 jax.config.update("jax_enable_x64", True)
 
 
 @partial(jax.jit, static_argnames=["window"])
-def _rolling_ols_t_stat(prices, window):
+def _rolling_ols_t_stat_opt(prices, window):
     """
-    Computes rolling t-statistics of the slope (time trend) for a fixed window.
+    Highly optimized rolling t-statistic calculation using analytical OLS
+    and memory-efficient dynamic slicing.
     """
     n = prices.shape[0]
+    num_windows = n - window + 1
 
-    # Create the window indices: shape (n - window + 1, window)
-    starts = jnp.arange(n - window + 1)
-    indices = starts[:, None] + jnp.arange(window)[None, :]
+    # Precompute analytical constants for X = [0, 1, ..., window-1]
+    x = jnp.arange(window, dtype=jnp.float64)
+    x_mean = (window - 1) / 2.0
+    ss_xx = (window * (window**2 - 1)) / 12.0
+    x_dev = x - x_mean
 
-    # Slice data: (num_windows, window_size)
-    y = prices[indices]
+    # Vectorized function over a single window index using dynamic slicing
+    def scan_window(start_idx):
+        y = jax.lax.dynamic_slice_in_dim(prices, start_idx, window)
+        y_mean = jnp.mean(y)
 
-    # X matrix is just time: [0, 1, ..., window-1]
-    # We create a design matrix for [1, t] to handle intercept + slope
-    x_i = jnp.arange(window, dtype=jnp.float64)
-    X = jnp.stack([jnp.ones(window), x_i], axis=1)  # (window, 2)
+        # Analytical OLS components
+        ss_yy = jnp.sum((y - y_mean) ** 2)
+        beta1 = jnp.sum(x_dev * y) / ss_xx
 
-    # We want to solve (X^T X)^-1 X^T y for each window.
-    # Since X is constant for all windows, we precompute (X^T X)^-1 X^T
-    XtX_inv_Xt = jnp.linalg.inv(X.T @ X) @ X.T  # (2, window)
+        # Calculate SSR using standard OLS algebraic identity
+        ssr = jnp.maximum(ss_yy - (beta1**2) * ss_xx, 1e-12)
 
-    # Betas: (num_windows, 2) -> Intercept, Slope
-    betas = jnp.dot(y, XtX_inv_Xt.T)
+        # Standard error and t-statistic
+        sigma = jnp.sqrt(ssr / (window - 2))
+        slope_se = sigma / jnp.sqrt(ss_xx)
+        return beta1 / slope_se
 
-    # Calculate t-statistics
-    # Residuals
-    y_pred = jnp.dot(betas, X.T)  # (num_windows, window)
-    residuals = y - y_pred
-
-    # Variance of residuals (SSR / (n - k))
-    # k = 2 (slope + intercept)
-    dof = window - 2
-    ssr = jnp.sum(residuals**2, axis=1)
-    sigma_sq = ssr / dof
-
-    # Standard Error of slope
-    # Covariance Matrix = sigma^2 * (X^T X)^-1
-    # We need the (1,1) element of (X^T X)^-1 for the slope variance
-    XtX_inv = jnp.linalg.inv(X.T @ X)
-    slope_var = sigma_sq * XtX_inv[1, 1]
-    slope_se = jnp.sqrt(slope_var)
-
-    t_stats = betas[:, 1] / slope_se
+    # Compute across all windows in parallel on-device
+    t_stats = jax.vmap(scan_window)(jnp.arange(num_windows))
     return t_stats
 
 
 def trend_scanning(
     series: pd.Series, windows: list | int = [5, 10, 20, 40, 80, 120]
-) -> pd.Series:
+) -> pd.DataFrame:
     """
-    Performs Trend Scanning by calculating the t-statistic of the slope
-    over multiple look-forward windows and selecting the one with the
-    maximum absolute t-statistic.
-
-    Args:
-        series (pd.Series): Price series.
-        windows (list | int): A list of look-forward window sizes to scan (e.g. [10, 20, 60]).
-                              If a single int is provided, it is treated as a list of one.
-
-    Returns:
-        pd.Series: The t-statistic of the trend from the most significant window.
+    An optimized, memory-safe execution of Trend Scanning via JAX.
     """
-    # 1. Prepare Data
     arr = jnp.array(series.values, dtype=jnp.float64)
     n = len(series)
 
-    # Handle single window case for backward compatibility
     if isinstance(windows, int):
         windows = [windows]
 
     t_stats_collection = []
 
-    # 2. Compute JAX for each window
+    # 1. Loop and process entirely on-device
     for w in windows:
         if w >= n:
-            # Window larger than data, fill with NaN
-            t_stats_collection.append(np.full(n, np.nan))
+            t_stats_collection.append(jnp.full(n, jnp.nan))
             continue
 
-        # Get raw JAX array (length = n - w + 1)
-        t_vals = _rolling_ols_t_stat(arr, w)
+        t_vals = _rolling_ols_t_stat_opt(arr, w)
 
-        # Convert to numpy and Pad to length n
-        # Because it's a look-forward, index i corresponds to [i, i+w]
-        # So we align at 0, and the last w-1 elements are NaN
-        padded = np.full(n, np.nan)
-        padded[: len(t_vals)] = np.array(t_vals)
+        # Pad with NaNs on-device using JAX instead of breaking out to NumPy
+        padded = jnp.pad(t_vals, (0, n - t_vals.shape[0]), constant_values=jnp.nan)
         t_stats_collection.append(padded)
 
-    # 3. Stack and find Best Window
-    # Shape: (n_samples, n_windows)
-    all_t = np.stack(t_stats_collection, axis=1)
-
-    # Calculate Absolute values for comparison, preserving NaNs
+    # 2. Stack and bring back to Host memory only ONCE at the end
+    all_t = np.array(jnp.stack(t_stats_collection, axis=1))
     abs_t = np.abs(all_t)
 
-    # Mask rows where all are NaN (e.g., end of the series where no window fits)
     valid_rows = ~np.isnan(abs_t).all(axis=1)
-
     final_values = np.full(n, np.nan)
+    t1_times = pd.Series(pd.NaT, index=series.index, dtype=series.index.dtype)
 
     if np.any(valid_rows):
-        # Filter down to valid rows to avoid 'All-NaN slice' warning
         valid_abs = abs_t[valid_rows]
         valid_raw = all_t[valid_rows]
 
-        # argmax of absolute values (ignoring NaNs in specific columns)
         best_window_idx = np.nanargmax(valid_abs, axis=1)
-
-        # Extract corresponding signed t-values
-        # Advanced indexing: [row_0, row_1...], [col_best_0, col_best_1...]
         row_indices = np.arange(len(best_window_idx))
-        selected_values = valid_raw[row_indices, best_window_idx]
 
-        final_values[valid_rows] = selected_values
+        final_values[valid_rows] = valid_raw[row_indices, best_window_idx]
 
-    return pd.Series(final_values, index=series.index, name="t_value")
+        windows_arr = np.array(windows)
+        chosen_windows = windows_arr[best_window_idx]
+
+        full_row_indices = np.where(valid_rows)[0]
+        end_indices = np.clip(full_row_indices + chosen_windows - 1, 0, n - 1)
+
+        t1_times.iloc[valid_rows] = series.index[end_indices]
+
+    return pd.DataFrame({"t_value": final_values, "t1": t1_times}, index=series.index)

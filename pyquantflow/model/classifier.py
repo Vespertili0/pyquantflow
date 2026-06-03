@@ -1,5 +1,6 @@
 from sklearn.base import BaseEstimator, ClassifierMixin, TransformerMixin, clone
-from sklearn.utils.validation import check_is_fitted
+
+# from sklearn.utils.validation import check_is_fitted
 from scipy.stats import entropy
 import pandas as pd
 import numpy as np
@@ -43,18 +44,28 @@ class PrimarySecondaryClassifier(BaseQuantClassifier):
         primary_features,
         secondary_features,
         cv_generator=None,
+        prefitted=True,
     ):
         self.primary_model = primary_model
         self.secondary_model = secondary_model
         self.primary_features = primary_features
         self.secondary_features = secondary_features
         self.cv_generator = cv_generator
+        self.prefitted = prefitted
+
+        if self.prefitted:
+            self.primary_model_ = self.primary_model
+            self.secondary_model_ = self.secondary_model
+        else:
+            self.primary_model_ = None
+            self.secondary_model_ = None
 
     def _calculate_entropy(self, probas):
         # Calculate Shannon Entropy: H = -sum(p * log(p))
         return entropy(probas, axis=1).reshape(-1, 1)
 
     def fit(self, X, y, sample_weight=None):
+        self.prefitted = False
         self.primary_model_ = clone(self.primary_model)
         self.secondary_model_ = clone(self.secondary_model)
 
@@ -117,7 +128,7 @@ class PrimarySecondaryClassifier(BaseQuantClassifier):
         """
         Enriches the input DataFrame with model predictions and probabilities.
         """
-        check_is_fitted(self)
+        # check_is_fitted(self)
         X_out = X.copy()
 
         # Primary outputs
@@ -143,14 +154,14 @@ class PrimarySecondaryClassifier(BaseQuantClassifier):
         return X_out
 
     def predict(self, X):
-        check_is_fitted(self)
+        # check_is_fitted(self)
         probas = self.primary_model_.predict_proba(X[self.primary_features])
         proba_entropy = self._calculate_entropy(probas)
         X_secondary = np.hstack([X[self.secondary_features].values, proba_entropy])
         return self.secondary_model_.predict(X_secondary)
 
     def predict_proba(self, X):
-        check_is_fitted(self)
+        # check_is_fitted(self)
         probas = self.primary_model_.predict_proba(X[self.primary_features])
         proba_entropy = self._calculate_entropy(probas)
         X_secondary = np.hstack([X[self.secondary_features].values, proba_entropy])

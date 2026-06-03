@@ -52,6 +52,7 @@ class HyperparameterOptimiser:
         n_trials: int = 50,
         timeout: Optional[int] = None,
         metric_kwargs: Optional[dict] = None,
+        balance_classes: bool = True,
     ) -> optuna.Study:
         """
         Executes the optimization loop using the existing self.study attribute.
@@ -64,6 +65,7 @@ class HyperparameterOptimiser:
             weight_col: Optional column name for sample weights.
             t1_col: Optional column name for event end times (purging metadata).
             metric: Scoring function (y_true, y_pred) -> float.
+            balance_classes: If True, dynamically scales sample weights by inverse class frequencies in the training fold.
         """
         metric_kwargs = metric_kwargs or {}
 
@@ -82,8 +84,26 @@ class HyperparameterOptimiser:
                 y_val_fold = y.iloc[val_idx] if hasattr(y, "iloc") else y[val_idx]
 
                 fit_params = {}
+                sample_weight = None
+
                 if weight_col and weight_col in X_train_fold.columns:
-                    sample_weight = X_train_fold[weight_col].values
+                    sample_weight = X_train_fold[weight_col].values.copy()
+
+                if balance_classes:
+                    from sklearn.utils.class_weight import compute_sample_weight
+
+                    y_array = np.ravel(y_train_fold)
+                    class_weights = compute_sample_weight("balanced", y_array)
+
+                    if sample_weight is not None:
+                        sample_weight = sample_weight * class_weights
+                    else:
+                        sample_weight = class_weights
+
+                if sample_weight is not None:
+                    if sample_weight.sum() > 0:
+                        sample_weight = sample_weight / sample_weight.mean()
+
                     # Extract final step name if pipeline, else just use sample_weight
                     if hasattr(model, "steps"):
                         final_step_name = model.steps[-1][0]

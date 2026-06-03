@@ -49,7 +49,7 @@ class FractionalDiffTransformer(BaseEstimator, TransformerMixin):
 class TrendScanningTransformer(BaseEstimator, TransformerMixin):
     """
     Sklearn wrapper for Trend Scanning.
-    Transforms a price series into t-statistics indicating trend strength.
+    Transforms a price series into a DataFrame of t-statistics and t1 timestamps.
     """
 
     def __init__(self, windows=[5, 10, 15, 20, 30, 40, 60, 80, 100, 120, 150, 180]):
@@ -66,7 +66,7 @@ class TrendScanningTransformer(BaseEstimator, TransformerMixin):
             X (pd.Series or pd.DataFrame): Price series.
 
         Returns:
-            pd.Series or pd.DataFrame: t-statistics.
+            pd.DataFrame: DataFrame containing t-statistics and t1 timestamps.
         """
         if isinstance(X, pd.DataFrame):
             if X.shape[1] == 1:
