@@ -120,13 +120,44 @@ engine = ClassifierEngine(optimiser=HyperparameterOptimiser(study_name="example"
 # engine.run_pipeline(**payload, balance_classes=True, ...)
 ```
 
-### 4. Run Statistical-Backtesting
+### 4. Evaluate Financial Features
+
+Before sending features to the hyperparameter optimiser, evaluate their out-of-sample predictive power using the Dual-Gate Filtering Protocol. The `FeatureEvaluator` automatically applies fractional differentiation, neutralises multicollinearity via hierarchical clustering, and measures out-of-sample importance (MDA and SFI) using purged cross-validation.
+
+```python
+from pyquantflow.model import FeatureEvaluator
+from pyquantflow.model.cross_validation import PurgedKFoldCV
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import log_loss
+
+# 1. Initialise the Evaluator
+evaluator = FeatureEvaluator(
+    features=["Close", "EMA_120"],
+    target_col="label",
+    weight_col="weight",
+    t1_col="t1",
+    cv=PurgedKFoldCV(n_splits=5, t1="t1"),
+)
+
+# 2. Gate 1: Transform to Stationary & Memory-Preserving Features
+transformed_df = evaluator.fit_transform_features(multi_asset_df)
+
+# 3. Gate 2: Evaluate Out-Of-Sample Importance (Clustered MDA / SFI)
+importance_results = evaluator.evaluate_importance(
+    df=transformed_df,
+    estimator=RandomForestClassifier(max_depth=3, n_estimators=50),
+    metric=log_loss,
+)
+print(importance_results["MDA"])
+```
+
+### 5. Run Statistical-Backtesting
 
 *(in development)*
 
-### 5. Run Event-Backtesting
+### 6. Run Event-Backtesting
 
-#### 5.1 Run Single Backtest
+#### 6.1 Run Single Backtest
 
 Test trading strategies w/o ML-models using the built-in engine wrapping the [`backtesting.py`](https://github.com/kernc/backtesting.py) package.
 
@@ -156,7 +187,7 @@ else:
     print("No data available for backtest.")
 ```
 
-#### 5.2. Run Batch Event-Backtesting with Result Persistence
+#### 6.2. Run Batch Event-Backtesting with Result Persistence
 
 Run backtests for multiple tickers and save results to a SQLite database.
 
