@@ -202,19 +202,33 @@ class TestAssetOrganiserFlexibility(unittest.TestCase):
 
         # Test default behaviour: return full multi-asset dataframe (both AAA and BBB)
         payload_default = organiser.get_classifierengine_payload(features=["feature1"])
-        tickers_in_train_default = payload_default["X_train"].index.get_level_values("ticker").unique()
+        tickers_in_train_default = (
+            payload_default["X_train"].index.get_level_values("ticker").unique()
+        )
         self.assertEqual(set(tickers_in_train_default), {"AAA", "BBB"})
 
         # Test filtering behaviour with a list of tickers: return only AAA
-        payload_filtered = organiser.get_classifierengine_payload(features=["feature1"], tickers=["AAA"])
-        tickers_in_train_filtered = payload_filtered["X_train"].index.get_level_values("ticker").unique()
-        tickers_in_test_filtered = payload_filtered["X_test"].index.get_level_values("ticker").unique()
+        payload_filtered = organiser.get_classifierengine_payload(
+            features=["feature1"], tickers=["AAA"]
+        )
+        tickers_in_train_filtered = (
+            payload_filtered["X_train"].index.get_level_values("ticker").unique()
+        )
+        tickers_in_test_filtered = (
+            payload_filtered["X_test"].index.get_level_values("ticker").unique()
+        )
         self.assertEqual(set(tickers_in_train_filtered), {"AAA"})
         self.assertEqual(set(tickers_in_test_filtered), {"AAA"})
 
         # Ensure y_train and y_test are also filtered (containing only AAA ticker indices)
-        self.assertEqual(set(payload_filtered["y_train"].index.get_level_values("ticker").unique()), {"AAA"})
-        self.assertEqual(set(payload_filtered["y_test"].index.get_level_values("ticker").unique()), {"AAA"})
+        self.assertEqual(
+            set(payload_filtered["y_train"].index.get_level_values("ticker").unique()),
+            {"AAA"},
+        )
+        self.assertEqual(
+            set(payload_filtered["y_test"].index.get_level_values("ticker").unique()),
+            {"AAA"},
+        )
 
     def test_to_tsfeatures_format(self):
         organiser = AssetOrganiser(
@@ -246,7 +260,6 @@ class TestAssetOrganiserFlexibility(unittest.TestCase):
         # Test raising KeyError on invalid value_col
         with self.assertRaises(KeyError):
             organiser.to_tsfeatures_format(value_col="nonexistent", subset="all")
-
 
 
 if __name__ == "__main__":

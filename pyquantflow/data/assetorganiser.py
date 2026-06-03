@@ -551,7 +551,9 @@ class AssetOrganiser:
                 self.prepare_multi_asset_frame()
                 df = self.multi_asset_test
         else:
-            raise ValueError(f"Unknown subset: {subset}. Must be 'all', 'train', or 'test'.")
+            raise ValueError(
+                f"Unknown subset: {subset}. Must be 'all', 'train', or 'test'."
+            )
 
         if df is None:
             raise ValueError("No multi-asset DataFrame available to transform.")
