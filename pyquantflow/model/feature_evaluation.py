@@ -209,6 +209,8 @@ class FeatureEvaluator:
         self.stationary_transformer = StationaryTransformer(
             significance_level=self.significance_level
         )
+        self.importance_df = None
+        self.regime_clusters_ = None
 
     def fit_transform_features(self, df: pd.DataFrame) -> pd.DataFrame:
         """
@@ -423,13 +425,15 @@ class FeatureEvaluator:
                 ]
                 entity_profiles = entity_profiles.fillna(0)
 
-            regime_clusters = self.cluster_entities(entity_profiles, method="euclidean")
+            self.regime_clusters_ = self.cluster_entities(
+                entity_profiles, method="euclidean"
+            )
         else:
-            regime_clusters = {0: [None]}
+            self.regime_clusters_ = {0: [None]}
 
         regime_results = {}
 
-        for regime_id, entities in regime_clusters.items():
+        for regime_id, entities in self.regime_clusters_.items():
             if entities == [None]:
                 df_regime = df.copy()
             else:
