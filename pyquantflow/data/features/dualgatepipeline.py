@@ -35,8 +35,8 @@ class DualGatePipelineFactory:
         self,
         organiser: AssetOrganiser,
         evaluator: FeatureEvaluator,
-        target_labels: List[str] = ["label", "t1", "weight"],
         target_events_train: int | Dict[str, int],
+        target_labels: List[str] = ["label", "t1", "weight"],
         span: int = 50
     ) -> Tuple[AssetOrganiser, List[str]]:
         """
