@@ -559,4 +559,27 @@ class FeatureEvaluator:
 
             regime_results[regime_id] = results
 
-        return regime_results
+        self.importance_df = self._convert_results_to_table(regime_results)
+
+        return None
+
+    @staticmethod
+    def _convert_results_to_table(
+        results: Dict[int, Dict[str, pd.DataFrame]],
+    ) -> pd.DataFrame:
+        """
+        Converts the nested dictionary of regime results into a single consolidated DataFrame.
+        """
+        if not results:
+            return pd.DataFrame()
+
+        regime_dfs = []
+        for regime_id, inner_dict in results.items():
+            sfi_df = inner_dict["SFI"]
+            mda_df = inner_dict["MDA"]
+
+            # Join SFI and MDA on cluster_id, keeping the features list from one side
+            merged = sfi_df.join(mda_df[["mda_mean", "mda_std"]], how="outer")
+            regime_dfs.append(merged)
+
+        return pd.concat(regime_dfs, keys=results.keys(), axis=0)

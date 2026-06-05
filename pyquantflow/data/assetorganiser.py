@@ -609,3 +609,16 @@ class AssetOrganiser:
         if self.multi_asset_transformed_test is None:
             raise ValueError("Test data not transformed. Fit the classifier first.")
         return self.multi_asset_transformed_test.xs(ticker, level="ticker")
+
+    def update_multi_asset(self, df: pd.DataFrame) -> None:
+        """
+        Overwrites the internal multi_asset panel dataset with engineered features
+        and automatically re-synchronises the train and test split boundaries.
+        """
+        if df.index.names != ["datetime", "ticker"]:
+            raise ValueError(
+                "DataFrame index must match MultiIndex format ['datetime', 'ticker']."
+            )
+
+        self.multi_asset = df.copy()
+        self._split_train_test()
