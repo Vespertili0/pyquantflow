@@ -1,5 +1,7 @@
 import pandas as pd
 from typing import List, Tuple, Dict, Any, Optional
+from sklearn.ensemble import HistGradientBoostingClassifier
+from sklearn.metrics import log_loss
 from pyquantflow.data.assetorganiser import AssetOrganiser
 from pyquantflow.model.feature_evaluation import FeatureEvaluator
 
@@ -92,7 +94,13 @@ class DualGatePipelineFactory:
         # STATE RE-INJECTION: Downsample and Update the AssetOrganiser
         # Slice only the valid CUSUM event milestones out of the transformed matrix
         merged_df = continuous_transformed_df.loc[cusum_index]
-        
+
+        evaluator.evaluate_importance(
+            df=merged_df,
+            estimator=HistGradientBoostingClassifier(),
+            metric=log_loss
+        )
+
         # Commit the clean, stationary panel back into the organiser's state machine
         organiser.update_multi_asset(merged_df)
 
