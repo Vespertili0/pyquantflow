@@ -111,3 +111,26 @@ def align_and_ffill_multiasset(df, time_level="datetime", ticker_level="ticker")
     df = df.groupby(level=ticker_level).ffill()
 
     return df.dropna()
+
+
+def generate_ema_ribbon_names(prefix="EMAR", M=10):
+    """
+    Generates dynamic column headers for the EMA_RIBBON feature outputs.
+    """
+    names = [f"{prefix}_RS_VOL"]
+
+    names.extend([f"{prefix}_MICRO_{i}v{i + 1}" for i in range(1, M)])
+    names.append(f"{prefix}_MACRO")
+
+    names.extend(
+        [
+            f"{prefix}_STD",
+            f"{prefix}_SKEW",
+            f"{prefix}_KURT",
+            f"{prefix}_CONSENSUS_RANK",
+        ]
+    )
+
+    names.extend([f"{prefix}_VELOCITY_{i}v{i + 1}" for i in range(1, M)])
+
+    return names

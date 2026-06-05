@@ -190,7 +190,7 @@ class FeatureEvaluator:
     def __init__(
         self,
         features: List[str],
-        target_col: str,
+        target_col: Optional[str] = None,
         weight_col: Optional[str] = None,
         t1_col: Optional[str] = None,
         cv: Optional[BaseEstimator] = None,
