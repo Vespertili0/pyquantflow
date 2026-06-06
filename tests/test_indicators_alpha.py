@@ -67,7 +67,7 @@ class TestADFScreenedFFD(unittest.TestCase):
         For an already stationary series, screening should find d* = 0.0
         (or the first d in the grid).
         """
-        _, d_star = adf_screened_ffd(self.stationary, d=None)
+        _, d_star = adf_screened_ffd(self.stationary, d=None, d_grid=np.arange(0.0, 1.05, 0.05))
         self.assertEqual(d_star, 0.0)
 
 
@@ -111,7 +111,7 @@ class TestFRACTIONAL_DIFF(unittest.TestCase):
         """Should work with pd.Series input."""
         result = FRACTIONAL_DIFF(self.close_series, d=0.3)
 
-        self.assertIsInstance(result, np.ndarray)
+        self.assertIsInstance(result, pd.Series)
         self.assertEqual(len(result), len(self.close_series))
 
     def test_screening_mode_default(self):
@@ -158,9 +158,9 @@ class TestSADF_JAX(unittest.TestCase):
         """Should work with pd.Series input (index alignment)."""
         result = SADF_JAX(self.close_series)
 
-        self.assertIsInstance(result, np.ndarray)
+        self.assertIsInstance(result, pd.Series)
         self.assertEqual(len(result), len(self.close_series))
-        self.assertFalse(np.isnan(result[-1]))
+        self.assertFalse(np.isnan(result.iloc[-1]))
 
     def test_nan_propagation_no_crash(self):
         """Both indicators should handle edge cases without crashing."""

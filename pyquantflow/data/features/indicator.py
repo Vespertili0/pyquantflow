@@ -280,8 +280,9 @@ def FRACTIONAL_DIFF(
     """
     from pyquantflow.data.features.fractional_differentiation import adf_screened_ffd
 
+    return_array = isinstance(close, np.ndarray)
     # Coerce to pd.Series if raw array
-    if isinstance(close, np.ndarray):
+    if return_array:
         series = pd.Series(close)
     else:
         series = close
@@ -294,14 +295,17 @@ def FRACTIONAL_DIFF(
                 s, d=d, thres=thres, significance_level=significance_level
             )[0]
         )
-        return pd.Series(
+        result = pd.Series(
             transformed, index=series.index, name=f"frac_diff_{d or 'auto'}"
         )
-
-    # Standard single-asset path execution
-    result, _ = adf_screened_ffd(
-        series, d=d, thres=thres, significance_level=significance_level
-    )
+    else:
+        # Standard single-asset path execution
+        result, _ = adf_screened_ffd(
+            series, d=d, thres=thres, significance_level=significance_level
+        )
+        
+    if return_array:
+        return result.values
     return result
 
 
@@ -339,8 +343,9 @@ def SADF_JAX(
     from pyquantflow.data.features.sadf import get_sadf_jax
     import jax.numpy as jnp
 
+    return_array = isinstance(close, np.ndarray)
     # Coerce to pd.Series if raw array
-    if isinstance(close, np.ndarray):
+    if return_array:
         series = pd.Series(close)
     else:
         series = close
@@ -348,7 +353,7 @@ def SADF_JAX(
     if isinstance(series.index, pd.MultiIndex):
         # Loop over asset tickers to isolate rolling regressions
         def _compute_sadf(sub_series):
-            log_series = jnp.log(sub_series)
+            log_series = np.log(sub_series)
             sadf_out = get_sadf_jax(
                 log_series, model=model, lags=lags, min_length=min_length
             )
@@ -358,11 +363,15 @@ def SADF_JAX(
         result_series = series.groupby(level="ticker", group_keys=False).apply(
             _compute_sadf
         )
-        return pd.Series(result_series, index=series.index, name="sadf_stat")
+        result = pd.Series(result_series, index=series.index, name="sadf_stat")
+    else:
+        # Single-asset baseline transformation
+        log_series = np.log(series)
+        sadf_series = get_sadf_jax(
+            log_series, model=model, lags=lags, min_length=min_length
+        )
+        result = sadf_series.reindex(series.index)
 
-    # Single-asset baseline transformation
-    log_series = jnp.log(series)
-    sadf_series = get_sadf_jax(
-        log_series, model=model, lags=lags, min_length=min_length
-    )
-    return sadf_series.reindex(series.index)
+    if return_array:
+        return result.values
+    return result

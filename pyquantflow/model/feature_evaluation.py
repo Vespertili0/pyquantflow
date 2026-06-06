@@ -512,7 +512,7 @@ class FeatureEvaluator:
 
         self.importance_df = self._convert_results_to_table(regime_results)
 
-        return None
+        return regime_results
 
     @staticmethod
     def _convert_results_to_table(
