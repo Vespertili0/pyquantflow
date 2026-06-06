@@ -8,79 +8,13 @@ from sklearn.metrics import silhouette_score
 from typing import List, Dict, Optional, Callable, Union
 from tsfeatures import tsfeatures
 
-# Import FFD logic
-from pyquantflow.data.features.fractional_differentiation import frac_diff_ffd
-
-
-def _adf_test_stat(series: pd.Series, lags: int = 1) -> float:
-    """
-    Computes the Augmented Dickey-Fuller t-statistic (constant only).
-    Native implementation to avoid statsmodels dependency.
-    """
-    y = series.dropna().values
-    if len(y) < lags + 2:
-        return np.nan
-
-    dy = np.diff(y)
-    y_lag = y[:-1]
-    Y = dy[lags:]
-    n = len(Y)
-
-    X = np.zeros((n, lags + 2))
-    X[:, 0] = y_lag[lags - 1 : -1]  # y_{t-1}
-    X[:, 1] = 1.0  # constant
-    for i in range(lags):
-        X[:, 2 + i] = dy[lags - 1 - i : -1 - i]  # lagged differences
-
-    try:
-        # Solve OLS: X * beta = Y
-        beta, residuals, rank, s = np.linalg.lstsq(X, Y, rcond=None)
-    except np.linalg.LinAlgError:
-        return np.nan
-
-    # Standard error of beta[0]
-    # Check if residuals is empty (happens in exact fit)
-    if len(residuals) == 0:
-        residuals = np.sum((Y - X @ beta) ** 2)
-    else:
-        residuals = residuals[0]
-
-    dof = max(1, n - X.shape[1])
-    mse = residuals / dof
-
-    try:
-        cov_matrix = mse * np.linalg.inv(X.T @ X)
-        se_gamma = np.sqrt(cov_matrix[0, 0])
-    except np.linalg.LinAlgError:
-        return np.nan
-
-    if se_gamma == 0:
-        return np.nan
-
-    t_stat = beta[0] / se_gamma
-    return float(t_stat)
-
-
-def _adf_p_value(t_stat: float) -> float:
-    """
-    Approximates the MacKinnon p-value for the ADF test (constant only model)
-    based on the t-statistic. Uses linear interpolation between key critical values.
-    """
-    if np.isnan(t_stat):
-        return 1.0
-
-    cv_1_pct = -3.43
-    cv_5_pct = -2.86
-    cv_10_pct = -2.57
-
-    if t_stat <= cv_1_pct:
-        return 0.01
-    elif t_stat <= cv_5_pct:
-        return 0.01 + 0.04 * (t_stat - cv_1_pct) / (cv_5_pct - cv_1_pct)
-    elif t_stat <= cv_10_pct:
-        return 0.05 + 0.05 * (t_stat - cv_5_pct) / (cv_10_pct - cv_5_pct)
-    else:
-        return 1.0
+# Shared FFD + ADF utilities (canonical source: data.features.fractional_differentiation)
+from pyquantflow.data.features.fractional_differentiation import (
+    frac_diff_ffd,
+    adf_screened_ffd,
+    _adf_test_stat,
+    _adf_p_value,
+)
 
 
 class StationaryTransformer(BaseEstimator, TransformerMixin):
@@ -110,33 +44,44 @@ class StationaryTransformer(BaseEstimator, TransformerMixin):
         is_multi_index = isinstance(X.index, pd.MultiIndex)
 
         for col in X.columns:
-            optimal_d = 1.0
-            for d in self.d_grid:
-                # Apply FFD. Groupby prevents bleeding data across assets.
-                if is_multi_index:
+            if is_multi_index:
+                # Apply FFD per ticker group to prevent cross-asset leakage,
+                # then evaluate stationarity globally across the differenced panel.
+                optimal_d = 1.0
+                for d_candidate in self.d_grid:
                     try:
                         diff_series = (
                             X[col]
                             .groupby(level="ticker", group_keys=False)
                             .apply(
-                                lambda s: frac_diff_ffd(s, d=d, thres=self.ffd_thres)
+                                lambda s: frac_diff_ffd(
+                                    s, d=d_candidate, thres=self.ffd_thres
+                                )
                             )
                         )
                     except Exception:
-                        # Fallback if groupby fails for some reason
-                        diff_series = frac_diff_ffd(X[col], d=d, thres=self.ffd_thres)
-                else:
-                    diff_series = frac_diff_ffd(X[col], d=d, thres=self.ffd_thres)
+                        diff_series = frac_diff_ffd(
+                            X[col], d=d_candidate, thres=self.ffd_thres
+                        )
 
-                # Evaluate stationarity globally across the differenced panel
-                t_stat = _adf_test_stat(diff_series)
-                p_value = _adf_p_value(t_stat)
+                    t_stat = _adf_test_stat(diff_series)
+                    p_value = _adf_p_value(t_stat)
 
-                if p_value <= self.significance_level:
-                    optimal_d = d
-                    break
+                    if p_value <= self.significance_level:
+                        optimal_d = d_candidate
+                        break
 
-            self.optimal_d_[col] = optimal_d
+                self.optimal_d_[col] = optimal_d
+            else:
+                # Single-asset path: delegate entirely to adf_screened_ffd
+                _, d_star = adf_screened_ffd(
+                    X[col],
+                    d=None,
+                    thres=self.ffd_thres,
+                    significance_level=self.significance_level,
+                    d_grid=self.d_grid,
+                )
+                self.optimal_d_[col] = d_star
 
         return self
 
@@ -150,18 +95,20 @@ class StationaryTransformer(BaseEstimator, TransformerMixin):
         for col in X.columns:
             d = self.optimal_d_.get(col, 1.0)
 
-            # 1. Apply FFD
+            # 1. Apply FFD via adf_screened_ffd in explicit mode
             if is_multi_index:
                 try:
                     diff_series = (
                         X[col]
                         .groupby(level="ticker", group_keys=False)
-                        .apply(lambda s: frac_diff_ffd(s, d=d, thres=self.ffd_thres))
+                        .apply(
+                            lambda s: adf_screened_ffd(s, d=d, thres=self.ffd_thres)[0]
+                        )
                     )
                 except Exception:
-                    diff_series = frac_diff_ffd(X[col], d=d, thres=self.ffd_thres)
+                    diff_series, _ = adf_screened_ffd(X[col], d=d, thres=self.ffd_thres)
             else:
-                diff_series = frac_diff_ffd(X[col], d=d, thres=self.ffd_thres)
+                diff_series, _ = adf_screened_ffd(X[col], d=d, thres=self.ffd_thres)
 
             # 2. Causal Rolling Z-Score Normalisation
             if is_multi_index:

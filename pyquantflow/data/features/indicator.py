@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+from typing import Optional, Union
 
 
 def ICHIMOKU(
@@ -242,3 +243,114 @@ def EMA_RIBBON(
         arr[:W_start] = np.nan
 
     return tuple(outputs)
+
+
+def FRACTIONAL_DIFF(
+    close: Union[np.ndarray, pd.Series],
+    d: Optional[float] = None,
+    thres: float = 1e-4,
+    significance_level: float = 0.05,
+) -> np.ndarray:
+    """
+    ADF-Screened Fixed-Width Window Fractional Differentiation indicator.
+
+    Operates in two modes:
+        1. **Explicit mode** (d is not None): applies FFD directly with the
+           given differencing order. No ADF screening is performed.
+        2. **Screening mode** (d is None, default): automatically searches for
+           the minimum d* that achieves stationarity (ADF p <= significance_level),
+           preserving as much price memory as possible.
+
+    Parameters
+    ----------
+    close : np.ndarray or pd.Series
+        Raw continuous price series.
+    d : float or None, default None
+        Fixed differencing order for explicit mode. If None, runs ADF screening.
+    thres : float, default 1e-4
+        Weight cutoff threshold for FFD kernel truncation.
+    significance_level : float, default 0.05
+        Maximum ADF p-value to accept stationarity during screening.
+
+    Returns
+    -------
+    np.ndarray
+        Fractionally differentiated series. Cold-start window indices are
+        padded with np.nan. Same length as input.
+    """
+    from pyquantflow.data.features.fractional_differentiation import adf_screened_ffd
+
+    # Coerce to pd.Series if raw array
+    if isinstance(close, np.ndarray):
+        series = pd.Series(close)
+    else:
+        series = close
+
+    result, _ = adf_screened_ffd(
+        series, d=d, thres=thres, significance_level=significance_level
+    )
+
+    return result.values
+
+
+def SADF_JAX(
+    close: Union[np.ndarray, pd.Series],
+    model: str = "linear",
+    lags: int = 1,
+    min_length: int = 20,
+) -> np.ndarray:
+    """
+    JAX-Accelerated Supremum Augmented Dickey-Fuller (SADF) indicator.
+
+    Generates a real-time explosive feedback vector for bubble-phase
+    identification. Applies np.log internally, so raw close prices are
+    accepted directly.
+
+    Parameters
+    ----------
+    close : np.ndarray or pd.Series
+        Raw continuous close price series. Log-transform is applied internally.
+    model : str, default "linear"
+        Regression model type. One of 'linear', 'quadratic', 'sm_poly_1',
+        'sm_poly_2', 'sm_exp', 'sm_power'.
+    lags : int, default 1
+        Number of lags for the ADF regression.
+    min_length : int, default 20
+        Minimum number of observations needed for estimation.
+
+    Returns
+    -------
+    np.ndarray
+        SADF statistics array. Same length as input, with leading cold-start
+        indices padded with np.nan.
+    """
+    from pyquantflow.data.features.sadf import get_sadf_jax
+
+    n = len(close)
+
+    # Coerce to pd.Series and apply log-transform
+    if isinstance(close, np.ndarray):
+        series = pd.Series(np.log(close))
+    else:
+        series = np.log(close)
+
+    sadf_series = get_sadf_jax(series, model=model, lags=lags, min_length=min_length)
+
+    # Pad to match input length (get_sadf_jax returns a truncated series)
+    result = np.full(n, np.nan)
+    # Align the SADF output by matching the original integer positions
+    if isinstance(close, pd.Series):
+        # Map SADF index back to positional indices in the original series
+        positions = close.index.get_indexer(sadf_series.index)
+        valid_mask = positions >= 0
+        result[positions[valid_mask]] = sadf_series.values[valid_mask]
+    else:
+        # For raw arrays, the SADF series index is a RangeIndex aligned to the
+        # differenced frame. Place values at the end of the output array.
+        offset = n - len(sadf_series)
+        if offset >= 0:
+            result[offset:] = sadf_series.values
+        else:
+            result[:] = sadf_series.values[-n:]
+
+    return result

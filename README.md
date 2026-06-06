@@ -80,6 +80,35 @@ data_indicator = data.pipe(
 )
 ```
 
+#### Orthogonal Alpha Indicators
+
+Inject memory-preserving stationarity and bubble-regime signals directly into the indicator pipeline using the built-in `FRACTIONAL_DIFF` and `SADF_JAX` functions.
+
+`FRACTIONAL_DIFF` operates in two modes:
+- **Screening mode** (`d=None`, default): automatically searches for the minimum fractional differencing order *d\** that achieves stationarity (ADF *p* ≤ 0.05), preserving as much price memory as possible.
+- **Explicit mode** (`d=0.4`): applies a fixed differencing order directly, bypassing the ADF grid search.
+
+`SADF_JAX` computes the JAX-accelerated Supremum Augmented Dickey-Fuller statistic, producing a real-time explosive feedback vector for bubble detection.
+
+```python
+from pyquantflow.data.features.indicator import FRACTIONAL_DIFF, SADF_JAX
+
+data_alpha = data.pipe(
+    pipe_indicator,
+    indicator=FRACTIONAL_DIFF,
+    input_map=["Close"],
+    output_names="X_CLOSE_FFD",  # ADF-screened stationary memory anchor
+).pipe(
+    pipe_indicator,
+    indicator=SADF_JAX,
+    input_map=["Close"],
+    output_names="X_CLOSE_SADF",  # Bubble-phase explosive regime detector
+)
+```
+
+Both indicators follow TA-Lib conventions: they accept raw NumPy arrays or Pandas Series, return a single `np.ndarray` of the same length as the input, and pad cold-start windows with `np.nan`.
+
+
 ### 3. Integrate Financial ML Concepts
 
 Train ML-models following concepts introduced by *Marcos Lopez de Prado's* book "Advances in Financial Machine Learning" (2018), utilising target labelling (e.g. trend-scan, triple-barrier), feature engineering (e.g. fractional differentiation), and purged cross-validation. Using [`optuna`](https://github.com/optuna/optuna), hyperparameters of the ML-models are optimised and the final model is logged to [`mlflow`](https://github.com/mlflow/mlflow) via a modern MLOps workflow.
