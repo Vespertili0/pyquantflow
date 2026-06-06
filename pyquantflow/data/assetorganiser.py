@@ -71,12 +71,21 @@ class AssetOrganiser:
         Splits the multi_asset DataFrame into train and test sets
         based on the cutoff date.
         """
-        self.multi_asset_train = self.multi_asset[
-            self.multi_asset.index.get_level_values("datetime") < self.cutoff_date
-        ]
-        self.multi_asset_test = self.multi_asset[
-            self.multi_asset.index.get_level_values("datetime") >= self.cutoff_date
-        ]
+        dts = pd.to_datetime(self.multi_asset.index.get_level_values("datetime"))
+        cutoff = pd.Timestamp(self.cutoff_date)
+
+        # Align timezones if the index level is timezone-aware
+        if dts.tz is not None:
+            if cutoff.tz is None:
+                cutoff = cutoff.tz_localize(dts.tz)
+            else:
+                cutoff = cutoff.tz_convert(dts.tz)
+        else:
+            if cutoff.tz is not None:
+                cutoff = cutoff.tz_localize(None)
+
+        self.multi_asset_train = self.multi_asset[dts < cutoff]
+        self.multi_asset_test = self.multi_asset[dts >= cutoff]
 
     def prepare_multi_asset_frame(self) -> None:
         """

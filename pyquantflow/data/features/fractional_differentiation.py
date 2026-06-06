@@ -79,7 +79,7 @@ def adf_screened_ffd(
     d: Optional[float] = None,
     thres: float = 1e-4,
     significance_level: float = 0.05,
-    d_grid: np.ndarray = np.arange(0.0, 1.05, 0.05),
+    d_grid: np.ndarray = np.arange(0.25, 1.05, 0.05),
 ) -> Tuple[pd.Series, float]:
     """
     ADF-screened Fixed-Width Window Fractional Differentiation.
