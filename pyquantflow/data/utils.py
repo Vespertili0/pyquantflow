@@ -26,14 +26,14 @@ def pipe_indicator(
     # 1. Prepare Data Inputs
     if isinstance(input_map, dict):
         # Pass data as Keyword Arguments (Good for functions with named inputs like ours)
-        data_inputs = {arg: df[col].values for arg, col in input_map.items()}
+        data_inputs = {arg: df[col] for arg, col in input_map.items()}
         # Combine with static kwargs
         full_kwargs = {**data_inputs, **kwargs}
         results = indicator(**full_kwargs)
 
     elif isinstance(input_map, list) or isinstance(input_map, tuple):
         # Pass data as Positional Arguments (Good for standard TA-Lib functions like RSI)
-        pos_inputs = [df[col].values for col in input_map]
+        pos_inputs = [df[col] for col in input_map]
         results = indicator(*pos_inputs, **kwargs)
     else:
         raise ValueError("input_map must be a dict or list/tuple")

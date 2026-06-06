@@ -286,11 +286,23 @@ def FRACTIONAL_DIFF(
     else:
         series = close
 
+    # Detect panel configurations safely
+    if isinstance(series.index, pd.MultiIndex):
+        # Group and apply transformation across isolated asset lines
+        transformed = series.groupby(level="ticker", group_keys=False).apply(
+            lambda s: adf_screened_ffd(
+                s, d=d, thres=thres, significance_level=significance_level
+            )[0]
+        )
+        return pd.Series(
+            transformed, index=series.index, name=f"frac_diff_{d or 'auto'}"
+        )
+
+    # Standard single-asset path execution
     result, _ = adf_screened_ffd(
         series, d=d, thres=thres, significance_level=significance_level
     )
-
-    return result.values
+    return result
 
 
 def SADF_JAX(
@@ -325,32 +337,32 @@ def SADF_JAX(
         indices padded with np.nan.
     """
     from pyquantflow.data.features.sadf import get_sadf_jax
+    import jax.numpy as jnp
 
-    n = len(close)
-
-    # Coerce to pd.Series and apply log-transform
+    # Coerce to pd.Series if raw array
     if isinstance(close, np.ndarray):
-        series = pd.Series(np.log(close))
+        series = pd.Series(close)
     else:
-        series = np.log(close)
+        series = close
 
-    sadf_series = get_sadf_jax(series, model=model, lags=lags, min_length=min_length)
+    if isinstance(series.index, pd.MultiIndex):
+        # Loop over asset tickers to isolate rolling regressions
+        def _compute_sadf(sub_series):
+            log_series = jnp.log(sub_series)
+            sadf_out = get_sadf_jax(
+                log_series, model=model, lags=lags, min_length=min_length
+            )
+            # Re-index back to match original time series shape
+            return sadf_out.reindex(sub_series.index)
 
-    # Pad to match input length (get_sadf_jax returns a truncated series)
-    result = np.full(n, np.nan)
-    # Align the SADF output by matching the original integer positions
-    if isinstance(close, pd.Series):
-        # Map SADF index back to positional indices in the original series
-        positions = close.index.get_indexer(sadf_series.index)
-        valid_mask = positions >= 0
-        result[positions[valid_mask]] = sadf_series.values[valid_mask]
-    else:
-        # For raw arrays, the SADF series index is a RangeIndex aligned to the
-        # differenced frame. Place values at the end of the output array.
-        offset = n - len(sadf_series)
-        if offset >= 0:
-            result[offset:] = sadf_series.values
-        else:
-            result[:] = sadf_series.values[-n:]
+        result_series = series.groupby(level="ticker", group_keys=False).apply(
+            _compute_sadf
+        )
+        return pd.Series(result_series, index=series.index, name="sadf_stat")
 
-    return result
+    # Single-asset baseline transformation
+    log_series = jnp.log(series)
+    sadf_series = get_sadf_jax(
+        log_series, model=model, lags=lags, min_length=min_length
+    )
+    return sadf_series.reindex(series.index)
