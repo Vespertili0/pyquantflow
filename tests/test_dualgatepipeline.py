@@ -2,7 +2,7 @@ import unittest
 import pandas as pd
 import numpy as np
 import math
-from sklearn.model_selection import KFold
+from sklearn.model_selection import KFold, StratifiedKFold
 
 from pyquantflow.data.assetorganiser import AssetOrganiser
 from pyquantflow.model.feature_evaluation import FeatureEvaluator
@@ -15,7 +15,7 @@ class TestDualGatePipeline(unittest.TestCase):
 
     def setUp(self):
         np.random.seed(42)
-        n = 250
+        n = 500
         dates = pd.date_range(start="2023-01-01", periods=n, freq="D", tz="Australia/Sydney")
 
         self.clean_daily_map = {}
@@ -40,6 +40,7 @@ class TestDualGatePipeline(unittest.TestCase):
                 },
                 index=dates,
             )
+            df.index.name = "datetime"
             self.clean_daily_map[ticker] = df
 
     def test_dual_gate_pipeline_execution(self):
@@ -62,7 +63,7 @@ class TestDualGatePipeline(unittest.TestCase):
             target_col="label",
             weight_col="weight",
             t1_col="t1",
-            cv=KFold(n_splits=2),
+            cv=StratifiedKFold(n_splits=2, shuffle=True, random_state=42),
             memory_threshold=-1.0,  # Keep all features to avoid accidental empty feature lists
         )
 
@@ -71,11 +72,11 @@ class TestDualGatePipeline(unittest.TestCase):
             filter_col="Close",
         )
 
-        # Execute the pipeline with target_events_train=50
+        # Execute the pipeline with target_events_train=150
         ao, active_features = factory.execute(
             organiser=ao,
             evaluator=evaluator,
-            target_events_train=50,
+            target_events_train=150,
             target_labels=["label", "t1", "weight"],
         )
 
@@ -99,8 +100,8 @@ class TestDualGatePipeline(unittest.TestCase):
 
         # Add FFD and SADF to each ticker's DataFrame in clean_daily_map
         for ticker, df in self.clean_daily_map.items():
-            # Apply indicators on Close price Series
-            df["ffd_close"] = FRACTIONAL_DIFF(df["Close"], d=0.4)
+            # Apply indicators on Close price Series with looser thres to preserve enough rows
+            df["ffd_close"] = FRACTIONAL_DIFF(df["Close"], d=0.4, thres=1e-2)
             df["sadf_close"] = SADF_JAX(df["Close"], min_length=20)
 
         label_factory = TrendScanningLabelFactory(
@@ -122,7 +123,7 @@ class TestDualGatePipeline(unittest.TestCase):
             target_col="label",
             weight_col="weight",
             t1_col="t1",
-            cv=KFold(n_splits=2),
+            cv=StratifiedKFold(n_splits=2, shuffle=True, random_state=42),
             memory_threshold=-1.0,  # Keep all features to avoid dropping
         )
 
@@ -131,11 +132,11 @@ class TestDualGatePipeline(unittest.TestCase):
             filter_col="Close",
         )
 
-        # Execute the pipeline with target_events_train=50
+        # Execute the pipeline with target_events_train=150
         ao, active_features = factory.execute(
             organiser=ao,
             evaluator=evaluator,
-            target_events_train=50,
+            target_events_train=150,
             target_labels=["label", "t1", "weight"],
         )
 

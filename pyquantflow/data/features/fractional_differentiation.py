@@ -180,6 +180,8 @@ def frac_diff_ffd(series: pd.Series, d: float, thres: float = 1e-5) -> pd.Series
 
     # The first len(weights) - 1 elements are technically not valid because
     # they didn't have a full window. We assign NaN.
-    result[: len(weights) - 1] = np.nan
+    # We clip this index to not exceed the array bounds.
+    cutoff_idx = min(len(result), len(weights) - 1)
+    result[:cutoff_idx] = np.nan
 
     return pd.Series(result, index=series.index, name=f"frac_diff_{d}")

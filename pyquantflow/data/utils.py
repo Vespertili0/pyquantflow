@@ -83,6 +83,8 @@ def restructure_map_2_multiasset_df(df_dict, key_column_name="ticker"):
     for key, df in df_dict.items():
         # Create a copy to avoid modifying the original dataframe
         temp_df = df.copy()
+        if temp_df.index.name is None:
+            temp_df.index.name = "datetime"
         # Assign the key to the new column
         temp_df[key_column_name] = key
         dfs_to_concat.append(temp_df)
@@ -90,6 +92,9 @@ def restructure_map_2_multiasset_df(df_dict, key_column_name="ticker"):
     # 3. Concatenate all dataframes
     # ignore_index=True ensures a clean new index (0, 1, 2...)
     final_df = pd.concat(dfs_to_concat).reset_index()
+
+    if "index" in final_df.columns and "datetime" not in final_df.columns:
+        final_df = final_df.rename(columns={"index": "datetime"})
 
     return final_df.dropna().set_index(["datetime", "ticker"]).sort_index()
 

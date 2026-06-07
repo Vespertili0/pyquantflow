@@ -282,6 +282,11 @@ class AssetOrganiser:
             labels_df = self.label_factory.generate_labels(
                 ticker_df, price_col=price_col
             )
+
+            # Ensure the index has a name so that it resets to "datetime" properly
+            if labels_df.index.name is None:
+                labels_df.index.name = "datetime"
+
             # Add ticker level back to index for concatenation
             labels_df["ticker"] = tk
             labels_df = labels_df.reset_index().set_index(["datetime", "ticker"])
