@@ -67,7 +67,9 @@ class TestADFScreenedFFD(unittest.TestCase):
         For an already stationary series, screening should find d* = 0.0
         (or the first d in the grid).
         """
-        _, d_star = adf_screened_ffd(self.stationary, d=None, d_grid=np.arange(0.0, 1.05, 0.05))
+        _, d_star = adf_screened_ffd(
+            self.stationary, d=None, d_grid=np.arange(0.0, 1.05, 0.05)
+        )
         self.assertEqual(d_star, 0.0)
 
 

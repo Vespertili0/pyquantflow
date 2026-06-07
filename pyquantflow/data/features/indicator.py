@@ -289,21 +289,25 @@ def FRACTIONAL_DIFF(
 
     # Detect panel configurations safely
     if isinstance(series.index, pd.MultiIndex):
-        # Group and apply transformation across isolated asset lines
-        transformed = series.groupby(level="ticker", group_keys=False).apply(
-            lambda s: adf_screened_ffd(
-                s, d=d, thres=thres, significance_level=significance_level
+        # Unstack to isolate each asset in a column (datetime index, ticker columns)
+        unstacked = series.unstack(level="ticker")
+        # Apply transformation column-wise
+        transformed_df = unstacked.apply(
+            lambda col: adf_screened_ffd(
+                col, d=d, thres=thres, significance_level=significance_level
             )[0]
         )
-        result = pd.Series(
-            transformed, index=series.index, name=f"frac_diff_{d or 'auto'}"
-        )
+        # Stack back to multi-index
+        result_series = transformed_df.stack(level="ticker", dropna=False)
+        # Reindex to ensure it matches the original series index exactly
+        result = result_series.reindex(series.index)
+        result.name = f"frac_diff_{d or 'auto'}"
     else:
         # Standard single-asset path execution
         result, _ = adf_screened_ffd(
             series, d=d, thres=thres, significance_level=significance_level
         )
-        
+
     if return_array:
         return result.values
     return result
@@ -341,7 +345,6 @@ def SADF_JAX(
         indices padded with np.nan.
     """
     from pyquantflow.data.features.sadf import get_sadf_jax
-    import jax.numpy as jnp
 
     return_array = isinstance(close, np.ndarray)
     # Coerce to pd.Series if raw array
@@ -351,19 +354,19 @@ def SADF_JAX(
         series = close
 
     if isinstance(series.index, pd.MultiIndex):
-        # Loop over asset tickers to isolate rolling regressions
-        def _compute_sadf(sub_series):
-            log_series = np.log(sub_series)
-            sadf_out = get_sadf_jax(
-                log_series, model=model, lags=lags, min_length=min_length
+        # Unstack to isolate each asset in a column (datetime index, ticker columns)
+        unstacked = series.unstack(level="ticker")
+        # Apply transformation column-wise
+        transformed_df = unstacked.apply(
+            lambda col: get_sadf_jax(
+                np.log(col), model=model, lags=lags, min_length=min_length
             )
-            # Re-index back to match original time series shape
-            return sadf_out.reindex(sub_series.index)
-
-        result_series = series.groupby(level="ticker", group_keys=False).apply(
-            _compute_sadf
         )
-        result = pd.Series(result_series, index=series.index, name="sadf_stat")
+        # Stack back to multi-index
+        result_series = transformed_df.stack(level="ticker", dropna=False)
+        # Reindex to ensure it matches the original series index exactly
+        result = result_series.reindex(series.index)
+        result.name = "sadf_stat"
     else:
         # Single-asset baseline transformation
         log_series = np.log(series)
