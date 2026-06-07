@@ -50,15 +50,15 @@ class StationaryTransformer(BaseEstimator, TransformerMixin):
                 optimal_d = 1.0
                 for d_candidate in self.d_grid:
                     try:
-                        diff_series = (
-                            X[col]
-                            .groupby(level="ticker", group_keys=False)
-                            .apply(
-                                lambda s: frac_diff_ffd(
-                                    s, d=d_candidate, thres=self.ffd_thres
-                                )
+                        unstacked = X[col].unstack(level="ticker")
+                        diff_unstacked = unstacked.apply(
+                            lambda s: frac_diff_ffd(
+                                s, d=d_candidate, thres=self.ffd_thres
                             )
                         )
+                        diff_series = diff_unstacked.stack(
+                            level="ticker", dropna=False
+                        ).reindex(X.index)
                     except Exception:
                         diff_series = frac_diff_ffd(
                             X[col], d=d_candidate, thres=self.ffd_thres
@@ -98,13 +98,13 @@ class StationaryTransformer(BaseEstimator, TransformerMixin):
             # 1. Apply FFD via adf_screened_ffd in explicit mode
             if is_multi_index:
                 try:
-                    diff_series = (
-                        X[col]
-                        .groupby(level="ticker", group_keys=False)
-                        .apply(
-                            lambda s: adf_screened_ffd(s, d=d, thres=self.ffd_thres)[0]
-                        )
+                    unstacked = X[col].unstack(level="ticker")
+                    diff_unstacked = unstacked.apply(
+                        lambda s: adf_screened_ffd(s, d=d, thres=self.ffd_thres)[0]
                     )
+                    diff_series = diff_unstacked.stack(
+                        level="ticker", dropna=False
+                    ).reindex(X.index)
                 except Exception:
                     diff_series, _ = adf_screened_ffd(X[col], d=d, thres=self.ffd_thres)
             else:
