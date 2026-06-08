@@ -1,8 +1,7 @@
 import unittest
 import pandas as pd
 import numpy as np
-import math
-from sklearn.model_selection import KFold, StratifiedKFold
+from sklearn.model_selection import StratifiedKFold
 
 from pyquantflow.data.assetorganiser import AssetOrganiser
 from pyquantflow.model.feature_evaluation import FeatureEvaluator
@@ -16,7 +15,9 @@ class TestDualGatePipeline(unittest.TestCase):
     def setUp(self):
         np.random.seed(42)
         n = 500
-        dates = pd.date_range(start="2023-01-01", periods=n, freq="D", tz="Australia/Sydney")
+        dates = pd.date_range(
+            start="2023-01-01", periods=n, freq="D", tz="Australia/Sydney"
+        )
 
         self.clean_daily_map = {}
         for ticker in ["AAPL", "MSFT"]:
@@ -36,7 +37,7 @@ class TestDualGatePipeline(unittest.TestCase):
                     "Close": close,
                     "Volume": volume,
                     "feat1": np.random.randn(n).cumsum(),  # non-stationary
-                    "feat2": np.random.randn(n),           # stationary
+                    "feat2": np.random.randn(n),  # stationary
                 },
                 index=dates,
             )
@@ -84,7 +85,10 @@ class TestDualGatePipeline(unittest.TestCase):
         self.assertIsNotNone(ao)
         self.assertIsNotNone(ao.multi_asset)
         self.assertEqual(ao.multi_asset.index.names, ["datetime", "ticker"])
-        self.assertEqual(str(ao.multi_asset.index.get_level_values("datetime").tz), "Australia/Sydney")
+        self.assertEqual(
+            str(ao.multi_asset.index.get_level_values("datetime").tz),
+            "Australia/Sydney",
+        )
 
         # The organiser should have generated labels, t1 and weight columns
         self.assertIn("label", ao.multi_asset.columns)
@@ -144,7 +148,10 @@ class TestDualGatePipeline(unittest.TestCase):
         self.assertIsNotNone(ao)
         self.assertIsNotNone(ao.multi_asset)
         self.assertEqual(ao.multi_asset.index.names, ["datetime", "ticker"])
-        self.assertEqual(str(ao.multi_asset.index.get_level_values("datetime").tz), "Australia/Sydney")
+        self.assertEqual(
+            str(ao.multi_asset.index.get_level_values("datetime").tz),
+            "Australia/Sydney",
+        )
 
         # The organiser should have generated labels, t1 and weight columns
         self.assertIn("label", ao.multi_asset.columns)
