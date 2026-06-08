@@ -106,10 +106,13 @@ def restructure_map_2_multiasset_df(df_dict, key_column_name="ticker"):
     # Ensure the datetime column is explicitly converted to a consistent DatetimeIndex.
     # Convert to UTC first to prevent object-dtype coercion from mixed timezones,
     # then restore the original timezone if it existed.
+    # Using format='mixed' ensures it can parse strings with explicit offsets.
     if original_tz is not None:
-        final_df["datetime"] = pd.to_datetime(final_df["datetime"], utc=True).dt.tz_convert(original_tz)
+        final_df["datetime"] = pd.to_datetime(
+            final_df["datetime"], utc=True, format="mixed"
+        ).dt.tz_convert(original_tz)
     else:
-        final_df["datetime"] = pd.to_datetime(final_df["datetime"])
+        final_df["datetime"] = pd.to_datetime(final_df["datetime"], format="mixed")
 
     return final_df.dropna().set_index(["datetime", "ticker"]).sort_index()
 
