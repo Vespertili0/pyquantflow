@@ -1,5 +1,5 @@
 import logging
-logger = logging.getLogger(__name__)
+import os
 
 import unittest
 from unittest.mock import patch, MagicMock
@@ -10,9 +10,9 @@ from skfolio import Population
 from skfolio.model_selection import WalkForward
 
 from pyquantflow.portfolio.strategylab import StrategyLab
-
-import os
 from pyquantflow.data.database import DatabaseManager
+
+logger = logging.getLogger(__name__)
 
 
 class TestStrategyLab(unittest.TestCase):

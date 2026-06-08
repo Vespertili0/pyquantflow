@@ -1,8 +1,9 @@
 import logging
-logger = logging.getLogger(__name__)
 
 import yfinance as yf
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 
 def merge_last_hour(df) -> pd.DataFrame:

@@ -1,5 +1,4 @@
 import logging
-logger = logging.getLogger(__name__)
 
 import pandas as pd
 import numpy as np
@@ -8,6 +7,8 @@ import warnings
 from backtesting import Backtest
 from .backtest_database import BacktestDatabaseManager
 from ..data.assetorganiser import AssetOrganiser
+
+logger = logging.getLogger(__name__)
 
 
 class BatchBacktester:

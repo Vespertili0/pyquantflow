@@ -1,8 +1,9 @@
 import logging
-logger = logging.getLogger(__name__)
 
 import sqlite3
 import json
+
+logger = logging.getLogger(__name__)
 
 
 class BacktestDatabaseManager:

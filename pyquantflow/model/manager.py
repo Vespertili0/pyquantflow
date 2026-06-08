@@ -154,7 +154,9 @@ class ClassifierEngine(BaseModelEngine):
             )
 
             logger.info("Model registered to MLflow successfully.")
-            logger.info(f"Model registered to MLflow experiment '{experiment_name}' with run_name '{run_name}'.")
+            logger.info(
+                f"Model registered to MLflow experiment '{experiment_name}' with run_name '{run_name}'."
+            )
 
     def run_pipeline(
         self,
