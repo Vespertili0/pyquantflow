@@ -96,6 +96,21 @@ def restructure_map_2_multiasset_df(df_dict, key_column_name="ticker"):
     if "index" in final_df.columns and "datetime" not in final_df.columns:
         final_df = final_df.rename(columns={"index": "datetime"})
 
+    # Capture the original timezone if available
+    original_tz = None
+    for df in df_dict.values():
+        if hasattr(df.index, "tz") and df.index.tz is not None:
+            original_tz = df.index.tz
+            break
+
+    # Ensure the datetime column is explicitly converted to a consistent DatetimeIndex.
+    # Convert to UTC first to prevent object-dtype coercion from mixed timezones,
+    # then restore the original timezone if it existed.
+    if original_tz is not None:
+        final_df["datetime"] = pd.to_datetime(final_df["datetime"], utc=True).dt.tz_convert(original_tz)
+    else:
+        final_df["datetime"] = pd.to_datetime(final_df["datetime"])
+
     return final_df.dropna().set_index(["datetime", "ticker"]).sort_index()
 
 
