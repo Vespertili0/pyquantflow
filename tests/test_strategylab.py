@@ -1,3 +1,6 @@
+import logging
+logger = logging.getLogger(__name__)
+
 import unittest
 from unittest.mock import patch, MagicMock
 import pandas as pd
@@ -34,7 +37,7 @@ class TestStrategyLab(unittest.TestCase):
                 pass
 
         if self.returns is None or len(self.returns) < 100:
-            print(
+            logger.warning(
                 "Fallback: Using synthetic returns since not enough real data was found."
             )
             np.random.seed(42)

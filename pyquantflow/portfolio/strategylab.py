@@ -1,3 +1,6 @@
+import logging
+logger = logging.getLogger(__name__)
+
 import pandas as pd
 import numpy as np
 
@@ -52,7 +55,7 @@ class StrategyLab:
             cv = self.cv
 
         for name, config in self.strategy_dict.items():
-            print(f"Optimizing {name}...")
+            logger.info(f"Optimizing {name}...")
             # 1. HYPERPARAMETER SEARCH ()
             grid_search = GridSearchCV(
                 estimator=config["estimator"],

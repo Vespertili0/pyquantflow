@@ -1,3 +1,6 @@
+import logging
+logger = logging.getLogger(__name__)
+
 import sqlite3
 import json
 
@@ -38,7 +41,7 @@ class BacktestDatabaseManager:
         try:
             metrics_json = json.dumps(result_dict, default=str)
         except Exception as e:
-            print(f"Error serializing results for {ticker}: {e}")
+            logger.error(f"Error serializing results for {ticker}: {e}")
             return
 
         cursor.execute(
