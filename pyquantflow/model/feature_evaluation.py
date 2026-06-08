@@ -58,7 +58,12 @@ class StationaryTransformer(BaseEstimator, TransformerMixin):
                         )
                         diff_series = diff_unstacked.stack(
                             level="ticker", dropna=False
-                        ).reindex(X.index)
+                        )
+
+                        if diff_series.index.names != X.index.names:
+                            diff_series = diff_series.reorder_levels(X.index.names)
+
+                        diff_series = diff_series.reindex(X.index)
                     except Exception:
                         diff_series = frac_diff_ffd(
                             X[col], d=d_candidate, thres=self.ffd_thres
@@ -104,7 +109,12 @@ class StationaryTransformer(BaseEstimator, TransformerMixin):
                     )
                     diff_series = diff_unstacked.stack(
                         level="ticker", dropna=False
-                    ).reindex(X.index)
+                    )
+
+                    if diff_series.index.names != X.index.names:
+                        diff_series = diff_series.reorder_levels(X.index.names)
+
+                    diff_series = diff_series.reindex(X.index)
                 except Exception:
                     diff_series, _ = adf_screened_ffd(X[col], d=d, thres=self.ffd_thres)
             else:
@@ -443,7 +453,10 @@ class FeatureEvaluator:
                     else:
                         preds = est_sfi.predict(X_val[cols])
 
-                    score = metric(y_val, preds, **metric_kwargs)
+                    try:
+                        score = metric(y_val, preds, **metric_kwargs)
+                    except Exception:
+                        score = np.nan
                     sfi_scores[c_id].append(score)
 
                 # --- MDA ---
@@ -458,7 +471,11 @@ class FeatureEvaluator:
                         base_preds = base_preds[:, 1]
                 else:
                     base_preds = est_mda.predict(X_val)
-                baseline_score = metric(y_val, base_preds, **metric_kwargs)
+
+                try:
+                    baseline_score = metric(y_val, base_preds, **metric_kwargs)
+                except Exception:
+                    baseline_score = np.nan
 
                 for c_id, cols in feature_clusters.items():
                     X_val_pert = X_val.copy()
@@ -474,7 +491,10 @@ class FeatureEvaluator:
                     else:
                         pert_preds = est_mda.predict(X_val_pert)
 
-                    pert_score = metric(y_val, pert_preds, **metric_kwargs)
+                    try:
+                        pert_score = metric(y_val, pert_preds, **metric_kwargs)
+                    except Exception:
+                        pert_score = np.nan
 
                     if metric.__name__ == "log_loss":
                         mda = pert_score - baseline_score

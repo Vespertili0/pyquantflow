@@ -299,6 +299,11 @@ def FRACTIONAL_DIFF(
         )
         # Stack back to multi-index
         result_series = transformed_df.stack(level="ticker", dropna=False)
+
+        # Ensure the index levels are in the same order as the input
+        if result_series.index.names != series.index.names:
+            result_series = result_series.reorder_levels(series.index.names)
+
         # Reindex to ensure it matches the original series index exactly
         result = result_series.reindex(series.index)
         result.name = f"frac_diff_{d or 'auto'}"
@@ -364,6 +369,11 @@ def SADF_JAX(
         )
         # Stack back to multi-index
         result_series = transformed_df.stack(level="ticker", dropna=False)
+
+        # Ensure the index levels are in the same order as the input
+        if result_series.index.names != series.index.names:
+            result_series = result_series.reorder_levels(series.index.names)
+
         # Reindex to ensure it matches the original series index exactly
         result = result_series.reindex(series.index)
         result.name = "sadf_stat"

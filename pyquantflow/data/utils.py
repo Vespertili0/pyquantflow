@@ -83,6 +83,8 @@ def restructure_map_2_multiasset_df(df_dict, key_column_name="ticker"):
     for key, df in df_dict.items():
         # Create a copy to avoid modifying the original dataframe
         temp_df = df.copy()
+        if temp_df.index.name is None:
+            temp_df.index.name = "datetime"
         # Assign the key to the new column
         temp_df[key_column_name] = key
         dfs_to_concat.append(temp_df)
@@ -90,6 +92,27 @@ def restructure_map_2_multiasset_df(df_dict, key_column_name="ticker"):
     # 3. Concatenate all dataframes
     # ignore_index=True ensures a clean new index (0, 1, 2...)
     final_df = pd.concat(dfs_to_concat).reset_index()
+
+    if "index" in final_df.columns and "datetime" not in final_df.columns:
+        final_df = final_df.rename(columns={"index": "datetime"})
+
+    # Capture the original timezone if available
+    original_tz = None
+    for df in df_dict.values():
+        if hasattr(df.index, "tz") and df.index.tz is not None:
+            original_tz = df.index.tz
+            break
+
+    # Ensure the datetime column is explicitly converted to a consistent DatetimeIndex.
+    # Convert to UTC first to prevent object-dtype coercion from mixed timezones,
+    # then restore the original timezone if it existed.
+    # Using format='mixed' ensures it can parse strings with explicit offsets.
+    if original_tz is not None:
+        final_df["datetime"] = pd.to_datetime(
+            final_df["datetime"], utc=True, format="mixed"
+        ).dt.tz_convert(original_tz)
+    else:
+        final_df["datetime"] = pd.to_datetime(final_df["datetime"], format="mixed")
 
     return final_df.dropna().set_index(["datetime", "ticker"]).sort_index()
 

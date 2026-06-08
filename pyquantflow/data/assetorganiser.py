@@ -71,27 +71,10 @@ class AssetOrganiser:
         Splits the multi_asset DataFrame into train and test sets
         based on the cutoff date.
         """
-        datetime_vals = self.multi_asset.index.get_level_values("datetime")
-        
-        # Determine the timezone of the datetime index level, even if index is object dtype
-        tz = None
-        if hasattr(datetime_vals, "tz") and datetime_vals.tz is not None:
-            tz = datetime_vals.tz
-        else:
-            for val in datetime_vals:
-                if pd.notna(val) and hasattr(val, "tz") and val.tz is not None:
-                    tz = val.tz
-                    break
-
-        cutoff = pd.Timestamp(self.cutoff_date)
-        if tz is not None:
-            if cutoff.tz is None:
-                cutoff = cutoff.tz_localize(tz)
-            else:
-                cutoff = cutoff.tz_convert(tz)
-        else:
-            if cutoff.tz is not None:
-                cutoff = cutoff.tz_localize(None)
+        datetime_vals = pd.to_datetime(
+            self.multi_asset.index.get_level_values("datetime"), utc=True
+        )
+        cutoff = pd.to_datetime(self.cutoff_date, utc=True)
 
         self.multi_asset_train = self.multi_asset[datetime_vals < cutoff]
         self.multi_asset_test = self.multi_asset[datetime_vals >= cutoff]
@@ -282,6 +265,11 @@ class AssetOrganiser:
             labels_df = self.label_factory.generate_labels(
                 ticker_df, price_col=price_col
             )
+
+            # Ensure the index has a name so that it resets to "datetime" properly
+            if labels_df.index.name is None:
+                labels_df.index.name = "datetime"
+
             # Add ticker level back to index for concatenation
             labels_df["ticker"] = tk
             labels_df = labels_df.reset_index().set_index(["datetime", "ticker"])
