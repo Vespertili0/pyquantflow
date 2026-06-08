@@ -71,7 +71,7 @@ class AssetOrganiser:
         Splits the multi_asset DataFrame into train and test sets
         based on the cutoff date.
         """
-        datetime_vals = self.multi_asset.index.get_level_values("datetime")
+        datetime_vals = pd.to_datetime(self.multi_asset.index.get_level_values("datetime"))
         
         # Determine the timezone of the datetime index level, even if index is object dtype
         tz = None
