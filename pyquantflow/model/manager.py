@@ -127,7 +127,7 @@ class ClassifierEngine(BaseModelEngine):
 
         if mlflow is None:
             logger.warning("MLflow is not installed. Skipping registration.")
-            print("MLflow is not installed. Skipping registration.")
+            logger.info("MLflow is not installed. Skipping registration.")
             return
 
         # Set or create experiment
@@ -154,10 +154,7 @@ class ClassifierEngine(BaseModelEngine):
             )
 
             logger.info("Model registered to MLflow successfully.")
-            print(
-                f"Model registered to MLflow experiment '{experiment_name}' ",
-                f"with run_name '{run_name}'.",
-            )
+            logger.info(f"Model registered to MLflow experiment '{experiment_name}' with run_name '{run_name}'.")
 
     def run_pipeline(
         self,
@@ -183,7 +180,7 @@ class ClassifierEngine(BaseModelEngine):
         Executes the full pipeline.
         """
         # 1. Run Optimization
-        print("Starting Hyperparameter Optimization...")
+        logger.info("Starting Hyperparameter Optimization...")
         study = self.optimiser.run(
             X=X_train,
             y=y_train,
@@ -201,17 +198,17 @@ class ClassifierEngine(BaseModelEngine):
 
         best_params = study.best_params
         best_value = study.best_value
-        print(f"Optimization complete. Best CV Score: {best_value}")
-        print(f"Best Params: {best_params}")
+        logger.info(f"Optimization complete. Best CV Score: {best_value}")
+        logger.info(f"Best Params: {best_params}")
 
         # 2. Re-instantiate the best model using FixedTrial
         # This allows us to use the same logic in model_factory without modification
-        print("Re-instantiating best model...")
+        logger.info("Re-instantiating best model...")
         fixed_trial = optuna.trial.FixedTrial(best_params)
         self.best_estimator_ = model_factory(fixed_trial)
 
         # 3. Fit on ALL training data
-        print("Retraining best model on full training set...")
+        logger.info("Retraining best model on full training set...")
         fit_params = {}
         if weight_col and weight_col in X_train.columns:
             # Extract sample weight and find the target estimator step in the pipeline
@@ -233,14 +230,14 @@ class ClassifierEngine(BaseModelEngine):
         self.best_estimator_.fit(X_train[features], y_train, **fit_params)
 
         # 4. Validate on Hold-out Test Set
-        print("Validating on hold-out test set...")
+        logger.info("Validating on hold-out test set...")
         validation_metrics = self.validate(
             self.best_estimator_, X_test[features], y_test, metric, metric_kwargs
         )
-        print(f"Validation Metrics: {validation_metrics}")
+        logger.info(f"Validation Metrics: {validation_metrics}")
 
         # 5. Register
-        print("Attempting MLflow registration...")
+        logger.info("Attempting MLflow registration...")
         # Combine best params and extra info if needed
         self.register_mlflow_evaluation(
             model=self.best_estimator_,

@@ -1,3 +1,6 @@
+import logging
+logger = logging.getLogger(__name__)
+
 import pandas as pd
 import numpy as np
 from typing import Optional, Dict, List, Any, Tuple, Union
@@ -147,7 +150,7 @@ class BatchBacktester:
                 if sym in available_symbols:
                     data_map[sym] = asset_organiser.get_transformed_test_ticker(sym)
                 else:
-                    print(
+                    logger.info(
                         f"Warning: Symbol '{sym}' not found in AssetOrganiser test data."
                     )
 
@@ -171,7 +174,7 @@ class BatchBacktester:
             return self.results
 
         for sym, df in data_map.items():
-            print(f"Running backtest for {sym}...")
+            logger.info(f"Running backtest for {sym}...")
             try:
                 stats_dict = self.run_single_backtest(
                     df=df,
@@ -183,9 +186,9 @@ class BatchBacktester:
                     **strategy_params,
                 )
                 individual_results[sym] = stats_dict
-                print(f"Finished {sym}: Return {stats_dict['Return [%]']:.2f}%")
+                logger.info(f"Finished {sym}: Return {stats_dict['Return [%]']:.2f}%")
             except Exception as e:
-                print(f"Error running backtest for {sym}: {e}")
+                logger.error(f"Error running backtest for {sym}: {e}")
                 individual_results[sym] = {"Error": str(e)}
 
         # Calculate averages
@@ -208,7 +211,7 @@ class BatchBacktester:
         from datetime import datetime
 
         if not self.results or not self.strategy_class:
-            print("No results to save.")
+            logger.info("No results to save.")
             return None
 
         individual_results = self.results.get("individual_results", {})

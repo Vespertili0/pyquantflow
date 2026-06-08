@@ -1,3 +1,6 @@
+import logging
+logger = logging.getLogger(__name__)
+
 import unittest
 import os
 import sqlite3
@@ -39,10 +42,10 @@ class TestBacktesting(unittest.TestCase):
             if not df.empty:
                 data_map[ticker] = df
             else:
-                print(f"Warning: No data found for {ticker} in stocks.db")
+                logger.warning(f"Warning: No data found for {ticker} in stocks.db")
 
         if not data_map:
-            print("Fallback: Using synthetic data since no real data was found.")
+            logger.warning("Fallback: Using synthetic data since no real data was found.")
             import numpy as np
 
             np.random.seed(42)
