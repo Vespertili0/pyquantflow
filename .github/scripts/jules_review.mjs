@@ -1,5 +1,5 @@
-const fs = require('fs');
-const { jules } = require('@google/jules-sdk');
+import fs from 'fs';
+import { jules } from '@google/jules-sdk';
 
 async function run() {
     const apiKey = process.env.JULES_API_KEY;
