@@ -82,17 +82,18 @@ def _get_y_x(
 
 def _lag_df(df: pd.DataFrame, lags: Union[int, list[int]]) -> pd.DataFrame:
     """Apply Lags to DataFrame"""
-    df_lagged = pd.DataFrame()
     if isinstance(lags, int):
-        lags = range(1, lags + 1)
+        lags = list(range(1, lags + 1))
     else:
         lags = [int(lag) for lag in lags]
 
+    lagged_dfs = []
     for lag in lags:
         temp_df = df.shift(lag).copy(deep=True)
-        temp_df.columns = [str(i) + "_" + str(lag) for i in temp_df.columns]
-        df_lagged = df_lagged.join(temp_df, how="outer")
-    return df_lagged
+        temp_df.columns = [f"{col}_{lag}" for col in temp_df.columns]
+        lagged_dfs.append(temp_df)
+
+    return pd.concat(lagged_dfs, axis=1)
 
 
 @jax.jit

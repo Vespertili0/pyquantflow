@@ -1,3 +1,6 @@
+import logging
+import os
+
 import unittest
 from unittest.mock import patch, MagicMock
 import pandas as pd
@@ -7,9 +10,9 @@ from skfolio import Population
 from skfolio.model_selection import WalkForward
 
 from pyquantflow.portfolio.strategylab import StrategyLab
-
-import os
 from pyquantflow.data.database import DatabaseManager
+
+logger = logging.getLogger(__name__)
 
 
 class TestStrategyLab(unittest.TestCase):
@@ -34,7 +37,7 @@ class TestStrategyLab(unittest.TestCase):
                 pass
 
         if self.returns is None or len(self.returns) < 100:
-            print(
+            logger.warning(
                 "Fallback: Using synthetic returns since not enough real data was found."
             )
             np.random.seed(42)

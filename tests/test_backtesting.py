@@ -1,3 +1,5 @@
+import logging
+
 import unittest
 import os
 import sqlite3
@@ -6,6 +8,8 @@ import pandas as pd
 from pyquantflow.backtesting.batchbacktest import BatchBacktester
 from pyquantflow.strategies.example_strategy import SmaCross
 from pyquantflow.data.database import DatabaseManager
+
+logger = logging.getLogger(__name__)
 
 
 class TestBacktesting(unittest.TestCase):
@@ -39,10 +43,12 @@ class TestBacktesting(unittest.TestCase):
             if not df.empty:
                 data_map[ticker] = df
             else:
-                print(f"Warning: No data found for {ticker} in stocks.db")
+                logger.warning(f"Warning: No data found for {ticker} in stocks.db")
 
         if not data_map:
-            print("Fallback: Using synthetic data since no real data was found.")
+            logger.warning(
+                "Fallback: Using synthetic data since no real data was found."
+            )
             import numpy as np
 
             np.random.seed(42)

@@ -71,12 +71,13 @@ class AssetOrganiser:
         Splits the multi_asset DataFrame into train and test sets
         based on the cutoff date.
         """
-        self.multi_asset_train = self.multi_asset[
-            self.multi_asset.index.get_level_values("datetime") < self.cutoff_date
-        ]
-        self.multi_asset_test = self.multi_asset[
-            self.multi_asset.index.get_level_values("datetime") >= self.cutoff_date
-        ]
+        datetime_vals = pd.to_datetime(
+            self.multi_asset.index.get_level_values("datetime"), utc=True
+        )
+        cutoff = pd.to_datetime(self.cutoff_date, utc=True)
+
+        self.multi_asset_train = self.multi_asset[datetime_vals < cutoff]
+        self.multi_asset_test = self.multi_asset[datetime_vals >= cutoff]
 
     def prepare_multi_asset_frame(self) -> None:
         """
@@ -264,6 +265,11 @@ class AssetOrganiser:
             labels_df = self.label_factory.generate_labels(
                 ticker_df, price_col=price_col
             )
+
+            # Ensure the index has a name so that it resets to "datetime" properly
+            if labels_df.index.name is None:
+                labels_df.index.name = "datetime"
+
             # Add ticker level back to index for concatenation
             labels_df["ticker"] = tk
             labels_df = labels_df.reset_index().set_index(["datetime", "ticker"])
@@ -609,3 +615,16 @@ class AssetOrganiser:
         if self.multi_asset_transformed_test is None:
             raise ValueError("Test data not transformed. Fit the classifier first.")
         return self.multi_asset_transformed_test.xs(ticker, level="ticker")
+
+    def update_multi_asset(self, df: pd.DataFrame) -> None:
+        """
+        Overwrites the internal multi_asset panel dataset with engineered features
+        and automatically re-synchronises the train and test split boundaries.
+        """
+        if df.index.names != ["datetime", "ticker"]:
+            raise ValueError(
+                "DataFrame index must match MultiIndex format ['datetime', 'ticker']."
+            )
+
+        self.multi_asset = df.copy()
+        self._split_train_test()

@@ -26,14 +26,14 @@ def pipe_indicator(
     # 1. Prepare Data Inputs
     if isinstance(input_map, dict):
         # Pass data as Keyword Arguments (Good for functions with named inputs like ours)
-        data_inputs = {arg: df[col].values for arg, col in input_map.items()}
+        data_inputs = {arg: df[col] for arg, col in input_map.items()}
         # Combine with static kwargs
         full_kwargs = {**data_inputs, **kwargs}
         results = indicator(**full_kwargs)
 
     elif isinstance(input_map, list) or isinstance(input_map, tuple):
         # Pass data as Positional Arguments (Good for standard TA-Lib functions like RSI)
-        pos_inputs = [df[col].values for col in input_map]
+        pos_inputs = [df[col] for col in input_map]
         results = indicator(*pos_inputs, **kwargs)
     else:
         raise ValueError("input_map must be a dict or list/tuple")
@@ -83,6 +83,8 @@ def restructure_map_2_multiasset_df(df_dict, key_column_name="ticker"):
     for key, df in df_dict.items():
         # Create a copy to avoid modifying the original dataframe
         temp_df = df.copy()
+        if temp_df.index.name is None:
+            temp_df.index.name = "datetime"
         # Assign the key to the new column
         temp_df[key_column_name] = key
         dfs_to_concat.append(temp_df)
@@ -90,6 +92,27 @@ def restructure_map_2_multiasset_df(df_dict, key_column_name="ticker"):
     # 3. Concatenate all dataframes
     # ignore_index=True ensures a clean new index (0, 1, 2...)
     final_df = pd.concat(dfs_to_concat).reset_index()
+
+    if "index" in final_df.columns and "datetime" not in final_df.columns:
+        final_df = final_df.rename(columns={"index": "datetime"})
+
+    # Capture the original timezone if available
+    original_tz = None
+    for df in df_dict.values():
+        if hasattr(df.index, "tz") and df.index.tz is not None:
+            original_tz = df.index.tz
+            break
+
+    # Ensure the datetime column is explicitly converted to a consistent DatetimeIndex.
+    # Convert to UTC first to prevent object-dtype coercion from mixed timezones,
+    # then restore the original timezone if it existed.
+    # Using format='mixed' ensures it can parse strings with explicit offsets.
+    if original_tz is not None:
+        final_df["datetime"] = pd.to_datetime(
+            final_df["datetime"], utc=True, format="mixed"
+        ).dt.tz_convert(original_tz)
+    else:
+        final_df["datetime"] = pd.to_datetime(final_df["datetime"], format="mixed")
 
     return final_df.dropna().set_index(["datetime", "ticker"]).sort_index()
 
@@ -111,3 +134,26 @@ def align_and_ffill_multiasset(df, time_level="datetime", ticker_level="ticker")
     df = df.groupby(level=ticker_level).ffill()
 
     return df.dropna()
+
+
+def generate_ema_ribbon_names(prefix="EMAR", M=10):
+    """
+    Generates dynamic column headers for the EMA_RIBBON feature outputs.
+    """
+    names = [f"{prefix}_RS_VOL"]
+
+    names.extend([f"{prefix}_MICRO_{i}v{i + 1}" for i in range(1, M)])
+    names.append(f"{prefix}_MACRO")
+
+    names.extend(
+        [
+            f"{prefix}_STD",
+            f"{prefix}_SKEW",
+            f"{prefix}_KURT",
+            f"{prefix}_CONSENSUS_RANK",
+        ]
+    )
+
+    names.extend([f"{prefix}_VELOCITY_{i}v{i + 1}" for i in range(1, M)])
+
+    return names

@@ -1,5 +1,9 @@
+import logging
+
 import yfinance as yf
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 
 def merge_last_hour(df) -> pd.DataFrame:
@@ -72,7 +76,7 @@ def fetch_quarterly_data(ticker, time_dict, period="quarterly") -> pd.DataFrame:
                 # Concatenate the new data
                 data = pd.concat([data, new])
             except Exception as e:
-                print(f"Failed to fetch data for {year} Q{t}: {e}")
+                logger.error(f"Failed to fetch data for {year} Q{t}: {e}")
                 break
     data.index = data.index.tz_convert("Australia/Sydney")
     #    data = merge_last_hour(data)
