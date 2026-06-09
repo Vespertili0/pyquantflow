@@ -1,11 +1,12 @@
-import pandas as pd
+from typing import List, Dict, Optional, Callable, Union
+
 import numpy as np
-import scipy.stats
-import scipy.spatial.distance
+import pandas as pd
 import scipy.cluster.hierarchy
+import scipy.spatial.distance
+import scipy.stats
 from sklearn.base import BaseEstimator, TransformerMixin, clone
 from sklearn.metrics import silhouette_score
-from typing import List, Dict, Optional, Callable, Union
 from tsfeatures import tsfeatures
 
 # Shared FFD + ADF utilities (canonical source: data.features.fractional_differentiation)
@@ -491,7 +492,7 @@ class FeatureEvaluator:
                 for c_id, cols in feature_clusters.items():
                     X_val_pert = X_val.copy()
                     for col in cols:
-                        np.random.shuffle(X_val_pert[col].values)
+                        X_val_pert[col] = np.random.permutation(X_val_pert[col].values)
 
                     if metric.__name__ in ("log_loss", "roc_auc_score") and hasattr(
                         est_mda, "predict_proba"
