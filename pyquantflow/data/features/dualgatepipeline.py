@@ -105,9 +105,7 @@ class DualGatePipelineFactory:
             metric=log_loss,
             metric_kwargs={
                 "labels": np.unique(merged_df[evaluator.target_col].astype(int).values)
-            }
-            if len(merged_df[evaluator.target_col].unique()) > 2
-            else {},
+            },
         )
 
         # Commit the clean, stationary panel back into the organiser's state machine
