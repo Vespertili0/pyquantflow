@@ -56,6 +56,11 @@ class StationaryTransformer(BaseEstimator, TransformerMixin):
                                 s, d=d_candidate, thres=self.ffd_thres
                             )
                         )
+                        # Calculate ADF per ticker and aggregate
+                        t_stats = diff_unstacked.apply(_adf_test_stat)
+                        p_values = t_stats.apply(_adf_p_value)
+                        p_value = p_values.mean()
+
                         diff_series = diff_unstacked.stack(level="ticker", dropna=False)
 
                         if diff_series.index.names != X.index.names:
@@ -66,9 +71,8 @@ class StationaryTransformer(BaseEstimator, TransformerMixin):
                         diff_series = frac_diff_ffd(
                             X[col], d=d_candidate, thres=self.ffd_thres
                         )
-
-                    t_stat = _adf_test_stat(diff_series)
-                    p_value = _adf_p_value(t_stat)
+                        t_stat = _adf_test_stat(diff_series)
+                        p_value = _adf_p_value(t_stat)
 
                     if p_value <= self.significance_level:
                         optimal_d = d_candidate
@@ -182,7 +186,18 @@ class FeatureEvaluator:
         valid_features = []
         for feat in self.features:
             try:
-                acf1_val = X_trans[feat].autocorr(lag=1)
+                if (
+                    isinstance(X_trans.index, pd.MultiIndex)
+                    and "ticker" in X_trans.index.names
+                ):
+                    acf1_val = (
+                        X_trans[feat]
+                        .groupby(level="ticker")
+                        .apply(lambda s: s.autocorr(lag=1))
+                        .mean()
+                    )
+                else:
+                    acf1_val = X_trans[feat].autocorr(lag=1)
             except Exception:
                 acf1_val = np.nan
 
