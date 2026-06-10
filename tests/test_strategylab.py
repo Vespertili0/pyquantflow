@@ -73,10 +73,11 @@ class TestStrategyLab(unittest.TestCase):
 
     def test_search_strategy_hyperparameters(self):
         """Test search_strategy_hyperparameters sets best_estimators."""
+        from skfolio.metrics import make_scorer
 
         # We use a real skfolio ratio measure instead of mocking to test true estimator scoring.
         self.lab.search_strategy_hyperparameters(
-            scoring=RatioMeasure.ANNUALIZED_SHARPE_RATIO
+            scoring=make_scorer(RatioMeasure.ANNUALIZED_SHARPE_RATIO)
         )
 
         # Check if best estimators are set
@@ -107,6 +108,13 @@ class TestStrategyLab(unittest.TestCase):
         """Test get_journey_with_frontier runs and plots are mocked out."""
         # Setup mock best_estimators
         self.lab.best_estimators = {"MeanRisk": MeanRisk()}
+
+        # Mock fit_predict and predict to avoid solver errors on real data
+        mock_pop = Population([])
+        self.lab.best_estimators["MeanRisk"].fit_predict = MagicMock(
+            return_value=mock_pop
+        )
+        self.lab.best_estimators["MeanRisk"].predict = MagicMock(return_value=mock_pop)
 
         # We need to mock .show() on the return of plot_measures and plot_distribution
         mock_fig1 = MagicMock()

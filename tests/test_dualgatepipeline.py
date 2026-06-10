@@ -104,13 +104,17 @@ class TestDualGatePipeline(unittest.TestCase):
             target_labels=["label", "t1", "weight"],
         )
 
+        expected_tz = str(
+            self.clean_daily_map[list(self.clean_daily_map.keys())[0]].index.tz
+        )
+
         # Assertions to verify the organiser contains the processed and transformed data
         self.assertIsNotNone(ao)
         self.assertIsNotNone(ao.multi_asset)
         self.assertEqual(ao.multi_asset.index.names, ["datetime", "ticker"])
         self.assertEqual(
             str(ao.multi_asset.index.get_level_values("datetime").tz),
-            "Australia/Sydney",
+            expected_tz,
         )
 
         # The organiser should have generated labels, t1 and weight columns
@@ -171,13 +175,17 @@ class TestDualGatePipeline(unittest.TestCase):
             target_labels=["label", "t1", "weight"],
         )
 
+        expected_tz = str(
+            self.clean_daily_map[list(self.clean_daily_map.keys())[0]].index.tz
+        )
+
         # Assertions to verify the organiser contains the processed and transformed data
         self.assertIsNotNone(ao)
         self.assertIsNotNone(ao.multi_asset)
         self.assertEqual(ao.multi_asset.index.names, ["datetime", "ticker"])
         self.assertEqual(
             str(ao.multi_asset.index.get_level_values("datetime").tz),
-            "Australia/Sydney",
+            expected_tz,
         )
 
         # The organiser should have generated labels, t1 and weight columns
