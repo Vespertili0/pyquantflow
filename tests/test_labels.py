@@ -8,9 +8,34 @@ from pyquantflow.data.labels import TrendScanningLabelFactory
 
 class TestLabelsAndWeights(unittest.TestCase):
     def setUp(self):
-        np.random.seed(42)
-        self.dates = pd.date_range("2021-04-28", periods=100, tz="UTC")
-        self.prices = pd.Series(100 + np.cumsum(np.random.randn(100)), index=self.dates)
+        import os
+        from pyquantflow.data.database import DatabaseManager
+
+        source_db_path = os.path.join(os.path.dirname(__file__), "stocks.db")
+        self.prices = None
+
+        if os.path.exists(source_db_path):
+            try:
+                db_manager = DatabaseManager(db_path=source_db_path)
+                df = db_manager.get_data("CBA.AX")
+                if not df.empty and len(df) >= 100:
+                    self.prices = df["Close"].iloc[-100:].copy()
+                    if self.prices.index.tz is None:
+                        self.prices.index = self.prices.index.tz_localize("UTC")
+                    else:
+                        self.prices.index = self.prices.index.tz_convert("UTC")
+                db_manager.conn.close()
+            except Exception:
+                pass
+
+        if self.prices is None:
+            np.random.seed(42)
+            self.dates = pd.date_range("2021-04-28", periods=100, tz="UTC")
+            self.prices = pd.Series(
+                100 + np.cumsum(np.random.randn(100)), index=self.dates
+            )
+
+        self.dates = self.prices.index
         self.sl_col = self.prices * 0.98
 
     def test_triple_barrier_and_sample_weights(self):

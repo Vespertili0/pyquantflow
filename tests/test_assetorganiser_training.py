@@ -30,35 +30,62 @@ class MockEstimator:
 
 class TestDataHierarchyIntegration(unittest.TestCase):
     def setUp(self):
-        # Create dummy multi-asset data
-        dates = pd.date_range("2020-01-01", periods=10)
-        df_a = pd.DataFrame(
-            {
-                "feature1": np.random.randn(10),
-                "target": np.random.randint(0, 2, 10),
-                "weight": np.random.uniform(0.5, 1.5, 10),
-            },
-            index=dates,
-        )
-        df_a.index.name = "datetime"
+        import os
+        from pyquantflow.data.database import DatabaseManager
 
-        df_b = pd.DataFrame(
-            {
-                "feature1": np.random.randn(10),
-                "target": np.random.randint(0, 2, 10),
-                "weight": np.random.uniform(0.5, 1.5, 10),
-            },
-            index=dates,
-        )
-        df_b.index.name = "datetime"
+        self.data_map = {}
+        source_db_path = os.path.join(os.path.dirname(__file__), "stocks.db")
 
-        self.data_map = {"AAA": df_a, "BBB": df_b}
+        if os.path.exists(source_db_path):
+            try:
+                db_manager = DatabaseManager(db_path=source_db_path)
+                for ticker in ["FMG.AX", "CBA.AX"]:
+                    df = db_manager.get_data(ticker)
+                    if not df.empty and len(df) >= 10:
+                        df = df.iloc[-10:].copy()
+                        np.random.seed(42)
+                        n = len(df)
+                        df["feature1"] = np.random.randn(n)
+                        df["target"] = np.random.randint(0, 2, n)
+                        df["weight"] = np.random.uniform(0.5, 1.5, n)
+                        self.data_map[ticker] = df
+                db_manager.conn.close()
+            except Exception:
+                pass
+
+        if len(self.data_map) < 2:
+            # Fallback
+            np.random.seed(42)
+            dates = pd.date_range("2020-01-01", periods=10)
+            df_a = pd.DataFrame(
+                {
+                    "feature1": np.random.randn(10),
+                    "target": np.random.randint(0, 2, 10),
+                    "weight": np.random.uniform(0.5, 1.5, 10),
+                },
+                index=dates,
+            )
+            df_a.index.name = "datetime"
+            df_b = pd.DataFrame(
+                {
+                    "feature1": np.random.randn(10),
+                    "target": np.random.randint(0, 2, 10),
+                    "weight": np.random.uniform(0.5, 1.5, 10),
+                },
+                index=dates,
+            )
+            df_b.index.name = "datetime"
+            self.data_map = {"AAA": df_a, "BBB": df_b}
+
+        # Set dynamic cutoff date (exclusive for train) to retain exactly 7 train elements
+        first_ticker = list(self.data_map.keys())[0]
+        self.cutoff_date = self.data_map[first_ticker].index[7]
 
     def test_pipeline_integration_with_weights(self):
         # 1. Asset Organiser
         organiser = AssetOrganiser(
             data_map=self.data_map,
-            cutoff_date="2020-01-08",
+            cutoff_date=self.cutoff_date,
             target_features=["target"],
             weight_col="weight",
         )
@@ -104,37 +131,61 @@ class TestDataHierarchyIntegration(unittest.TestCase):
 
 class TestAssetOrganiserFlexibility(unittest.TestCase):
     def setUp(self):
-        dates = pd.date_range("2020-01-01", periods=10)
-        df_a = pd.DataFrame(
-            {
-                "feature1": np.random.randn(10),
-                "target": np.random.randint(0, 2, 10),
-            },
-            index=dates,
-        )
-        df_a.index.name = "datetime"
-        self.data_map = {"AAA": df_a}
+        import os
+        from pyquantflow.data.database import DatabaseManager
+
+        self.data_map = {}
+        source_db_path = os.path.join(os.path.dirname(__file__), "stocks.db")
+
+        if os.path.exists(source_db_path):
+            try:
+                db_manager = DatabaseManager(db_path=source_db_path)
+                df = db_manager.get_data("CBA.AX")
+                if not df.empty and len(df) >= 10:
+                    df = df.iloc[-10:].copy()
+                    np.random.seed(42)
+                    n = len(df)
+                    df["feature1"] = np.random.randn(n)
+                    df["target"] = np.random.randint(0, 2, n)
+                    self.data_map["AAA"] = df
+                db_manager.conn.close()
+            except Exception:
+                pass
+
+        if not self.data_map:
+            np.random.seed(42)
+            dates = pd.date_range("2020-01-01", periods=10)
+            df_a = pd.DataFrame(
+                {
+                    "feature1": np.random.randn(10),
+                    "target": np.random.randint(0, 2, 10),
+                },
+                index=dates,
+            )
+            df_a.index.name = "datetime"
+            self.data_map = {"AAA": df_a}
 
         # Create multi_asset format DataFrame manually
-        self.multi_asset = df_a.copy()
+        self.multi_asset = self.data_map["AAA"].copy()
         self.multi_asset["ticker"] = "AAA"
         self.multi_asset = self.multi_asset.reset_index().set_index(
             ["datetime", "ticker"]
         )
+        self.cutoff_date = self.data_map["AAA"].index[7]
 
     def test_both_provided_raises_value_error(self):
         with self.assertRaises(ValueError):
             AssetOrganiser(
                 data_map=self.data_map,
                 multi_asset=self.multi_asset,
-                cutoff_date="2020-01-08",
+                cutoff_date=self.cutoff_date,
                 target_features=["target"],
             )
 
     def test_neither_provided_raises_value_error(self):
         with self.assertRaises(ValueError):
             AssetOrganiser(
-                cutoff_date="2020-01-08",
+                cutoff_date=self.cutoff_date,
                 target_features=["target"],
             )
 
@@ -149,13 +200,13 @@ class TestAssetOrganiserFlexibility(unittest.TestCase):
         with self.assertRaises(ValueError):
             AssetOrganiser(
                 data_map=self.data_map,
-                cutoff_date="2020-01-08",
+                cutoff_date=self.cutoff_date,
             )
 
     def test_multi_asset_split_immediately(self):
         organiser = AssetOrganiser(
             multi_asset=self.multi_asset,
-            cutoff_date="2020-01-08",
+            cutoff_date=self.cutoff_date,
             target_features=["target"],
         )
         # Should be split immediately in __init__
@@ -189,7 +240,7 @@ class TestAssetOrganiserFlexibility(unittest.TestCase):
 
         organiser = AssetOrganiser(
             data_map=data_map,
-            cutoff_date="2020-01-08",
+            cutoff_date=self.cutoff_date,
             target_features=["target"],
         )
         organiser.prepare_multi_asset_frame()
@@ -227,7 +278,7 @@ class TestAssetOrganiserFlexibility(unittest.TestCase):
     def test_to_tsfeatures_format(self):
         organiser = AssetOrganiser(
             multi_asset=self.multi_asset,
-            cutoff_date="2020-01-08",
+            cutoff_date=self.cutoff_date,
             target_features=["target"],
         )
 

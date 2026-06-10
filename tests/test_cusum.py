@@ -7,13 +7,31 @@ from pyquantflow.data.assetorganiser import AssetOrganiser
 
 class TestCUSUMFilter(unittest.TestCase):
     def setUp(self):
-        np.random.seed(42)
-        # Create 100 days of price data
-        self.dates = pd.date_range("2021-01-01", periods=100)
-        # Price process: driftless random walk starting at 100
-        self.prices = pd.Series(
-            100.0 + np.cumsum(np.random.normal(0, 1.0, 100)), index=self.dates
-        )
+        import os
+        from pyquantflow.data.database import DatabaseManager
+
+        source_db_path = os.path.join(os.path.dirname(__file__), "stocks.db")
+        self.prices = None
+
+        if os.path.exists(source_db_path):
+            try:
+                db_manager = DatabaseManager(db_path=source_db_path)
+                df = db_manager.get_data("CBA.AX")
+                if not df.empty and len(df) >= 100:
+                    self.prices = df["Close"].iloc[-100:].copy()
+                db_manager.conn.close()
+            except Exception:
+                pass
+
+        if self.prices is None:
+            np.random.seed(42)
+            # Create 100 days of price data
+            self.dates = pd.date_range("2021-01-01", periods=100)
+            # Price process: driftless random walk starting at 100
+            self.prices = pd.Series(
+                100.0 + np.cumsum(np.random.normal(0, 1.0, 100)), index=self.dates
+            )
+        self.dates = self.prices.index
 
     def test_cusum_constant_threshold(self):
         # Apply CUSUM with constant threshold on prepared returns
@@ -74,38 +92,68 @@ class TestCUSUMFilter(unittest.TestCase):
 
 class TestAssetOrganiserDownsampling(unittest.TestCase):
     def setUp(self):
-        np.random.seed(42)
-        dates = pd.date_range("2020-01-01", periods=100)
+        import os
+        from pyquantflow.data.database import DatabaseManager
 
-        # Price process starts at 100.0
-        prices_a = 100.0 + np.cumsum(np.random.normal(0, 1.0, 100))
-        df_a = pd.DataFrame(
-            {
-                "close": prices_a,
-                "feature1": np.random.randn(100),
-                "target": np.random.randint(0, 2, 100),
-            },
-            index=dates,
-        )
-        df_a.index.name = "datetime"
+        self.data_map = {}
+        source_db_path = os.path.join(os.path.dirname(__file__), "stocks.db")
 
-        prices_b = 100.0 + np.cumsum(np.random.normal(0, 1.0, 100))
-        df_b = pd.DataFrame(
-            {
-                "close": prices_b,
-                "feature1": np.random.randn(100),
-                "target": np.random.randint(0, 2, 100),
-            },
-            index=dates,
-        )
-        df_b.index.name = "datetime"
+        if os.path.exists(source_db_path):
+            try:
+                db_manager = DatabaseManager(db_path=source_db_path)
+                for ticker in ["FMG.AX", "CBA.AX"]:
+                    df = db_manager.get_data(ticker)
+                    if not df.empty and len(df) >= 100:
+                        df = df.iloc[-100:].copy()
+                        np.random.seed(42)
+                        df["close"] = df["Close"]
+                        df["feature1"] = np.random.randn(len(df))
+                        df["target"] = np.random.randint(0, 2, len(df))
+                        self.data_map[ticker] = df
+                db_manager.conn.close()
+            except Exception:
+                pass
 
-        self.data_map = {"AAA": df_a, "BBB": df_b}
+        if len(self.data_map) < 2:
+            np.random.seed(42)
+            dates = pd.date_range("2020-01-01", periods=100)
+
+            prices_a = 100.0 + np.cumsum(np.random.normal(0, 1.0, 100))
+            df_a = pd.DataFrame(
+                {
+                    "close": prices_a,
+                    "feature1": np.random.randn(100),
+                    "target": np.random.randint(0, 2, 100),
+                },
+                index=dates,
+            )
+            df_a.index.name = "datetime"
+
+            prices_b = 100.0 + np.cumsum(np.random.normal(0, 1.0, 100))
+            df_b = pd.DataFrame(
+                {
+                    "close": prices_b,
+                    "feature1": np.random.randn(100),
+                    "target": np.random.randint(0, 2, 100),
+                },
+                index=dates,
+            )
+            df_b.index.name = "datetime"
+
+            self.data_map = {"AAA": df_a, "BBB": df_b}
+
+        self.ticker_1 = list(self.data_map.keys())[0]
+        self.ticker_2 = list(self.data_map.keys())[1]
+        self.cutoff_date = self.data_map[self.ticker_1].index[60]
+        self.global_event_1 = self.data_map[self.ticker_1].index[2]
+        self.global_event_2 = self.data_map[self.ticker_1].index[4]
+        self.ticker_event_1 = self.data_map[self.ticker_1].index[1]
+        self.ticker_event_2 = self.data_map[self.ticker_2].index[4]
 
     def test_downsample_global_events(self):
         organiser = AssetOrganiser(
             data_map=self.data_map,
-            cutoff_date="2020-03-01",
+            cutoff_date=self.cutoff_date,
             target_features=["target"],
         )
         organiser.prepare_multi_asset_frame()
@@ -114,7 +162,10 @@ class TestAssetOrganiserDownsampling(unittest.TestCase):
         self.assertEqual(len(organiser.multi_asset), 200)
 
         # Apply global filter for two specific dates
-        global_events = [pd.Timestamp("2020-01-03"), pd.Timestamp("2020-01-05")]
+        global_events = [
+            pd.Timestamp(self.global_event_1),
+            pd.Timestamp(self.global_event_2),
+        ]
         organiser.downsample_to_events(global_events)
 
         # Length should now be 2 dates x 2 tickers = 4 rows
@@ -128,26 +179,25 @@ class TestAssetOrganiserDownsampling(unittest.TestCase):
     def test_downsample_ticker_specific_events(self):
         organiser = AssetOrganiser(
             data_map=self.data_map,
-            cutoff_date="2020-03-01",
+            cutoff_date=self.cutoff_date,
             target_features=["target"],
         )
         organiser.prepare_multi_asset_frame()
 
-        # AAA triggers on 2020-01-02, BBB triggers on 2020-01-05
         events_dict = {
-            "AAA": pd.DatetimeIndex(["2020-01-02"]),
-            "BBB": pd.DatetimeIndex(["2020-01-05"]),
+            self.ticker_1: pd.DatetimeIndex([self.ticker_event_1]),
+            self.ticker_2: pd.DatetimeIndex([self.ticker_event_2]),
         }
 
         organiser.downsample_to_events(events_dict)
 
-        # Should only have two rows left (one for AAA, one for BBB)
+        # Should only have two rows left
         self.assertEqual(len(organiser.multi_asset), 2)
 
         # Check indexes specifically
         idx = organiser.multi_asset.index
-        self.assertIn((pd.Timestamp("2020-01-02"), "AAA"), idx)
-        self.assertIn((pd.Timestamp("2020-01-05"), "BBB"), idx)
+        self.assertIn((pd.Timestamp(self.ticker_event_1), self.ticker_1), idx)
+        self.assertIn((pd.Timestamp(self.ticker_event_2), self.ticker_2), idx)
 
     def test_downsample_to_cusum_events(self):
         # Pre-calculate returns column beforehand
@@ -157,7 +207,7 @@ class TestAssetOrganiserDownsampling(unittest.TestCase):
         # Setup organiser with cutoff
         organiser = AssetOrganiser(
             data_map=self.data_map,
-            cutoff_date="2020-03-01",
+            cutoff_date=self.cutoff_date,
             target_features=["target"],
         )
         organiser.prepare_multi_asset_frame()
@@ -170,12 +220,12 @@ class TestAssetOrganiserDownsampling(unittest.TestCase):
         )
 
         self.assertIsInstance(calibrated_alphas, dict)
-        self.assertIn("AAA", calibrated_alphas)
-        self.assertIn("BBB", calibrated_alphas)
+        self.assertIn(self.ticker_1, calibrated_alphas)
+        self.assertIn(self.ticker_2, calibrated_alphas)
 
         # Confirm alphas are calibrated floats
-        self.assertIsInstance(calibrated_alphas["AAA"], float)
-        self.assertIsInstance(calibrated_alphas["BBB"], float)
+        self.assertIsInstance(calibrated_alphas[self.ticker_1], float)
+        self.assertIsInstance(calibrated_alphas[self.ticker_2], float)
 
         # Confirm dataset was successfully downsampled
         self.assertTrue(len(organiser.multi_asset) < 200)
@@ -193,7 +243,7 @@ class TestAssetOrganiserDownsampling(unittest.TestCase):
         # Setup organiser with cutoff
         organiser = AssetOrganiser(
             data_map=self.data_map,
-            cutoff_date="2020-03-01",
+            cutoff_date=self.cutoff_date,
             target_features=["target"],
         )
         organiser.prepare_multi_asset_frame()
@@ -207,15 +257,15 @@ class TestAssetOrganiserDownsampling(unittest.TestCase):
         )
 
         self.assertIsInstance(calibrated_alphas, dict)
-        self.assertIn("AAA", calibrated_alphas)
-        self.assertIn("BBB", calibrated_alphas)
-        self.assertIsInstance(calibrated_alphas["AAA"], float)
+        self.assertIn(self.ticker_1, calibrated_alphas)
+        self.assertIn(self.ticker_2, calibrated_alphas)
+        self.assertIsInstance(calibrated_alphas[self.ticker_1], float)
         self.assertTrue(len(organiser.multi_asset) < 200)
 
     def test_invalid_type_raises_error(self):
         organiser = AssetOrganiser(
             data_map=self.data_map,
-            cutoff_date="2020-03-01",
+            cutoff_date=self.cutoff_date,
             target_features=["target"],
         )
         with self.assertRaises(TypeError):

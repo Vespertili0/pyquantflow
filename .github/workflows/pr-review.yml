@@ -2,7 +2,7 @@ name: Jules PR Review
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
-    branches: [ main, dev ]
+    branches: [ main ]
 
 concurrency:
   group: jules-review-${{ github.event.pull_request.number }}

@@ -6,7 +6,7 @@ from unittest.mock import patch, MagicMock
 import pandas as pd
 import numpy as np
 from skfolio.optimization import EqualWeighted, MeanRisk
-from skfolio import Population
+from skfolio import Population, RatioMeasure
 from skfolio.model_selection import WalkForward
 
 from pyquantflow.portfolio.strategylab import StrategyLab
@@ -74,15 +74,10 @@ class TestStrategyLab(unittest.TestCase):
     def test_search_strategy_hyperparameters(self):
         """Test search_strategy_hyperparameters sets best_estimators."""
 
-        # We can use a simple scoring metric or None. In skfolio, ratio measure is typically used.
-        # But we can just use the default scoring.
-        # We'll patch GridSearchCV to speed it up or avoid complex fits if we wanted,
-        # but skfolio estimators fit quickly on small data.
-        def mock_scoring(estimator, X):
-            # dummy scorer
-            return 1.0
-
-        self.lab.search_strategy_hyperparameters(scoring=mock_scoring)
+        # We use a real skfolio ratio measure instead of mocking to test true estimator scoring.
+        self.lab.search_strategy_hyperparameters(
+            scoring=RatioMeasure.ANNUALIZED_SHARPE_RATIO
+        )
 
         # Check if best estimators are set
         self.assertIn("EqualWeighted", self.lab.best_estimators)
@@ -120,27 +115,8 @@ class TestStrategyLab(unittest.TestCase):
         mock_fig2 = MagicMock()
         mock_plot_dist.return_value = mock_fig2
 
-        # Mock out the MeanRisk fit to avoid solver errors with real noisy data
-        with patch("skfolio.optimization.MeanRisk.fit", autospec=True) as mock_fit:
-            mock_fit.return_value = self.lab.best_estimators["MeanRisk"]
-            # We also mock predict so it returns a valid portfolio object
-            with patch(
-                "skfolio.optimization.MeanRisk.predict", autospec=True
-            ) as mock_predict:
-                from skfolio import Portfolio, Population
-
-                mock_predict.return_value = Population(
-                    [
-                        Portfolio(
-                            X=np.zeros((10, len(self.returns.columns))),
-                            weights=np.array(
-                                [1.0 / len(self.returns.columns)]
-                                * len(self.returns.columns)
-                            ),
-                        )
-                    ]
-                )
-                self.lab.get_journey_with_frontier("MeanRisk")
+        # We let the real MeanRisk fit and predict execute using the real returns
+        self.lab.get_journey_with_frontier("MeanRisk")
 
         # Verify that plot methods were called
         mock_plot_measures.assert_called_once()
