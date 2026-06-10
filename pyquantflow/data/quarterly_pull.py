@@ -46,7 +46,9 @@ def fetch_quarterly_data(ticker, time_dict, period="quarterly") -> pd.DataFrame:
     Returns:
     pd.DataFrame: A concatenated DataFrame containing the data for all selected quarters.
     """
-    assert period in ["quarterly"], "period must be quarterly or bimonthly"
+    if period not in ["quarterly"]:
+        raise ValueError("period must be quarterly or bimonthly")
+
     # Define all quarters with their start and end dates
     if period == "quarterly":
         all_period = {
