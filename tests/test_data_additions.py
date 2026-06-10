@@ -242,6 +242,24 @@ class TestDataAdditions(unittest.TestCase):
         # Check if tz conversion happened
         self.assertEqual(str(result.index.tz), "Australia/Sydney")
 
+    def test_fetch_quarterly_data_invalid_period(self):
+        """Test fetch_quarterly_data raises ValueError on invalid period."""
+        ticker = "AAPL"
+        time_dict = {2023: [1]}
+        with self.assertRaises(ValueError):
+            fetch_quarterly_data(ticker, time_dict, period="monthly")
+
+    @patch("pyquantflow.data.quarterly_pull.yf.download")
+    def test_fetch_quarterly_data_exception(self, mock_download):
+        """Test fetch_quarterly_data handles yfinance exceptions correctly."""
+        mock_download.side_effect = Exception("Mocked download error")
+        ticker = "AAPL"
+        time_dict = {2023: [1]}
+        # Should catch the exception, log it, and return an empty DataFrame (since loop breaks)
+        result = fetch_quarterly_data(ticker, time_dict, period="quarterly")
+        self.assertIsInstance(result, pd.DataFrame)
+        self.assertTrue(result.empty)
+
     def test_merge_last_hour(self):
         """Test merge_last_hour logic."""
         # Create a DF with hourly data for a single day
@@ -271,6 +289,25 @@ class TestDataAdditions(unittest.TestCase):
         self.assertEqual(merged.iloc[0]["Close"], 98)
         # Volume = sum(1000, 500) = 1500
         self.assertEqual(merged.iloc[0]["Volume"], 1500)
+
+    def test_merge_last_hour_fewer_than_2_elements(self):
+        """Test merge_last_hour with a day having fewer than 2 elements."""
+        dates = pd.date_range("2023-01-01 15:00", periods=1, freq="h")
+        df = pd.DataFrame(
+            {
+                "High": [100],
+                "Low": [90],
+                "Close": [95],
+                "Volume": [1000],
+            },
+            index=dates,
+        )
+
+        merged = merge_last_hour(df)
+
+        # Should remain unchanged
+        self.assertEqual(len(merged), 1)
+        self.assertEqual(merged.iloc[0]["High"], 100)
 
 
 if __name__ == "__main__":
