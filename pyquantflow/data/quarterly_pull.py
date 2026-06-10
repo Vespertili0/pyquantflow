@@ -80,8 +80,9 @@ def fetch_quarterly_data(ticker, time_dict, period="quarterly") -> pd.DataFrame:
             except Exception as e:
                 logger.error(f"Failed to fetch data for {year} Q{t}: {e}")
                 break
+
+    if data.empty:
+        return data
+
     data.index = data.index.tz_convert("Australia/Sydney")
-    #    data = merge_last_hour(data)
-    #    data = data.between_time("11:00", "16:00")
-    #    data = data[data.Volume > 0]
     return data

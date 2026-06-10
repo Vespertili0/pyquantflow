@@ -192,14 +192,14 @@ class AssetOrganiser:
                 target = int(target_events_train)
 
             # Extract training series/volatility for ticker
-            try:
-                ticker_train_series = self.multi_asset_train.xs(tk, level="ticker")[
-                    filter_col
-                ]
-            except KeyError:
+            if tk not in self.multi_asset_train.index.get_level_values("ticker"):
                 # If ticker has no data in training fold, use default alpha
                 calibrated_alphas[tk] = alpha_min
                 continue
+
+            ticker_train_series = self.multi_asset_train.xs(tk, level="ticker")[
+                filter_col
+            ]
 
             ticker_train_vol = None
             if vol_col:
@@ -231,7 +231,10 @@ class AssetOrganiser:
 
             # Use pre-calculated volatility if specified
             if vol_col:
-                vol_all = self.multi_asset.xs(tk, level="ticker")[vol_col]
+                try:
+                    vol_all = self.multi_asset.xs(tk, level="ticker")[vol_col]
+                except KeyError:
+                    vol_all = series_all.ewm(span=span).std()
             else:
                 vol_all = series_all.ewm(span=span).std()
 

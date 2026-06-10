@@ -91,7 +91,10 @@ class TestAssetOrganiserCoverage(unittest.TestCase):
             cutoff_date=self.cutoff_date,
             target_features=["target"],
         )
-        # Do not call prepare_multi_asset_frame
+        # downsample_to_cusum_events calls prepare_multi_asset_frame automatically if multi_asset is None
+        # so to test ValueError, we explicitly set multi_asset_train to None after multi_asset is created
+        organiser.prepare_multi_asset_frame()
+        organiser.multi_asset_train = None
         with self.assertRaises(ValueError):
             organiser.downsample_to_cusum_events(
                 target_events_train=5, filter_col="returns"
@@ -102,9 +105,11 @@ class TestAssetOrganiserCoverage(unittest.TestCase):
         dates = pd.date_range(
             pd.to_datetime(self.cutoff_date) + pd.Timedelta(days=1), periods=10
         )
-        df_c = pd.DataFrame(
-            {"Close": 100.0, "feature1": 0.0, "target": 0, "returns": 0.0}, index=dates
-        )
+        # Ensure it has all the columns from the original dataframe so that dropna() does not drop it
+        first_ticker = list(self.data_map.keys())[0]
+        cols = self.data_map[first_ticker].columns
+        df_c = pd.DataFrame(index=dates, columns=cols)
+        df_c = df_c.fillna(0.0)
         df_c.index.name = "datetime"
         data_map = self.data_map.copy()
         data_map["CCC"] = df_c
