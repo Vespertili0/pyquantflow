@@ -240,7 +240,7 @@ class TestAssetOrganiserFlexibility(unittest.TestCase):
 
         organiser = AssetOrganiser(
             data_map=data_map,
-            cutoff_date=self.dates[7],
+            cutoff_date=dates[7],
             target_features=["target"],
         )
         organiser.prepare_multi_asset_frame()
