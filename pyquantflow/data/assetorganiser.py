@@ -628,3 +628,42 @@ class AssetOrganiser:
 
         self.multi_asset = df.copy()
         self._split_train_test()
+
+    def replace_features(
+        self, transformed_df: pd.DataFrame, original_features: List[str]
+    ) -> None:
+        """
+        Replaces the original features in the multi_asset panel dataset with
+        transformed features, drops features that failed the pruning step,
+        aligns the dataset to the transformed dataset's index (removing rows
+        dropped during transformation), and re-synchronises the train/test split boundaries.
+        """
+        if transformed_df.index.names != ["datetime", "ticker"]:
+            raise ValueError(
+                "DataFrame index must match MultiIndex format ['datetime', 'ticker']."
+            )
+        if self.multi_asset is None:
+            raise ValueError("multi_asset is not initialised.")
+
+        # Align to transformed_df index (downsampled and dropna'd rows)
+        self.multi_asset = self.multi_asset.loc[transformed_df.index].copy()
+
+        # Identify features that were kept and those that were dropped
+        surviving_features = [
+            f for f in original_features if f in transformed_df.columns
+        ]
+        failed_features = [
+            f for f in original_features if f not in transformed_df.columns
+        ]
+
+        # Replace surviving features with transformed versions
+        for feat in surviving_features:
+            self.multi_asset[feat] = transformed_df[feat]
+
+        # Drop failed features
+        self.multi_asset = self.multi_asset.drop(
+            columns=failed_features, errors="ignore"
+        )
+
+        # Re-synchronise train and test splits
+        self._split_train_test()

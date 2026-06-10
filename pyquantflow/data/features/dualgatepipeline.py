@@ -76,6 +76,9 @@ class DualGatePipelineFactory:
         if organiser.multi_asset is None:
             organiser.prepare_multi_asset_frame()
 
+        # Track original features to identify which ones survive Gate 1 pruning
+        original_features = list(evaluator.features)
+
         # TRACK B (Part 1): Snapshot the Unbroken Continuous Timeline
         # Optimise memory usage by copying only the necessary feature columns instead of the entire panel
         continuous_df = organiser.multi_asset[evaluator.features].copy()
@@ -123,8 +126,9 @@ class DualGatePipelineFactory:
             },
         )
 
-        # Commit the clean, stationary panel back into the organiser's state machine
-        organiser.update_multi_asset(merged_df)
+        # Commit the clean, stationary panel back into the organiser's state machine,
+        # replacing only the features and preserving other original columns/rows.
+        organiser.replace_features(merged_df, original_features)
 
         # Return the updated organiser and the curated list of survivor features
         return organiser, evaluator.importance_df

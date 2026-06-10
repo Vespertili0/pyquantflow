@@ -118,6 +118,10 @@ class TestDualGatePipeline(unittest.TestCase):
         self.assertIn("t1", ao.multi_asset.columns)
         self.assertIn("weight", ao.multi_asset.columns)
 
+        # Original columns (OHLCV) should be preserved
+        for col in ["Open", "High", "Low", "Close", "Volume"]:
+            self.assertIn(col, ao.multi_asset.columns)
+
         # Verified features should still exist in importance_df
         self.assertIsNotNone(active_features)
 
@@ -180,6 +184,10 @@ class TestDualGatePipeline(unittest.TestCase):
         self.assertIn("label", ao.multi_asset.columns)
         self.assertIn("t1", ao.multi_asset.columns)
         self.assertIn("weight", ao.multi_asset.columns)
+
+        # Original columns (OHLCV) should be preserved
+        for col in ["Open", "High", "Low", "Close", "Volume"]:
+            self.assertIn(col, ao.multi_asset.columns)
 
         # The pre-computed columns should exist in the multi_asset DataFrame
         self.assertIn("ffd_close", ao.multi_asset.columns)
