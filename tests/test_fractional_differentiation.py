@@ -113,14 +113,13 @@ class TestFractionalDifferentiation(unittest.TestCase):
         """Test that d=1.0 is equivalent to first differencing with NaN at start."""
         series = self.ohlc_data["Close"]
         result = frac_diff_ffd(series, d=1.0, thres=1e-4)
-        
+
         # Hand-calculated first difference
         expected_diff = series.diff()
-        
+
         # Compare starting from index 1
         np.testing.assert_array_almost_equal(
-            result.iloc[1:].values,
-            expected_diff.iloc[1:].values
+            result.iloc[1:].values, expected_diff.iloc[1:].values
         )
         self.assertTrue(np.isnan(result.iloc[0]))
 
@@ -128,13 +127,13 @@ class TestFractionalDifferentiation(unittest.TestCase):
         """Test adf_screened_ffd in explicit mode when d is provided."""
         series = self.ohlc_data["Close"]
         d = 0.5
-        
+
         # Test with pd.Series
         result_series, d_used_series = adf_screened_ffd(series, d=d)
         self.assertEqual(d_used_series, d)
         self.assertIsInstance(result_series, pd.Series)
         self.assertTrue(result_series.index.equals(series.index))
-        
+
         # Test with np.ndarray
         arr = series.values
         result_arr, d_used_arr = adf_screened_ffd(arr, d=d)
@@ -145,13 +144,13 @@ class TestFractionalDifferentiation(unittest.TestCase):
     def test_adf_screened_ffd_screening_mode(self):
         """Test adf_screened_ffd in screening mode to find optimal d."""
         series = self.ohlc_data["Close"]
-        
+
         # Running screening with d=None
         result, d_star = adf_screened_ffd(series, d=None)
-        
+
         self.assertGreater(d_star, 0.0)
         self.assertLessEqual(d_star, 1.0)
-        
+
         # Check that the resulting series achieves stationarity
         t_stat = _adf_test_stat(result)
         p_val = _adf_p_value(t_stat)
@@ -162,18 +161,18 @@ class TestFractionalDifferentiation(unittest.TestCase):
         # Create an extremely non-stationary, explosive series
         n = 100
         explosive_series = pd.Series(np.exp(np.arange(n) * 0.2))
-        
+
         # Use a very strict significance level and grid excluding 1.0
         result, d_star = adf_screened_ffd(
             explosive_series,
             d=None,
             significance_level=1e-8,
-            d_grid=np.arange(0.25, 0.95, 0.05)
+            d_grid=np.arange(0.25, 0.95, 0.05),
         )
-        
+
         # It must fallback to d=1.0 since none in the grid can achieve stationarity
         self.assertEqual(d_star, 1.0)
-        
+
         # Compare output to first difference logic
         expected = frac_diff_ffd(explosive_series, d=1.0)
         np.testing.assert_array_almost_equal(result.values, expected.values)
