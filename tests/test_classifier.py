@@ -43,9 +43,7 @@ class TestPrimarySecondaryClassifier(unittest.TestCase):
         # Primary target: 1 if future 5-day return > 0, else 0
         df["y_primary"] = (df["Close"].shift(-5) > df["Close"]).astype(int)
         # Secondary target: 1 if return was positive AND absolute return was larger than 1%
-        df["y_secondary"] = (
-            (df["Close"].shift(-5) > df["Close"] * 1.01).astype(int)
-        )
+        df["y_secondary"] = (df["Close"].shift(-5) > df["Close"] * 1.01).astype(int)
         df = df.dropna()
 
         self.X = df[["feat_1", "feat_2", "feat_3"]]
@@ -79,7 +77,7 @@ class TestPrimarySecondaryClassifier(unittest.TestCase):
         """Test instantiation with prefitted=True attribute propagation."""
         primary = RandomForestClassifier(n_estimators=10, random_state=42)
         secondary = LogisticRegression(random_state=42)
-        
+
         clf = PrimarySecondaryClassifier(
             primary_model=primary,
             secondary_model=secondary,
@@ -87,7 +85,7 @@ class TestPrimarySecondaryClassifier(unittest.TestCase):
             secondary_features=["feat_2", "feat_3"],
             prefitted=True,
         )
-        
+
         self.assertTrue(clf.prefitted)
         self.assertIs(clf.primary_model_, primary)
         self.assertIs(clf.secondary_model_, secondary)
@@ -96,7 +94,7 @@ class TestPrimarySecondaryClassifier(unittest.TestCase):
         """Test instantiation with prefitted=False marks attributes as None."""
         primary = RandomForestClassifier(n_estimators=10, random_state=42)
         secondary = LogisticRegression(random_state=42)
-        
+
         clf = PrimarySecondaryClassifier(
             primary_model=primary,
             secondary_model=secondary,
@@ -104,7 +102,7 @@ class TestPrimarySecondaryClassifier(unittest.TestCase):
             secondary_features=["feat_2", "feat_3"],
             prefitted=False,
         )
-        
+
         self.assertFalse(clf.prefitted)
         self.assertIsNone(clf.primary_model_)
         self.assertIsNone(clf.secondary_model_)
@@ -117,7 +115,7 @@ class TestPrimarySecondaryClassifier(unittest.TestCase):
             primary_features=[],
             secondary_features=[],
         )
-        
+
         # Test case 1: Uniform distribution (maximum uncertainty)
         # H = - (0.5 * ln(0.5) + 0.5 * ln(0.5)) = ln(2) ~ 0.693147
         probas = np.array([[0.5, 0.5]])
@@ -142,7 +140,7 @@ class TestPrimarySecondaryClassifier(unittest.TestCase):
             cv_generator=KFold(n_splits=3, shuffle=False),
             prefitted=False,
         )
-        
+
         # Fit models
         clf.fit(self.X, self.y)
         self.assertFalse(clf.prefitted)
@@ -170,13 +168,13 @@ class TestPrimarySecondaryClassifier(unittest.TestCase):
             cv_generator=KFold(n_splits=3, shuffle=False),
             prefitted=False,
         )
-        
+
         weights = np.ones(len(self.X))
         weights[:10] = 2.0
-        
+
         # Fit with weights
         clf.fit(self.X, self.y, sample_weight=weights)
-        
+
         preds = clf.predict(self.X)
         self.assertEqual(len(preds), len(self.X))
 
@@ -190,10 +188,10 @@ class TestPrimarySecondaryClassifier(unittest.TestCase):
             cv_generator=KFold(n_splits=3, shuffle=False),
             prefitted=False,
         )
-        
+
         y_arr = self.y.values
         clf.fit(self.X, y_arr)
-        
+
         preds = clf.predict(self.X)
         self.assertEqual(len(preds), len(self.X))
 
@@ -207,13 +205,13 @@ class TestPrimarySecondaryClassifier(unittest.TestCase):
             cv_generator=KFold(n_splits=3, shuffle=False),
             prefitted=False,
         )
-        
+
         clf.fit(self.X, self.y)
         res = clf.transform(self.X)
-        
+
         self.assertIsInstance(res, pd.DataFrame)
         self.assertEqual(len(res), len(self.X))
-        
+
         expected_cols = [
             "primary_pred",
             "primary_proba",
