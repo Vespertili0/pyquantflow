@@ -18,15 +18,15 @@ def get_sample_weights(t1, returns=None):
     Returns:
     --------
     pd.Series
-        The final sample weights for each event.
+        The final sample weights for each event. The index is always
+        timezone-aware and standardised to UTC, regardless of the input timezone.
     """
-    # Store original timezone of the index to restore it later
-    original_tz = t1.index.tz if hasattr(t1.index, "tz") else None
-
     # Ensure t1 is a proper datetime series and drop missing values
     t1 = pd.to_datetime(t1, utc=True).dropna()
 
-    # Normalize both index and values to UTC, then drop tz
+    # Normalise both index and values to UTC, then strip tz for NumPy compatibility.
+    # The tz_convert(None) is strictly internal: it allows np.searchsorted to operate
+    # on the raw int64 nanosecond values without dtype confusion.
     if hasattr(t1.index, "tz"):
         t1.index = t1.index.tz_localize("UTC") if t1.index.tz is None else t1.index
         t1.index = t1.index.tz_convert(None)
@@ -74,20 +74,20 @@ def get_sample_weights(t1, returns=None):
             u_i[i] = 0.0
 
     # 5. Combine with Returns (Optional but highly recommended)
+    # At this point t1.index is timezone-naive (UTC nanoseconds stripped of tz info),
+    # so we align returns using the same naive representation to avoid index mismatches.
     weights = pd.Series(u_i, index=t1.index, name="weight")
 
     if returns is not None:
-        # Temporarily drop tz from returns to align indices
-        returns_no_tz = returns.copy()
-        if hasattr(returns_no_tz.index, "tz") and returns_no_tz.index.tz is not None:
-            returns_no_tz.index = returns_no_tz.index.tz_convert(None)
+        returns_naive = returns.copy()
+        if hasattr(returns_naive.index, "tz") and returns_naive.index.tz is not None:
+            returns_naive.index = returns_naive.index.tz_convert(None)
 
-        # Align returns just in case, then multiply uniqueness by absolute return
-        abs_rets = returns_no_tz.reindex(t1.index).abs()
+        abs_rets = returns_naive.reindex(t1.index).abs()
         weights = weights * abs_rets
 
-    # Restore the original timezone to the weights index
-    if original_tz is not None:
-        weights.index = weights.index.tz_localize("UTC").tz_convert(original_tz)
+    # Always return with a UTC-localised index, regardless of the caller's input timezone.
+    # This prevents NaN rows when AssetOrganiser joins weights into a timezone-aware panel.
+    weights.index = weights.index.tz_localize("UTC")
 
     return weights

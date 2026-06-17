@@ -364,11 +364,38 @@ class FeatureEvaluator:
         metric: Callable,
         metric_kwargs: Optional[dict] = None,
         balance_classes: bool = True,
+        greater_is_better: bool = True,
+        needs_proba: bool = True,
     ) -> Dict[int, Dict[str, pd.DataFrame]]:
         """
         Runs the Macro-Regime Loop.
         1. Clusters assets into regimes based on their statistical profiles.
         2. Iteratively performs Clustered MDA and SFI on each regime's data slice.
+
+        Parameters
+        ----------
+        df : pd.DataFrame
+            The prepared panel DataFrame (output of ``fit_transform_features``).
+        estimator : BaseEstimator
+            A scikit-learn-compatible estimator.
+        metric : Callable
+            A scoring/loss callable with signature ``metric(y_true, y_pred, **metric_kwargs)``.
+        metric_kwargs : dict, optional
+            Extra keyword arguments forwarded to ``metric``.
+        balance_classes : bool, default True
+            Whether to multiply sample weights by balanced class weights during fitting.
+        greater_is_better : bool, default True
+            Set to ``True`` for accuracy/score metrics (e.g. ``f1_score``, ``accuracy_score``)
+            where a higher value is better.  Set to ``False`` for loss metrics
+            (e.g. ``brier_score_loss``, ``log_loss``) where a lower value is better.
+            This flag determines the sign convention of the MDA calculation:
+            - ``True``  → importance = baseline_score − perturbed_score
+            - ``False`` → importance = perturbed_score − baseline_score
+        needs_proba : bool, default True
+            Set to ``True`` if the metric requires probability outputs
+            (e.g. ``log_loss``, ``roc_auc_score``, ``brier_score_loss``).
+            Set to ``False`` if the metric operates on hard class labels
+            (e.g. ``f1_score``, ``accuracy_score``).
         """
         metric_kwargs = metric_kwargs or {}
         groupby_level = "ticker"
@@ -456,9 +483,7 @@ class FeatureEvaluator:
                     est_sfi = clone(estimator)
                     est_sfi.fit(X_train[cols], y_train, **fit_params)
 
-                    if metric.__name__ in ("log_loss", "roc_auc_score") and hasattr(
-                        est_sfi, "predict_proba"
-                    ):
+                    if needs_proba and hasattr(est_sfi, "predict_proba"):
                         preds = est_sfi.predict_proba(X_val[cols])
                         if preds.ndim > 1 and preds.shape[1] == 2:
                             preds = preds[:, 1]
@@ -475,9 +500,7 @@ class FeatureEvaluator:
                 est_mda = clone(estimator)
                 est_mda.fit(X_train, y_train, **fit_params)
 
-                if metric.__name__ in ("log_loss", "roc_auc_score") and hasattr(
-                    est_mda, "predict_proba"
-                ):
+                if needs_proba and hasattr(est_mda, "predict_proba"):
                     base_preds = est_mda.predict_proba(X_val)
                     if base_preds.ndim > 1 and base_preds.shape[1] == 2:
                         base_preds = base_preds[:, 1]
@@ -494,9 +517,7 @@ class FeatureEvaluator:
                     for col in cols:
                         X_val_pert[col] = np.random.permutation(X_val_pert[col].values)
 
-                    if metric.__name__ in ("log_loss", "roc_auc_score") and hasattr(
-                        est_mda, "predict_proba"
-                    ):
+                    if needs_proba and hasattr(est_mda, "predict_proba"):
                         pert_preds = est_mda.predict_proba(X_val_pert)
                         if pert_preds.ndim > 1 and pert_preds.shape[1] == 2:
                             pert_preds = pert_preds[:, 1]
@@ -508,10 +529,12 @@ class FeatureEvaluator:
                     except Exception:
                         pert_score = np.nan
 
-                    if metric.__name__ == "log_loss":
-                        mda = pert_score - baseline_score
-                    else:
+                    # greater_is_better=True  (accuracy/score): importance = drop in performance
+                    # greater_is_better=False (loss metric):     importance = rise in loss
+                    if greater_is_better:
                         mda = baseline_score - pert_score
+                    else:
+                        mda = pert_score - baseline_score
                     mda_scores[c_id].append(mda)
 
             # Aggregate results for this regime

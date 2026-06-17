@@ -84,5 +84,5 @@ def fetch_quarterly_data(ticker, time_dict, period="quarterly") -> pd.DataFrame:
     if data.empty:
         return data
 
-    data.index = data.index.tz_convert("Australia/Sydney")
+    data.index = data.index.tz_convert("UTC")
     return data
