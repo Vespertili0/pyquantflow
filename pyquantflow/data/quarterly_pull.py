@@ -46,7 +46,9 @@ def fetch_quarterly_data(ticker, time_dict, period="quarterly") -> pd.DataFrame:
     Returns:
     pd.DataFrame: A concatenated DataFrame containing the data for all selected quarters.
     """
-    assert period in ["quarterly"], "period must be quarterly or bimonthly"
+    if period not in ["quarterly"]:
+        raise ValueError("period must be quarterly or bimonthly")
+
     # Define all quarters with their start and end dates
     if period == "quarterly":
         all_period = {
@@ -78,8 +80,9 @@ def fetch_quarterly_data(ticker, time_dict, period="quarterly") -> pd.DataFrame:
             except Exception as e:
                 logger.error(f"Failed to fetch data for {year} Q{t}: {e}")
                 break
-    data.index = data.index.tz_convert("Australia/Sydney")
-    #    data = merge_last_hour(data)
-    #    data = data.between_time("11:00", "16:00")
-    #    data = data[data.Volume > 0]
+
+    if data.empty:
+        return data
+
+    data.index = data.index.tz_convert("UTC")
     return data

@@ -297,6 +297,17 @@ class DatabaseManager:
             df = df.copy()
             df.columns = df.columns.get_level_values(0)
 
+        # Normalise the datetime index to UTC before serialisation.
+        # This is the single authoritative conversion point for all insertion paths
+        # (add_ticker, _update_ticker_internal), guaranteeing that every row written
+        # to the price_data table carries an explicit UTC offset string.
+        if hasattr(df.index, "tz"):
+            df = df.copy()
+            if df.index.tz is None:
+                df.index = df.index.tz_localize("UTC")
+            else:
+                df.index = df.index.tz_convert("UTC")
+
         df_reset = df.reset_index()
 
         dt_col = (

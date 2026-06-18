@@ -8,7 +8,12 @@ from pyquantflow.data.features.fractional_differentiation import (
     _adf_test_stat,
     _adf_p_value,
 )
-from pyquantflow.data.features.indicator import FRACTIONAL_DIFF, SADF_JAX
+from pyquantflow.data.features.indicator import (
+    FRACTIONAL_DIFF,
+    SADF_JAX,
+    ROGERSATCHELL,
+    EMA_RIBBON,
+)
 
 
 class TestADFScreenedFFD(unittest.TestCase):
@@ -125,6 +130,20 @@ class TestFRACTIONAL_DIFF(unittest.TestCase):
         # Should have some valid values
         self.assertFalse(np.all(np.isnan(result)))
 
+    def test_multiindex_support(self):
+        """Test FRACTIONAL_DIFF supports pd.MultiIndex (e.g. panel data)."""
+        idx = pd.MultiIndex.from_product(
+            [pd.date_range("2020-01-01", periods=100), ["AAA", "BBB"]],
+            names=["datetime", "ticker"],
+        )
+        series = pd.Series(np.random.normal(100, 1, 200), index=idx)
+
+        result = FRACTIONAL_DIFF(series, d=0.4)
+
+        self.assertIsInstance(result, pd.Series)
+        self.assertEqual(len(result), len(series))
+        self.assertEqual(result.index.names, ["datetime", "ticker"])
+
 
 class TestSADF_JAX(unittest.TestCase):
     """Tests for the SADF_JAX TA-Lib style indicator."""
@@ -164,6 +183,20 @@ class TestSADF_JAX(unittest.TestCase):
         self.assertEqual(len(result), len(self.close_series))
         self.assertFalse(np.isnan(result.iloc[-1]))
 
+    def test_multiindex_support(self):
+        """Test SADF_JAX supports pd.MultiIndex (e.g. panel data)."""
+        idx = pd.MultiIndex.from_product(
+            [pd.date_range("2020-01-01", periods=100), ["AAA", "BBB"]],
+            names=["datetime", "ticker"],
+        )
+        series = pd.Series(np.random.normal(100, 1, 200), index=idx)
+
+        result = SADF_JAX(series, min_length=20)
+
+        self.assertIsInstance(result, pd.Series)
+        self.assertEqual(len(result), len(series))
+        self.assertEqual(result.index.names, ["datetime", "ticker"])
+
     def test_nan_propagation_no_crash(self):
         """Both indicators should handle edge cases without crashing."""
         # Short series — may not achieve stationarity or min_length
@@ -172,6 +205,82 @@ class TestSADF_JAX(unittest.TestCase):
         # FRACTIONAL_DIFF with explicit d should still work
         result_ffd = FRACTIONAL_DIFF(short, d=0.5)
         self.assertEqual(len(result_ffd), len(short))
+
+
+class TestROGERSATCHELL(unittest.TestCase):
+    """Tests for the ROGERSATCHELL indicator."""
+
+    def setUp(self):
+        np.random.seed(42)
+        self.n = 100
+        self.high = np.random.uniform(105, 110, self.n)
+        self.low = np.random.uniform(90, 95, self.n)
+        self.open = np.random.uniform(95, 105, self.n)
+        self.close = np.random.uniform(95, 105, self.n)
+
+    def test_normal_behavior(self):
+        """Test standard rolling calculation."""
+        vol = ROGERSATCHELL(self.high, self.low, self.open, self.close, timeperiod=30)
+        self.assertIsInstance(vol, np.ndarray)
+        self.assertEqual(len(vol), self.n)
+        # First 29 elements should be NaN
+        self.assertTrue(np.all(np.isnan(vol[:29])))
+        self.assertFalse(np.isnan(vol[30]))
+
+    def test_shape_mismatch_raises_error(self):
+        """Test that misaligned inputs raise ValueError."""
+        with self.assertRaises(ValueError):
+            ROGERSATCHELL(self.high, self.low, self.open, self.close[:50])
+
+    def test_timeperiod_greater_than_n(self):
+        """Test edge case where timeperiod > length of data."""
+        vol = ROGERSATCHELL(
+            self.high[:20],
+            self.low[:20],
+            self.open[:20],
+            self.close[:20],
+            timeperiod=30,
+        )
+        self.assertTrue(np.all(np.isnan(vol)))
+        self.assertEqual(len(vol), 20)
+
+
+class TestEMA_RIBBON(unittest.TestCase):
+    """Tests for the stationary Volatility-Scaled EMA Ribbon Engine."""
+
+    def setUp(self):
+        np.random.seed(42)
+        self.n = 150
+        self.open = np.random.uniform(95, 105, self.n)
+        self.high = np.random.uniform(105, 110, self.n)
+        self.low = np.random.uniform(90, 95, self.n)
+        self.close = np.random.uniform(95, 105, self.n)
+
+    def test_normal_behavior(self):
+        timeperiods = (10, 20, 30)
+        rs_period = 14
+        outputs = EMA_RIBBON(
+            self.open,
+            self.high,
+            self.low,
+            self.close,
+            timeperiods=timeperiods,
+            rs_period=rs_period,
+        )
+
+        # outputs tuple should contain: Baseline Vol (1), Micro-Spreads (M-1=2),
+        # Macro-Spread (1), Shape & Rank (4), Kinematics (M-1=2) -> total 10
+        self.assertEqual(len(outputs), 10)
+        for arr in outputs:
+            self.assertEqual(len(arr), self.n)
+            # Cold-Start Warm-Up Masking W_start = max(30, 14)*3 = 90
+            self.assertTrue(np.isnan(arr[89]))
+            self.assertFalse(np.isnan(arr[90]))
+
+    def test_negative_price_raises_error(self):
+        self.close[0] = -1.0
+        with self.assertRaises(ValueError):
+            EMA_RIBBON(self.open, self.high, self.low, self.close)
 
 
 if __name__ == "__main__":

@@ -13,36 +13,59 @@ class TestDualGatePipeline(unittest.TestCase):
     """Tests verifying DualGatePipelineFactory orchestration and alignment logic."""
 
     def setUp(self):
-        np.random.seed(42)
-        n = 500
-        dates = pd.date_range(
-            start="2023-01-01", periods=n, freq="D", tz="Australia/Sydney"
-        )
+        import os
+        from pyquantflow.data.database import DatabaseManager
 
         self.clean_daily_map = {}
-        for ticker in ["AAPL", "MSFT"]:
-            # Generate random walk close prices
-            returns = np.random.normal(0.0005, 0.01, n)
-            close = 100 * np.cumprod(1 + returns)
-            high = close * (1 + np.abs(np.random.normal(0, 0.005, n)))
-            low = close * (1 - np.abs(np.random.normal(0, 0.005, n)))
-            open_ = (high + low) / 2
-            volume = np.random.randint(1000, 100000, n)
+        source_db_path = os.path.join(os.path.dirname(__file__), "stocks.db")
 
-            df = pd.DataFrame(
-                {
-                    "Open": open_,
-                    "High": high,
-                    "Low": low,
-                    "Close": close,
-                    "Volume": volume,
-                    "feat1": np.random.randn(n).cumsum(),  # non-stationary
-                    "feat2": np.random.randn(n),  # stationary
-                },
-                index=dates,
+        if os.path.exists(source_db_path):
+            try:
+                db_manager = DatabaseManager(db_path=source_db_path)
+                for ticker in ["FMG.AX", "CBA.AX"]:
+                    df = db_manager.get_data(ticker)
+                    if not df.empty and len(df) >= 200:
+                        df = df.copy()
+                        np.random.seed(42)
+                        n = len(df)
+                        df["feat1"] = np.random.randn(n).cumsum()  # non-stationary
+                        df["feat2"] = np.random.randn(n)  # stationary
+                        self.clean_daily_map[ticker] = df
+                db_manager.conn.close()
+            except Exception:
+                pass
+
+        if len(self.clean_daily_map) < 2:
+            np.random.seed(42)
+            n = 500
+            dates = pd.date_range(
+                start="2023-01-01", periods=n, freq="D", tz="Australia/Sydney"
             )
-            df.index.name = "datetime"
-            self.clean_daily_map[ticker] = df
+
+            self.clean_daily_map = {}
+            for ticker in ["AAPL", "MSFT"]:
+                # Generate random walk close prices
+                returns = np.random.normal(0.0005, 0.01, n)
+                close = 100 * np.cumprod(1 + returns)
+                high = close * (1 + np.abs(np.random.normal(0, 0.005, n)))
+                low = close * (1 - np.abs(np.random.normal(0, 0.005, n)))
+                open_ = (high + low) / 2
+                volume = np.random.randint(1000, 100000, n)
+
+                df = pd.DataFrame(
+                    {
+                        "Open": open_,
+                        "High": high,
+                        "Low": low,
+                        "Close": close,
+                        "Volume": volume,
+                        "feat1": np.random.randn(n).cumsum(),  # non-stationary
+                        "feat2": np.random.randn(n),  # stationary
+                    },
+                    index=dates,
+                )
+                df.index.name = "datetime"
+                self.clean_daily_map[ticker] = df
 
     def test_dual_gate_pipeline_execution(self):
         """Verify the pipeline executes without timezone, comparison or index alignment errors."""
@@ -81,19 +104,27 @@ class TestDualGatePipeline(unittest.TestCase):
             target_labels=["label", "t1", "weight"],
         )
 
+        expected_tz = str(
+            self.clean_daily_map[list(self.clean_daily_map.keys())[0]].index.tz
+        )
+
         # Assertions to verify the organiser contains the processed and transformed data
         self.assertIsNotNone(ao)
         self.assertIsNotNone(ao.multi_asset)
         self.assertEqual(ao.multi_asset.index.names, ["datetime", "ticker"])
         self.assertEqual(
             str(ao.multi_asset.index.get_level_values("datetime").tz),
-            "Australia/Sydney",
+            expected_tz,
         )
 
         # The organiser should have generated labels, t1 and weight columns
         self.assertIn("label", ao.multi_asset.columns)
         self.assertIn("t1", ao.multi_asset.columns)
         self.assertIn("weight", ao.multi_asset.columns)
+
+        # Original columns (OHLCV) should be preserved
+        for col in ["Open", "High", "Low", "Close", "Volume"]:
+            self.assertIn(col, ao.multi_asset.columns)
 
         # Verified features should still exist in importance_df
         self.assertIsNotNone(active_features)
@@ -144,19 +175,27 @@ class TestDualGatePipeline(unittest.TestCase):
             target_labels=["label", "t1", "weight"],
         )
 
+        expected_tz = str(
+            self.clean_daily_map[list(self.clean_daily_map.keys())[0]].index.tz
+        )
+
         # Assertions to verify the organiser contains the processed and transformed data
         self.assertIsNotNone(ao)
         self.assertIsNotNone(ao.multi_asset)
         self.assertEqual(ao.multi_asset.index.names, ["datetime", "ticker"])
         self.assertEqual(
             str(ao.multi_asset.index.get_level_values("datetime").tz),
-            "Australia/Sydney",
+            expected_tz,
         )
 
         # The organiser should have generated labels, t1 and weight columns
         self.assertIn("label", ao.multi_asset.columns)
         self.assertIn("t1", ao.multi_asset.columns)
         self.assertIn("weight", ao.multi_asset.columns)
+
+        # Original columns (OHLCV) should be preserved
+        for col in ["Open", "High", "Low", "Close", "Volume"]:
+            self.assertIn(col, ao.multi_asset.columns)
 
         # The pre-computed columns should exist in the multi_asset DataFrame
         self.assertIn("ffd_close", ao.multi_asset.columns)

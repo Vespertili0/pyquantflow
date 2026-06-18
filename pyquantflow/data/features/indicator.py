@@ -227,15 +227,10 @@ def EMA_RIBBON(
 
     # 9. Output Consolidation (24-Dimensional Matrix)
     outputs = [sigma_RS]  # Baseline Vol (1)
-
-    for i in range(M - 1):
-        outputs.append(d_tilde[i])  # Micro-Spreads (M-1)
-
+    outputs.extend(d_tilde)  # Micro-Spreads (M-1)
     outputs.append(W_tilde)  # Macro-Spread (1)
     outputs.extend([sigma_x, skew_x, kurt_x, rho_t])  # Shape & Rank (4)
-
-    for i in range(M - 1):
-        outputs.append(delta_d_tilde[i])  # Kinematics (M-1)
+    outputs.extend(delta_d_tilde)  # Kinematics (M-1)
 
     # 10. Cold-Start Warm-Up Masking
     W_start = max(timeperiods[-1], rs_period) * 3

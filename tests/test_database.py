@@ -130,6 +130,52 @@ class TestDatabaseManager(unittest.TestCase):
         # Should still process all tickers
         self.assertEqual(mock_update_ticker.call_count, len(tickers))
 
+    def test_insert_price_data_utc_normalisation(self):
+        """
+        Req 1.2: Datetime strings written to price_data must carry the UTC offset (+00:00),
+        regardless of the timezone of the DataFrame passed to _insert_price_data.
+        """
+        # Build a Sydney-localised DataFrame (UTC+10/+11) — what fetch_quarterly_data used to return
+        dates_sydney = pd.date_range(
+            start="2023-01-04", periods=3, freq="D", tz="Australia/Sydney"
+        )
+        mock_df = pd.DataFrame(
+            {
+                "Open": [1.0, 2.0, 3.0],
+                "High": [1.5, 2.5, 3.5],
+                "Low": [0.5, 1.5, 2.5],
+                "Close": [1.2, 2.2, 3.2],
+                "Volume": [100, 200, 300],
+            },
+            index=dates_sydney,
+        )
+        mock_df.index.name = "Datetime"
+
+        # Insert directly via the private method (bypass yfinance)
+        cursor = self.db.conn.cursor()
+        cursor.execute(
+            "INSERT INTO tickers (ticker, interval, last_updated) VALUES (?, ?, ?)",
+            ("UTC_TEST.AX", "1d", "2023-01-01"),
+        )
+        ticker_id = cursor.lastrowid
+        self.db._insert_price_data(ticker_id, mock_df)
+        self.db.conn.commit()
+
+        # Read back raw datetime strings from SQLite
+        cursor.execute(
+            "SELECT datetime FROM price_data WHERE ticker_id = ?", (ticker_id,)
+        )
+        rows = cursor.fetchall()
+        self.assertEqual(len(rows), 3)
+
+        for (dt_str,) in rows:
+            # UTC offset is represented as +00:00 in the ISO-format string
+            self.assertIn(
+                "+00:00",
+                dt_str,
+                msg=f"Expected UTC offset in '{dt_str}' but found a different offset.",
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
