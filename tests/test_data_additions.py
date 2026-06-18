@@ -223,7 +223,7 @@ class TestDataAdditions(unittest.TestCase):
         # Setup mock return
         mock_df = self.generate_synthetic_ohlc(n=100)
         # yfinance download usually returns a DF with Timezone if auto_adjust=True, etc.
-        # The code does data.index.tz_convert('Australia/Sydney') so we need a timezone-aware index initially or handle it.
+        # The code does data.index.tz_convert('UTC') so we need a timezone-aware index initially or handle it.
         # But wait, the code does `data.index = data.index.tz_convert(...)`.
         # If mock_df is tz-naive, tz_convert might fail if it thinks it's already naive, or work if it assumes UTC.
         # Actually in pandas, you usually need to localize first if it's naive, or convert if it's aware.
@@ -240,7 +240,7 @@ class TestDataAdditions(unittest.TestCase):
         self.assertIsInstance(result, pd.DataFrame)
         self.assertTrue(mock_download.called)
         # Check if tz conversion happened
-        self.assertEqual(str(result.index.tz), "Australia/Sydney")
+        self.assertEqual(str(result.index.tz), "UTC")
 
     def test_fetch_quarterly_data_invalid_period(self):
         """Test fetch_quarterly_data raises ValueError on invalid period."""
