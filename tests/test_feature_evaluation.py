@@ -283,7 +283,7 @@ class TestFeatureEvaluation(unittest.TestCase):
         differ (FFD was applied).
         """
         np.random.seed(42)
-        n = 100
+        n = 200
         dates = pd.date_range("2020-01-01", periods=n)
 
         # Non-stationary series (random walk) → will be FFD-transformed
@@ -304,6 +304,9 @@ class TestFeatureEvaluation(unittest.TestCase):
             target_col="target",
             memory_threshold=-1.0,  # Keep all transformed features
         )
+        # Use a higher threshold and shorter window to ensure some transformed values survive
+        evaluator.stationary_transformer.ffd_thres = 1e-2
+        evaluator.stationary_transformer.rolling_z_window = 10
 
         df_out = evaluator.fit_transform_features(df)
 
