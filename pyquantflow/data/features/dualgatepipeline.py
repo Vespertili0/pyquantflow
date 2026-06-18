@@ -76,12 +76,15 @@ class DualGatePipelineFactory:
         if organiser.multi_asset is None:
             organiser.prepare_multi_asset_frame()
 
-        # Track original features to identify which ones survive Gate 1 pruning
+        # Track original *transformed* features (these will be replaced in the organiser)
         original_features = list(evaluator.features)
 
         # TRACK B (Part 1): Snapshot the Unbroken Continuous Timeline
-        # Optimise memory usage by copying only the necessary feature columns instead of the entire panel
-        continuous_df = organiser.multi_asset[evaluator.features].copy()
+        # Include raw_features alongside transform-path features so they travel through
+        # the synchronisation bridge. Raw features are never passed to replace_features,
+        # so their original values in multi_asset are preserved by AssetOrganiser.
+        all_eval_cols = evaluator.features + (evaluator.raw_features or [])
+        continuous_df = organiser.multi_asset[all_eval_cols].copy()
 
         # TRACK A: Structural Label & Event Generation (Pure Price Action)
         organiser.build_learning_pipeline(

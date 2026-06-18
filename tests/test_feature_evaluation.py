@@ -271,6 +271,175 @@ class TestFeatureEvaluation(unittest.TestCase):
         )
         self.assertEqual(evaluator.freq, 5)
 
+    # -----------------------------------------------------------------------
+    # Epic-2 tests
+    # -----------------------------------------------------------------------
+
+    def test_raw_features_bypass_ffd(self):
+        """
+        Req 2.1: raw_features must not be fractionally differentiated.
+        After fit_transform_features the 'Volume' raw column should be
+        identical to the original, while the transformed 'feat1' column must
+        differ (FFD was applied).
+        """
+        np.random.seed(42)
+        n = 100
+        dates = pd.date_range("2020-01-01", periods=n)
+
+        # Non-stationary series (random walk) → will be FFD-transformed
+        feat1 = np.random.randn(n).cumsum()
+        # Stationary, natively meaningful series → passed through raw
+        volume = np.random.randint(1_000, 100_000, n).astype(float)
+        target = np.random.choice([0, 1], n)
+
+        df = pd.DataFrame(
+            {"feat1": feat1, "Volume": volume, "target": target},
+            index=dates,
+        )
+        df.index.name = "datetime"
+
+        evaluator = FeatureEvaluator(
+            features=["feat1"],
+            raw_features=["Volume"],
+            target_col="target",
+            memory_threshold=-1.0,  # Keep all transformed features
+        )
+
+        df_out = evaluator.fit_transform_features(df)
+
+        # Volume must be present in the output
+        self.assertIn("Volume", df_out.columns)
+
+        # Volume values must be identical to originals (no transformation)
+        np.testing.assert_array_equal(
+            df_out["Volume"].dropna().values,
+            df["Volume"].loc[df_out["Volume"].dropna().index].values,
+            err_msg="raw_features column 'Volume' was unexpectedly modified.",
+        )
+
+        # feat1 must have been transformed (values differ from the raw series)
+        transformed_vals = df_out["feat1"].dropna()
+        self.assertGreater(len(transformed_vals), 0)
+        original_vals = df["feat1"].loc[transformed_vals.index]
+        self.assertFalse(
+            np.allclose(transformed_vals.values, original_vals.values),
+            "Expected 'feat1' to be FFD-transformed but it appears unchanged.",
+        )
+
+        # self.raw_features must not have been pruned
+        self.assertIn("Volume", evaluator.raw_features)
+
+    def test_cluster_entities_with_categorical(self):
+        """
+        Req 2.3: cluster_entities must not crash when the input DataFrame
+        contains boolean or string (object-dtype) columns.
+        """
+        from unittest.mock import patch
+
+        np.random.seed(0)
+        n = 100
+        df_mixed = pd.DataFrame(
+            {
+                "numeric_a": np.random.randn(n),
+                "numeric_b": np.random.randn(n),
+                "bool_col": np.random.choice([True, False], n),
+                "str_col": np.random.choice(["up", "down", "flat"], n),
+            }
+        )
+
+        evaluator = FeatureEvaluator(
+            features=["numeric_a", "numeric_b"],
+            target_col="numeric_a",  # Placeholder; not used in clustering
+        )
+
+        # Patch warnings.warn at the feature_evaluation module level.
+        # This is more reliable than catch_warnings(record=True), which can
+        # interact unpredictably with pytest's own warning filter stack.
+        with patch("pyquantflow.model.feature_evaluation.warnings.warn") as mock_warn:
+            clusters = evaluator.cluster_entities(df_mixed, method="correlation")
+
+        # Should return a valid cluster dict without raising
+        self.assertIsInstance(clusters, dict)
+        self.assertGreater(len(clusters), 0)
+
+        # All four columns should appear across clusters
+        all_clustered = [col for cols in clusters.values() for col in cols]
+        for col in ["numeric_a", "numeric_b", "bool_col", "str_col"]:
+            self.assertIn(col, all_clustered)
+
+        # The OrdinalEncoder warning must have been emitted
+        self.assertTrue(
+            mock_warn.called,
+            "Expected warnings.warn to be called for non-numeric columns.",
+        )
+        call_msg = mock_warn.call_args[0][0]
+        self.assertIn(
+            "OrdinalEncoder",
+            call_msg,
+            f"Expected 'OrdinalEncoder' in warning message, got: {call_msg!r}",
+        )
+
+    def test_evaluate_importance_with_raw_features(self):
+        """
+        Req 2.1 (end-to-end): Both transformed and raw features must appear
+        in importance_df after evaluate_importance completes.
+        """
+        from sklearn.metrics import log_loss
+        from sklearn.tree import DecisionTreeClassifier
+
+        np.random.seed(5)
+        n = 200
+        dates = pd.date_range("2020-01-01", periods=n)
+
+        signal = np.random.randn(n).cumsum()  # Non-stationary → FFD path
+        volume = np.abs(np.random.randn(n)) * 1_000  # Stationary → raw path
+        target = np.random.choice([0, 1], n)
+
+        df = pd.DataFrame(
+            {"signal": signal, "volume": volume, "target": target},
+            index=dates,
+        )
+        df.index.name = "datetime"
+
+        evaluator = FeatureEvaluator(
+            features=["signal"],
+            raw_features=["volume"],
+            target_col="target",
+            cv=KFold(n_splits=2),
+            memory_threshold=-1.0,
+        )
+
+        df_trans = evaluator.fit_transform_features(df)
+        df_trans = df_trans.fillna(0)
+
+        evaluator.evaluate_importance(
+            df_trans,
+            estimator=DecisionTreeClassifier(),
+            metric=log_loss,
+            metric_kwargs={"labels": [0, 1]},
+            greater_is_better=False,
+            needs_proba=True,
+            balance_classes=False,
+        )
+
+        # importance_df should exist and have rows
+        self.assertIsNotNone(evaluator.importance_df)
+        importance_df = evaluator.importance_df
+        self.assertFalse(importance_df.empty, "importance_df must not be empty.")
+
+        # Both 'signal' and 'volume' must appear somewhere in the features column
+        all_feature_names = " ".join(importance_df["features"].astype(str).tolist())
+        self.assertIn(
+            "signal",
+            all_feature_names,
+            "'signal' (transformed feature) must appear in importance_df.",
+        )
+        self.assertIn(
+            "volume",
+            all_feature_names,
+            "'volume' (raw feature) must appear in importance_df.",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
