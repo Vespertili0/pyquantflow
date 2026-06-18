@@ -143,9 +143,7 @@ class TestRollMeasure(unittest.TestCase):
 class TestCorwinSchultz(unittest.TestCase):
     """Tests for the Corwin-Schultz (2012) high-low spread estimator."""
 
-    def _synthetic_ohlc(
-        self, n: int, mid: float, half_spread: float
-    ) -> tuple:
+    def _synthetic_ohlc(self, n: int, mid: float, half_spread: float) -> tuple:
         """
         Constructs synthetic high/low arrays where the intraday range is
         entirely driven by the spread:
