@@ -22,7 +22,19 @@ from pyquantflow.data.features.fractional_differentiation import (
 class StationaryTransformer(BaseEstimator, TransformerMixin):
     """
     Transforms non-stationary features using Fractional Differentiation (FFD)
-    and applies a causal rolling z-score to standardise volatility regimes.
+    and applies z-score standardisation to normalise volatility regimes.
+
+    Supports two z-score modes via ``z_mode``:
+
+    * ``"rolling"`` (default) — causal rolling z-score computed per
+      timestep from past data only.  Already leak-safe by construction;
+      no future data enters the rolling window.  Best for financial data
+      with regime shifts.
+    * ``"global"`` — traditional mean / std frozen during ``fit()`` and
+      projected unchanged during ``transform()``.  Suitable for use
+      inside ``sklearn.pipeline.Pipeline`` objects where the
+      cross-validator calls ``fit`` on training data and ``transform``
+      on validation data, guaranteeing strict train/test separation.
     """
 
     def __init__(
@@ -31,17 +43,24 @@ class StationaryTransformer(BaseEstimator, TransformerMixin):
         significance_level: float = 0.05,
         rolling_z_window: int = 20,
         ffd_thres: float = 1e-4,
+        z_mode: str = "rolling",
     ):
         self.d_grid = d_grid
         self.significance_level = significance_level
         self.rolling_z_window = rolling_z_window
         self.ffd_thres = ffd_thres
+        self.z_mode = z_mode
         self.optimal_d_ = {}
+        self.z_mean_ = {}
+        self.z_std_ = {}
 
     def fit(self, X: pd.DataFrame, y=None):
         """
         Determines the optimal differencing order d* for each feature column.
         Groups by 'ticker' if X is a MultiIndex DataFrame to prevent leakage.
+
+        When ``z_mode='global'``, also computes and stores per-column
+        ``z_mean_`` and ``z_std_`` from the FFD-transformed training data.
         """
         is_multi_index = isinstance(X.index, pd.MultiIndex)
 
@@ -92,11 +111,39 @@ class StationaryTransformer(BaseEstimator, TransformerMixin):
                 )
                 self.optimal_d_[col] = d_star
 
+        # --- Global z-score: freeze mean/std from training data ---
+        if self.z_mode == "global":
+            for col in X.columns:
+                d = self.optimal_d_.get(col, 1.0)
+                if is_multi_index:
+                    try:
+                        unstacked = X[col].unstack(level="ticker")
+                        diff_unstacked = unstacked.apply(
+                            lambda s: adf_screened_ffd(s, d=d, thres=self.ffd_thres)[0]
+                        )
+                        diff_series = diff_unstacked.stack(level="ticker", dropna=False)
+                        if diff_series.index.names != X.index.names:
+                            diff_series = diff_series.reorder_levels(X.index.names)
+                        diff_series = diff_series.reindex(X.index)
+                    except Exception:
+                        diff_series, _ = adf_screened_ffd(
+                            X[col], d=d, thres=self.ffd_thres
+                        )
+                else:
+                    diff_series, _ = adf_screened_ffd(X[col], d=d, thres=self.ffd_thres)
+
+                clean = diff_series.dropna()
+                self.z_mean_[col] = float(clean.mean())
+                self.z_std_[col] = float(clean.std())
+
+        self.feature_names_in_ = list(X.columns)
+
         return self
 
     def transform(self, X: pd.DataFrame) -> pd.DataFrame:
         """
-        Applies the FFD transformation using optimal d*, followed by rolling z-score.
+        Applies the FFD transformation using optimal d*, followed by z-score
+        standardisation (rolling or global, depending on ``z_mode``).
         """
         X_out = pd.DataFrame(index=X.index)
         is_multi_index = isinstance(X.index, pd.MultiIndex)
@@ -122,22 +169,63 @@ class StationaryTransformer(BaseEstimator, TransformerMixin):
             else:
                 diff_series, _ = adf_screened_ffd(X[col], d=d, thres=self.ffd_thres)
 
-            # 2. Causal Rolling Z-Score Normalisation
-            if is_multi_index:
-                roll = diff_series.groupby(level="ticker")
-                mean = roll.transform(lambda s: s.rolling(self.rolling_z_window).mean())
-                std = roll.transform(lambda s: s.rolling(self.rolling_z_window).std())
+            # 2. Z-Score Standardisation
+            if self.z_mode == "global":
+                # Frozen parameters from fit()
+                g_mean = self.z_mean_.get(col, 0.0)
+                g_std = self.z_std_.get(col, 1.0)
+                if g_std == 0 or np.isnan(g_std):
+                    g_std = 1.0
+                z_score = (diff_series - g_mean) / g_std
             else:
-                mean = diff_series.rolling(self.rolling_z_window).mean()
-                std = diff_series.rolling(self.rolling_z_window).std()
+                # Causal Rolling Z-Score Normalisation
+                if is_multi_index:
+                    roll = diff_series.groupby(level="ticker")
+                    mean = roll.transform(
+                        lambda s: s.rolling(self.rolling_z_window).mean()
+                    )
+                    std = roll.transform(
+                        lambda s: s.rolling(self.rolling_z_window).std()
+                    )
+                else:
+                    mean = diff_series.rolling(self.rolling_z_window).mean()
+                    std = diff_series.rolling(self.rolling_z_window).std()
 
-            # To avoid division by zero for constant periods
-            std = std.replace(0, np.nan)
-            z_score = (diff_series - mean) / std
+                # To avoid division by zero for constant periods
+                std = std.replace(0, np.nan)
+                z_score = (diff_series - mean) / std
 
             X_out[col] = z_score
 
         return X_out
+
+    def get_feature_names_out(self, input_features=None):
+        """
+        Returns feature names for the transformer output.
+
+        Implements the sklearn ``get_feature_names_out`` protocol so that
+        ``StationaryTransformer`` integrates seamlessly into
+        ``sklearn.pipeline.Pipeline`` objects.
+
+        Parameters
+        ----------
+        input_features : array-like of str, optional
+            Input feature names.  If ``None``, uses ``feature_names_in_``
+            stored during ``fit()``.
+
+        Returns
+        -------
+        np.ndarray of str
+            Output feature names (identical to input — no columns are
+            added or removed).
+        """
+        if input_features is not None:
+            return np.asarray(input_features)
+        if hasattr(self, "feature_names_in_"):
+            return np.asarray(self.feature_names_in_)
+        raise ValueError(
+            "No feature names available. Call fit() first or provide input_features."
+        )
 
 
 class FeatureEvaluator:

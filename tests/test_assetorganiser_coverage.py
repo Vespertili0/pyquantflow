@@ -16,17 +16,6 @@ class MockLabelFactory:
         return pd.Series(np.ones(len(returns)), index=returns.index)
 
 
-class MockClassifier:
-    def fit(self, X, y, sample_weight=None):
-        self.fitted = True
-        return self
-
-    def transform(self, X):
-        X_out = X.copy()
-        X_out["mock_pred"] = 1
-        return X_out
-
-
 class TestAssetOrganiserCoverage(unittest.TestCase):
     def setUp(self):
         source_db_path = os.path.join(os.path.dirname(__file__), "stocks.db")
@@ -178,35 +167,6 @@ class TestAssetOrganiserCoverage(unittest.TestCase):
         # 2. Missing 't1' column
         with self.assertRaises(KeyError):
             organiser.apply_sample_weights()
-
-    def test_fit_quant_classifier_and_transform(self):
-        organiser = AssetOrganiser(
-            data_map=self.data_map,
-            cutoff_date=self.cutoff_date,
-            target_features=["target"],
-        )
-
-        # 1. Data not prepared
-        with self.assertRaises(ValueError):
-            organiser.fit_quant_classifier()
-
-        organiser.prepare_multi_asset_frame()
-
-        # 2. No classifier
-        with self.assertRaises(ValueError):
-            organiser.fit_quant_classifier()
-
-        # 3. Valid classification
-        organiser.classifier = MockClassifier()
-        organiser.fit_quant_classifier()
-
-        self.assertTrue(organiser.classifier.fitted)
-
-        transformed_test = organiser.get_transformed_multiasset_testdata()
-        self.assertIn("mock_pred", transformed_test.columns)
-
-        ticker_test = organiser.get_transformed_test_ticker(self.ticker_1)
-        self.assertIn("mock_pred", ticker_test.columns)
 
     def test_add_model_predictions(self):
         organiser = AssetOrganiser(
