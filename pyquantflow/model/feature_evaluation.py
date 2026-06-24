@@ -476,20 +476,28 @@ class FeatureEvaluator:
         data = self._coerce_numeric(data)
 
         if method == "correlation":
+            labels_list = data.columns.tolist()
+            if len(labels_list) == 0:
+                return {}
+            if len(labels_list) == 1:
+                return {1: [labels_list[0]]}
             corr = data.corr(method="pearson")
             dist_matrix = np.sqrt(0.5 * (1 - corr.clip(-1, 1)))
-            labels_list = data.columns.tolist()
             condensed_dist = scipy.spatial.distance.squareform(
                 dist_matrix.values, checks=False
             )
         elif method == "euclidean":
+            labels_list = data.index.tolist()
+            if len(labels_list) == 0:
+                return {}
+            if len(labels_list) == 1:
+                return {1: [labels_list[0]]}
             from sklearn.preprocessing import StandardScaler
 
             scaled_data = StandardScaler().fit_transform(data)
             condensed_dist = scipy.spatial.distance.pdist(
                 scaled_data, metric="euclidean"
             )
-            labels_list = data.index.tolist()
         else:
             raise ValueError(f"Unknown clustering method: {method}")
 
