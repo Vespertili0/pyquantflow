@@ -1,7 +1,13 @@
 import unittest
+from unittest.mock import patch
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import KFold
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import log_loss, brier_score_loss, f1_score, accuracy_score
 
 from pyquantflow.model.feature_evaluation import (
     _adf_test_stat,
@@ -20,19 +26,45 @@ class TestFeatureEvaluation(unittest.TestCase):
         # Create a non-stationary series (random walk)
         self.random_walk = pd.Series(np.random.randn(100).cumsum())
 
-        # Create panel data (MultiIndex)
+        # Create initial panel data via helper
+        self.panel_df = self._create_synthetic_panel_df()
+
+    def _create_synthetic_panel_df(self, n_periods=50, tickers=None, random_seed=42):
+        """
+        Helper method to generate MultiIndex synthetic panel data.
+        """
+        if tickers is None:
+            tickers = ["AAPL", "MSFT"]
+        np.random.seed(random_seed)
         idx = pd.MultiIndex.from_product(
-            [pd.date_range("2020-01-01", periods=50), ["AAPL", "MSFT"]],
+            [pd.date_range("2020-01-01", periods=n_periods), tickers],
             names=["datetime", "ticker"],
         )
-        self.panel_df = pd.DataFrame(
+        n_total = n_periods * len(tickers)
+        return pd.DataFrame(
             {
-                "feat1": np.random.randn(100).cumsum(),
-                "feat2": np.random.randn(100),
-                "target": np.random.choice([0, 1], 100),
-                "weight": np.random.uniform(0.5, 1.5, 100),
+                "feat1": np.random.randn(n_total).cumsum(),
+                "feat2": np.random.randn(n_total),
+                "target": np.random.choice([0, 1], n_total),
+                "weight": np.random.uniform(0.5, 1.5, n_total),
             },
             index=idx,
+        )
+
+    def _create_synthetic_single_index_df(self, n_periods=100, random_seed=42):
+        """
+        Helper method to generate single-index synthetic data.
+        """
+        np.random.seed(random_seed)
+        dates = pd.date_range("2020-01-01", periods=n_periods)
+        return pd.DataFrame(
+            {
+                "feat1": np.random.randn(n_periods).cumsum(),
+                "feat2": np.random.randn(n_periods),
+                "target": np.random.choice([0, 1], n_periods),
+                "weight": np.random.uniform(0.5, 1.5, n_periods),
+            },
+            index=dates,
         )
 
     def test_native_adf_logic(self):
@@ -62,16 +94,86 @@ class TestFeatureEvaluation(unittest.TestCase):
         # Check that missing data from lag (rolling window) is NaN
         self.assertTrue(np.isnan(X_trans["feat1"].iloc[0]))
 
-        # The rolling z-score window is 20, so early values should be NaN
-        # and standardisation should happen per ticker.
+    def test_stationary_transformer_global_z_mode(self):
+        """
+        Test StationaryTransformer with global z-mode standardisation.
+        """
+        transformer = StationaryTransformer(
+            d_grid=np.array([0.0, 0.5, 1.0]), z_mode="global"
+        )
+        X = self.panel_df[["feat1", "feat2"]]
+        transformer.fit(X)
+
+        # Verify global z-score parameters are populated
+        self.assertIn("feat1", transformer.z_mean_)
+        self.assertIn("feat1", transformer.z_std_)
+        self.assertIn("feat2", transformer.z_mean_)
+        self.assertIn("feat2", transformer.z_std_)
+
+        # Transform and ensure outputs align with global parameters
+        X_trans = transformer.transform(X)
+        self.assertEqual(X_trans.shape, X.shape)
+
+    def test_stationary_transformer_single_index(self):
+        """
+        Test StationaryTransformer on a single-index DataFrame.
+        """
+        single_df = self._create_synthetic_single_index_df()
+        transformer = StationaryTransformer(d_grid=np.array([0.0, 0.5, 1.0]))
+        X = single_df[["feat1", "feat2"]]
+
+        transformer.fit(X)
+        X_trans = transformer.transform(X)
+        self.assertEqual(X_trans.shape, X.shape)
+        self.assertIn("feat1", transformer.optimal_d_)
+
+    def test_stationary_transformer_get_feature_names_out(self):
+        """
+        Test get_feature_names_out behaviour.
+        """
+        transformer = StationaryTransformer()
+        # Should raise ValueError before fit when no input features are provided
+        with self.assertRaises(ValueError):
+            transformer.get_feature_names_out()
+
+        # Passing input features directly should work even before fit
+        feats = ["a", "b"]
+        np.testing.assert_array_equal(
+            transformer.get_feature_names_out(feats), np.array(feats)
+        )
+
+        # Fitting should store feature_names_in_
+        X = self.panel_df[["feat1", "feat2"]]
+        transformer.fit(X)
+        np.testing.assert_array_equal(
+            transformer.get_feature_names_out(), np.array(["feat1", "feat2"])
+        )
+
+    def test_stationary_transformer_invalid_multiindex_fallback(self):
+        """
+        Test fallback in fit() and transform() when MultiIndex lacks "ticker" level.
+        """
+        idx = pd.MultiIndex.from_product(
+            [pd.date_range("2020-01-01", periods=10), ["AAPL", "MSFT"]],
+            names=["datetime", "asset"],
+        )
+        df_invalid = pd.DataFrame({"feat1": np.random.randn(20)}, index=idx)
+
+        transformer = StationaryTransformer(
+            d_grid=np.array([0.0, 0.5, 1.0]), z_mode="global"
+        )
+        # Fit and transform should succeed by falling back to single-asset estimation path
+        transformer.fit(df_invalid)
+        self.assertIn("feat1", transformer.optimal_d_)
+
+        X_trans = transformer.transform(df_invalid)
+        self.assertEqual(X_trans.shape, df_invalid.shape)
 
     def test_feature_evaluator_profiling(self):
         evaluator = FeatureEvaluator(
             features=["feat1", "feat2"], target_col="target", cv=KFold(n_splits=2)
         )
 
-        # We patch tsfeatures to avoid slow actual runs in standard unit tests, or let it run
-        # if the environment has it. Since it's light, we let it run.
         profiles = evaluator.compute_time_series_profiles(
             self.panel_df, columns=["feat1", "feat2"], groupby_level="ticker"
         )
@@ -106,10 +208,6 @@ class TestFeatureEvaluation(unittest.TestCase):
         self.assertTrue(found_together)
 
         # Test full evaluation
-        from sklearn.metrics import log_loss
-        from sklearn.tree import DecisionTreeClassifier
-
-        # Use a simple estimator to avoid thread/parallel array sizing issues on small datasets
         dummy = DecisionTreeClassifier()
 
         # Transform features
@@ -118,7 +216,6 @@ class TestFeatureEvaluation(unittest.TestCase):
         # DecisionTreeClassifier does not natively handle NaNs, so we fill them for the dummy test
         df_trans = df_trans.fillna(0)
 
-        # log_loss is a loss metric: greater_is_better=False, needs_proba=True
         results = evaluator.evaluate_importance(
             df_trans,
             estimator=dummy,
@@ -140,16 +237,11 @@ class TestFeatureEvaluation(unittest.TestCase):
         Req 1.1: brier_score_loss (lower is better) with a highly predictive feature.
         MDA importance must be positive for the informative cluster.
         """
-        from sklearn.metrics import brier_score_loss
-        from sklearn.linear_model import LogisticRegression
-
         np.random.seed(0)
         n = 200
         dates = pd.date_range("2020-01-01", periods=n)
-        # informative: target is directly derived from this feature
         signal = np.random.randn(n)
         target = (signal > 0).astype(int)
-        # noise: pure random, no predictive power
         noise = np.random.randn(n)
 
         df = pd.DataFrame(
@@ -175,7 +267,6 @@ class TestFeatureEvaluation(unittest.TestCase):
             needs_proba=True,
         )
 
-        # Verify structure is valid; at minimum the signal cluster should exist
         self.assertTrue(len(results) > 0)
         first_regime = list(results.values())[0]
         mda_df = first_regime["MDA"]
@@ -186,9 +277,6 @@ class TestFeatureEvaluation(unittest.TestCase):
         Req 1.1: f1_score (higher is better) with a highly predictive feature.
         MDA importance must be positive for the informative cluster.
         """
-        from sklearn.metrics import f1_score
-        from sklearn.linear_model import LogisticRegression
-
         np.random.seed(1)
         n = 200
         dates = pd.date_range("2020-01-01", periods=n)
@@ -219,14 +307,12 @@ class TestFeatureEvaluation(unittest.TestCase):
             needs_proba=False,
         )
 
-        # Verify structure is valid
         self.assertTrue(len(results) > 0)
         first_regime = list(results.values())[0]
         mda_df = first_regime["MDA"]
         self.assertFalse(mda_df["mda_mean"].isna().all())
 
     def test_feature_evaluator_gate1_pruning(self):
-        # Create a dataframe with one high memory feature (AR(1)) and one low memory feature (white noise)
         idx = pd.MultiIndex.from_product(
             [pd.date_range("2020-01-01", periods=100), ["AAPL"]],
             names=["datetime", "ticker"],
@@ -255,15 +341,35 @@ class TestFeatureEvaluation(unittest.TestCase):
 
         df_trans = evaluator.fit_transform_features(df)
 
-        # ar1_feat should be kept (acf1 ~ 0.8, is stationary so d=0.0)
-        # white_noise should be dropped (acf1 ~ 0.0, is stationary so d=0.0)
         self.assertIn("ar1_feat", evaluator.features)
         self.assertNotIn("white_noise", evaluator.features)
         self.assertIn("ar1_feat", df_trans.columns)
         self.assertNotIn("white_noise", df_trans.columns)
 
+    def test_feature_evaluator_gate1_nan_fallback(self):
+        """
+        Verify that features resulting in NaN for ACF1 memory check are kept.
+        """
+        idx = pd.MultiIndex.from_product(
+            [pd.date_range("2020-01-01", periods=10), ["AAPL"]],
+            names=["datetime", "ticker"],
+        )
+        df = pd.DataFrame(
+            {
+                "const_feat": [42.0] * 10,
+                "target": [0, 1] * 5,
+            },
+            index=idx,
+        )
+        evaluator = FeatureEvaluator(
+            features=["const_feat"],
+            target_col="target",
+            memory_threshold=0.10,
+        )
+        evaluator.fit_transform_features(df)
+        self.assertIn("const_feat", evaluator.features)
+
     def test_feature_evaluator_freq_parameter(self):
-        # Verify freq is set correctly
         evaluator = FeatureEvaluator(
             features=["feat1"],
             target_col="target",
@@ -271,24 +377,15 @@ class TestFeatureEvaluation(unittest.TestCase):
         )
         self.assertEqual(evaluator.freq, 5)
 
-    # -----------------------------------------------------------------------
-    # Epic-2 tests
-    # -----------------------------------------------------------------------
-
     def test_raw_features_bypass_ffd(self):
         """
         Req 2.1: raw_features must not be fractionally differentiated.
-        After fit_transform_features the 'Volume' raw column should be
-        identical to the original, while the transformed 'feat1' column must
-        differ (FFD was applied).
         """
         np.random.seed(42)
         n = 200
         dates = pd.date_range("2020-01-01", periods=n)
 
-        # Non-stationary series (random walk) → will be FFD-transformed
         feat1 = np.random.randn(n).cumsum()
-        # Stationary, natively meaningful series → passed through raw
         volume = np.random.randint(1_000, 100_000, n).astype(float)
         target = np.random.choice([0, 1], n)
 
@@ -302,25 +399,21 @@ class TestFeatureEvaluation(unittest.TestCase):
             features=["feat1"],
             raw_features=["Volume"],
             target_col="target",
-            memory_threshold=-1.0,  # Keep all transformed features
+            memory_threshold=-1.0,
         )
-        # Use a higher threshold and shorter window to ensure some transformed values survive
         evaluator.stationary_transformer.ffd_thres = 1e-2
         evaluator.stationary_transformer.rolling_z_window = 10
 
         df_out = evaluator.fit_transform_features(df)
 
-        # Volume must be present in the output
         self.assertIn("Volume", df_out.columns)
 
-        # Volume values must be identical to originals (no transformation)
         np.testing.assert_array_equal(
             df_out["Volume"].dropna().values,
             df["Volume"].loc[df_out["Volume"].dropna().index].values,
             err_msg="raw_features column 'Volume' was unexpectedly modified.",
         )
 
-        # feat1 must have been transformed (values differ from the raw series)
         transformed_vals = df_out["feat1"].dropna()
         self.assertGreater(len(transformed_vals), 0)
         original_vals = df["feat1"].loc[transformed_vals.index]
@@ -329,16 +422,41 @@ class TestFeatureEvaluation(unittest.TestCase):
             "Expected 'feat1' to be FFD-transformed but it appears unchanged.",
         )
 
-        # self.raw_features must not have been pruned
         self.assertIn("Volume", evaluator.raw_features)
+
+    def test_feature_evaluator_missing_raw_features(self):
+        """
+        Verify that fit_transform_features raises KeyError if a raw feature is missing.
+        """
+        evaluator = FeatureEvaluator(
+            features=["feat1"],
+            raw_features=["missing_col"],
+            target_col="target",
+        )
+        with self.assertRaises(KeyError):
+            evaluator.fit_transform_features(self.panel_df)
+
+    def test_feature_evaluator_t1_col_preservation(self):
+        """
+        Test that t1_col is correctly kept and preserved in transformed features.
+        """
+        df = self.panel_df.copy()
+        df["t1"] = pd.date_range("2020-01-02", periods=100)
+        evaluator = FeatureEvaluator(
+            features=["feat2"],
+            target_col="target",
+            t1_col="t1",
+            memory_threshold=-1.0,
+        )
+        df_out = evaluator.fit_transform_features(df)
+        self.assertIn("t1", df_out.columns)
+        self.assertTrue(df_out["t1"].equals(df["t1"]))
 
     def test_cluster_entities_with_categorical(self):
         """
         Req 2.3: cluster_entities must not crash when the input DataFrame
         contains boolean or string (object-dtype) columns.
         """
-        from unittest.mock import patch
-
         np.random.seed(0)
         n = 100
         df_mixed = pd.DataFrame(
@@ -352,25 +470,19 @@ class TestFeatureEvaluation(unittest.TestCase):
 
         evaluator = FeatureEvaluator(
             features=["numeric_a", "numeric_b"],
-            target_col="numeric_a",  # Placeholder; not used in clustering
+            target_col="numeric_a",
         )
 
-        # Patch warnings.warn at the feature_evaluation module level.
-        # This is more reliable than catch_warnings(record=True), which can
-        # interact unpredictably with pytest's own warning filter stack.
         with patch("pyquantflow.model.feature_evaluation.warnings.warn") as mock_warn:
             clusters = evaluator.cluster_entities(df_mixed, method="correlation")
 
-        # Should return a valid cluster dict without raising
         self.assertIsInstance(clusters, dict)
         self.assertGreater(len(clusters), 0)
 
-        # All four columns should appear across clusters
         all_clustered = [col for cols in clusters.values() for col in cols]
         for col in ["numeric_a", "numeric_b", "bool_col", "str_col"]:
             self.assertIn(col, all_clustered)
 
-        # The OrdinalEncoder warning must have been emitted
         self.assertTrue(
             mock_warn.called,
             "Expected warnings.warn to be called for non-numeric columns.",
@@ -382,20 +494,225 @@ class TestFeatureEvaluation(unittest.TestCase):
             f"Expected 'OrdinalEncoder' in warning message, got: {call_msg!r}",
         )
 
+    def test_coerce_numeric(self):
+        """
+        Test that _coerce_numeric leaves pure numeric DataFrames alone and ordinally encodes others.
+        """
+        df_num = pd.DataFrame({"a": [1.0, 2.0], "b": [3, 4]})
+        res_num = FeatureEvaluator._coerce_numeric(df_num)
+        pd.testing.assert_frame_equal(df_num, res_num)
+
+        df_mixed = pd.DataFrame(
+            {"a": [1.0, 2.0], "b": [True, False], "c": ["high", "low"]}
+        )
+        with self.assertWarns(UserWarning):
+            res_mixed = FeatureEvaluator._coerce_numeric(df_mixed)
+        self.assertTrue(pd.api.types.is_numeric_dtype(res_mixed["b"]))
+        self.assertTrue(pd.api.types.is_numeric_dtype(res_mixed["c"]))
+        self.assertEqual(list(res_mixed.columns), ["a", "b", "c"])
+
+    def test_cluster_entities_euclidean(self):
+        """
+        Test cluster_entities using Euclidean distance.
+        """
+        evaluator = FeatureEvaluator(features=["feat1"], target_col="target")
+        data = pd.DataFrame(
+            [
+                [1.0, 1.1],
+                [0.9, 1.0],
+                [-1.0, -1.1],
+                [-0.9, -1.0],
+            ],
+            index=["Asset1", "Asset2", "Asset3", "Asset4"],
+            columns=["f1", "f2"],
+        )
+        clusters = evaluator.cluster_entities(data, method="euclidean", n_clusters=2)
+        self.assertEqual(len(clusters), 2)
+        c_vals = list(clusters.values())
+        group1 = c_vals[0] if "Asset1" in c_vals[0] else c_vals[1]
+        group2 = c_vals[1] if "Asset1" in c_vals[0] else c_vals[0]
+        self.assertTrue("Asset2" in group1)
+        self.assertTrue("Asset3" in group2)
+        self.assertTrue("Asset4" in group2)
+
+    def test_cluster_entities_invalid_method(self):
+        """
+        Test that cluster_entities raises ValueError on unknown method.
+        """
+        evaluator = FeatureEvaluator(features=["feat1"], target_col="target")
+        with self.assertRaises(ValueError):
+            evaluator.cluster_entities(
+                self.panel_df[["feat1", "feat2"]], method="invalid_method"
+            )
+
+    def test_cluster_entities_explicit_clusters_and_small_n(self):
+        """
+        Test explicit cluster configuration and small entity boundary cases.
+        """
+        evaluator = FeatureEvaluator(features=["feat1"], target_col="target")
+        small_data = pd.DataFrame({"a": [1, 2], "b": [3, 4]})
+        clusters = evaluator.cluster_entities(
+            small_data, method="correlation", n_clusters=None
+        )
+        self.assertEqual(len(clusters), 2)
+
+        data = pd.DataFrame(
+            {
+                "a": np.random.randn(10),
+                "b": np.random.randn(10),
+                "c": np.random.randn(10),
+            }
+        )
+        clusters_exp = evaluator.cluster_entities(
+            data, method="correlation", n_clusters=2
+        )
+        self.assertEqual(len(clusters_exp), 2)
+
+    def test_compute_time_series_profiles_no_ticker(self):
+        """
+        Test compute_time_series_profiles when groupby_level is not 'ticker'.
+        """
+        single_df = self._create_synthetic_single_index_df(n_periods=30)
+        evaluator = FeatureEvaluator(
+            features=["feat1"],
+            target_col="target",
+        )
+        profiles = evaluator.compute_time_series_profiles(
+            single_df, columns=["feat1", "feat2"], groupby_level=None
+        )
+        self.assertTrue(len(profiles.columns) > 0)
+        self.assertEqual(len(profiles), 2)
+
+        df_no_dt = pd.DataFrame(
+            {"feat1": np.random.randn(30), "feat2": np.random.randn(30)}
+        )
+        profiles_no_dt = evaluator.compute_time_series_profiles(
+            df_no_dt, columns=["feat1", "feat2"], groupby_level=None
+        )
+        self.assertTrue(len(profiles_no_dt.columns) > 0)
+        self.assertEqual(len(profiles_no_dt), 2)
+
+    def test_evaluate_importance_single_feature(self):
+        """
+        Test evaluate_importance when all_features has exactly 1 element.
+        """
+        df = self.panel_df.copy()
+        evaluator = FeatureEvaluator(
+            features=["feat2"],
+            target_col="target",
+            cv=KFold(n_splits=2),
+            memory_threshold=-1.0,
+        )
+        df_trans = evaluator.fit_transform_features(df).fillna(0)
+        results = evaluator.evaluate_importance(
+            df_trans,
+            estimator=DecisionTreeClassifier(),
+            metric=accuracy_score,
+            greater_is_better=True,
+            needs_proba=False,
+            balance_classes=False,
+        )
+        self.assertEqual(len(results), 1)
+        first_regime = list(results.values())[0]
+        self.assertIn("MDA", first_regime)
+        self.assertIn("SFI", first_regime)
+
+    def test_evaluate_importance_balance_classes(self):
+        """
+        Test evaluate_importance when balance_classes=True.
+        """
+        df = self.panel_df.copy()
+        evaluator = FeatureEvaluator(
+            features=["feat2"],
+            target_col="target",
+            weight_col="weight",
+            cv=KFold(n_splits=2),
+            memory_threshold=-1.0,
+        )
+        df_trans = evaluator.fit_transform_features(df).fillna(0)
+        results = evaluator.evaluate_importance(
+            df_trans,
+            estimator=DecisionTreeClassifier(),
+            metric=accuracy_score,
+            greater_is_better=True,
+            needs_proba=False,
+            balance_classes=True,
+        )
+        self.assertTrue(len(results) > 0)
+
+    def test_evaluate_importance_pipeline_estimator(self):
+        """
+        Test evaluate_importance with a scikit-learn Pipeline estimator.
+        """
+        pipe = Pipeline(
+            [("scaler", StandardScaler()), ("classifier", DecisionTreeClassifier())]
+        )
+
+        df = self.panel_df.copy()
+        evaluator = FeatureEvaluator(
+            features=["feat2"],
+            target_col="target",
+            weight_col="weight",
+            cv=KFold(n_splits=2),
+            memory_threshold=-1.0,
+        )
+        df_trans = evaluator.fit_transform_features(df).fillna(0)
+        results = evaluator.evaluate_importance(
+            df_trans,
+            estimator=pipe,
+            metric=accuracy_score,
+            greater_is_better=True,
+            needs_proba=False,
+            balance_classes=True,
+        )
+        self.assertTrue(len(results) > 0)
+
+    def test_evaluate_importance_metric_exception(self):
+        """
+        Test that evaluate_importance handles exceptions in metric scoring gracefully.
+        """
+
+        def failing_metric(y_true, y_pred, **kwargs):
+            raise ValueError("Intentional scoring error")
+
+        df = self.panel_df.copy()
+        evaluator = FeatureEvaluator(
+            features=["feat2"],
+            target_col="target",
+            cv=KFold(n_splits=2),
+            memory_threshold=-1.0,
+        )
+        df_trans = evaluator.fit_transform_features(df).fillna(0)
+        results = evaluator.evaluate_importance(
+            df_trans,
+            estimator=DecisionTreeClassifier(),
+            metric=failing_metric,
+            greater_is_better=True,
+            needs_proba=False,
+            balance_classes=False,
+        )
+        first_regime = list(results.values())[0]
+        self.assertTrue(np.isnan(first_regime["SFI"]["sfi_mean"].iloc[0]))
+        self.assertTrue(np.isnan(first_regime["MDA"]["mda_mean"].iloc[0]))
+
+    def test_convert_results_to_table_empty(self):
+        """
+        Test that _convert_results_to_table returns an empty DataFrame if results dict is empty.
+        """
+        empty_res = FeatureEvaluator._convert_results_to_table({})
+        self.assertTrue(empty_res.empty)
+
     def test_evaluate_importance_with_raw_features(self):
         """
         Req 2.1 (end-to-end): Both transformed and raw features must appear
         in importance_df after evaluate_importance completes.
         """
-        from sklearn.metrics import log_loss
-        from sklearn.tree import DecisionTreeClassifier
-
         np.random.seed(5)
         n = 200
         dates = pd.date_range("2020-01-01", periods=n)
 
-        signal = np.random.randn(n).cumsum()  # Non-stationary → FFD path
-        volume = np.abs(np.random.randn(n)) * 1_000  # Stationary → raw path
+        signal = np.random.randn(n).cumsum()
+        volume = np.abs(np.random.randn(n)) * 1_000
         target = np.random.choice([0, 1], n)
 
         df = pd.DataFrame(
@@ -425,12 +742,10 @@ class TestFeatureEvaluation(unittest.TestCase):
             balance_classes=False,
         )
 
-        # importance_df should exist and have rows
         self.assertIsNotNone(evaluator.importance_df)
         importance_df = evaluator.importance_df
         self.assertFalse(importance_df.empty, "importance_df must not be empty.")
 
-        # Both 'signal' and 'volume' must appear somewhere in the features column
         all_feature_names = " ".join(importance_df["features"].astype(str).tolist())
         self.assertIn(
             "signal",
