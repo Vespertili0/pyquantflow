@@ -45,6 +45,9 @@ class DualGatePipelineFactory:
         target_labels: List[str] = ["label", "t1", "weight"],
         span: int = 50,
         estimator: Optional[BaseEstimator] = None,
+        balance_classes: bool = True,
+        greater_is_better: bool = False,
+        needs_proba: bool = True,
     ) -> Tuple[AssetOrganiser, List[str]]:
         """
         Executes the Two-Track pipeline: continuous transformations, discrete event
@@ -127,6 +130,9 @@ class DualGatePipelineFactory:
             metric_kwargs={
                 "labels": np.unique(merged_df[evaluator.target_col].astype(int).values)
             },
+            needs_proba=needs_proba,
+            greater_is_better=greater_is_better,
+            balance_classes=balance_classes,
         )
 
         # Commit the clean, stationary panel back into the organiser's state machine,
