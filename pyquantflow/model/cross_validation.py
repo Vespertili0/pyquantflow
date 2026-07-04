@@ -178,60 +178,119 @@ class PurgedKFoldCV(BaseCrossValidator):
 
 
 class CombinatorialPurgedKFold(BaseCrossValidator):
-    def __init__(self, n_splits=5, n_test_splits=2, purge_limit=0, embargo_limit=0):
+    """
+    Combinatorial Purged K-Fold cross-validator with temporal slicing.
+
+    Splits panel data along **temporal boundaries** (unique datetimes)
+    rather than raw integer row counts.  This ensures that all tickers
+    for a given datetime are kept entirely within either the train or
+    test set, preserving cross-sectional integrity.
+
+    ``purge_limit`` and ``embargo_limit`` are expressed as counts of
+    *unique datetimes* to exclude, not row counts.
+
+    Parameters
+    ----------
+    n_splits : int, default=5
+        Number of temporal blocks to divide the timeline into.
+    n_test_splits : int, default=2
+        Number of blocks to allocate to the test set per combination.
+    purge_limit : int, default=0
+        Number of unique datetimes to purge (drop from train) immediately
+        **before** each test block boundary.
+    embargo_limit : int, default=0
+        Number of unique datetimes to embargo (drop from train) immediately
+        **after** each test block boundary.
+    datetime_level : str or int, default="datetime"
+        Name or index of the datetime level in a MultiIndex.  Ignored
+        if ``X`` has a standard DatetimeIndex.
+    """
+
+    def __init__(
+        self,
+        n_splits=5,
+        n_test_splits=2,
+        purge_limit=0,
+        embargo_limit=0,
+        datetime_level="datetime",
+    ):
         self.n_splits = n_splits
         self.n_test_splits = n_test_splits
         self.purge_limit = purge_limit
         self.embargo_limit = embargo_limit
+        self.datetime_level = datetime_level
+
+    def _extract_times(self, X) -> pd.Index:
+        """Extract the datetime values from X's index."""
+        idx = X.index
+        if isinstance(idx, pd.MultiIndex):
+            return idx.get_level_values(self.datetime_level)
+        return idx
 
     def split(self, X, y=None, groups=None):
-        n_samples = len(X)
-        indices = np.arange(n_samples)
+        # 1. Extract and normalise datetimes
+        times = pd.to_datetime(pd.Series(self._extract_times(X)))
+        if times.dt.tz is not None:
+            times = times.dt.tz_localize(None)
 
-        # 1. Split indices into N blocks
-        block_size = n_samples // self.n_splits
+        unique_times = np.sort(times.unique())
+        n_unique = len(unique_times)
+
+        # 2. Divide the *timeline* into N blocks
+        block_size = n_unique // self.n_splits
         block_bounds = [
             (i * block_size, (i + 1) * block_size) for i in range(self.n_splits)
         ]
         # Ensure last block covers remainder
-        block_bounds[-1] = (block_bounds[-1][0], n_samples)
+        block_bounds[-1] = (block_bounds[-1][0], n_unique)
 
-        # 2. Generate all combinations of k test blocks
+        # 3. Generate all combinations of k test blocks
         all_block_indices = list(range(self.n_splits))
+
         for test_blocks in combinations(all_block_indices, self.n_test_splits):
-            test_indices = []
-            train_indices = []
-
-            # Sort test blocks to handle purging/embargoing logically
             test_blocks = sorted(test_blocks)
-            train_blocks = [i for i in all_block_indices if i not in test_blocks]
+            [i for i in all_block_indices if i not in test_blocks]
 
-            # Construct Test Set
+            # Collect test datetimes
+            test_dt_set = set()
             for i in test_blocks:
-                start, end = block_bounds[i]
-                test_indices.extend(indices[start:end])
+                start_idx, end_idx = block_bounds[i]
+                test_dt_set.update(unique_times[start_idx:end_idx])
 
-            # Construct Train Set with Purging & Embargoing
-            for i in train_blocks:
-                start, end = block_bounds[i]
+            # Collect purge and embargo datetime sets
+            purge_dt_set = set()
+            embargo_dt_set = set()
 
-                # Check for overlap with any test block
-                for j in test_blocks:
-                    test_start, test_end = block_bounds[j]
+            for i in test_blocks:
+                test_start_idx, test_end_idx = block_bounds[i]
 
-                    # If train block is immediately before a test block, PURGE the end
-                    if end > test_start and start < test_start:
-                        end = test_start - self.purge_limit
+                # Purge: drop unique datetimes immediately BEFORE the test block
+                purge_start = max(0, test_start_idx - self.purge_limit)
+                for dt_idx in range(purge_start, test_start_idx):
+                    purge_dt_set.add(unique_times[dt_idx])
 
-                    # If train block is immediately after a test block,
-                    # then EMBARGO the start
-                    if start < test_end and end > test_end:
-                        start = test_end + self.embargo_limit
+                # Embargo: drop unique datetimes immediately AFTER the test block
+                embargo_end = min(n_unique, test_end_idx + self.embargo_limit)
+                for dt_idx in range(test_end_idx, embargo_end):
+                    embargo_dt_set.add(unique_times[dt_idx])
 
-                if start < end:
-                    train_indices.extend(indices[start:end])
+            # Remove any purge/embargo datetimes that fall inside a test block
+            # (they are already excluded from training by being in test)
+            purge_dt_set -= test_dt_set
+            embargo_dt_set -= test_dt_set
 
-            yield np.array(train_indices), np.array(test_indices)
+            # Build excluded set: all datetimes that must NOT appear in training
+            excluded_from_train = test_dt_set | purge_dt_set | embargo_dt_set
+
+            # 4. Map datetimes back to boolean row masks
+            times_array = times.values
+            test_mask = np.isin(times_array, np.array(list(test_dt_set)))
+            train_mask = ~np.isin(times_array, np.array(list(excluded_from_train)))
+
+            train_indices = np.where(train_mask)[0]
+            test_indices = np.where(test_mask)[0]
+
+            yield train_indices, test_indices
 
     def get_n_splits(self, X=None, y=None, groups=None):
         from math import comb
