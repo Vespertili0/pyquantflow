@@ -34,7 +34,7 @@ The Backtest Results database (`backtest_results.db`) has one main table:
 1. `backtest_results`: Stores results of backtest runs (`id`, `ticker`, `batch_run_name`, `metrics`).
 
 ### CI/CD
-A GitHub Actions workflow is set up in `.github/workflows/tests.yml`. It runs `unittest` tests via `python -m unittest discover tests` on Push and Pull Request to `main` and `sandbox` branches across Python versions 3.10 to 3.12. A separate `release.yml` handles releases.
+A GitHub Actions workflow is set up in `.github/workflows/tests.yml`. It runs `unittest` tests via `python -m unittest discover tests` on Push and Pull Request to `main` and `dev` branches across Python versions 3.10 to 3.12. A separate `release.yml` handles releases.
 
 ## Current Status
 - Core SQLite database managers for market data and batch backtesting results are fully implemented.
@@ -48,7 +48,7 @@ A GitHub Actions workflow is set up in `.github/workflows/tests.yml`. It runs `u
 - [ ] Run tests via `python -m unittest discover tests` and ensure `requirements.txt` dependencies are installed before testing.
 - [ ] Monitor SQLite database sizes (`stocks.db` and `backtest_results.db`) and check for query efficiency when retrieving data for large batch backtests.
 - [ ] Apply British spelling rules throughout documentation and code (e.g., Optimiser instead of Optimizer, labelling instead of labeling, visualise instead of visualize).
-- [ ] Ensure CI/CD GitHub Actions workflow passes on `main` and `sandbox` branch pushes and PRs.
+- [ ] Ensure CI/CD GitHub Actions workflow passes on `main` and `dev` branch pushes and PRs.
 
 ## Next Steps
 1. **Develop Statistical-Backtesting integration**: Follow up on the "in development" section from the README to implement statistical backtesting methodologies.

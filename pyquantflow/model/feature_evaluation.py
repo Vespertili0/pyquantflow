@@ -1,3 +1,4 @@
+import warnings
 from typing import List, Dict, Optional, Callable, Union
 
 import numpy as np
@@ -21,7 +22,19 @@ from pyquantflow.data.features.fractional_differentiation import (
 class StationaryTransformer(BaseEstimator, TransformerMixin):
     """
     Transforms non-stationary features using Fractional Differentiation (FFD)
-    and applies a causal rolling z-score to standardise volatility regimes.
+    and applies z-score standardisation to normalise volatility regimes.
+
+    Supports two z-score modes via ``z_mode``:
+
+    * ``"rolling"`` (default) — causal rolling z-score computed per
+      timestep from past data only.  Already leak-safe by construction;
+      no future data enters the rolling window.  Best for financial data
+      with regime shifts.
+    * ``"global"`` — traditional mean / std frozen during ``fit()`` and
+      projected unchanged during ``transform()``.  Suitable for use
+      inside ``sklearn.pipeline.Pipeline`` objects where the
+      cross-validator calls ``fit`` on training data and ``transform``
+      on validation data, guaranteeing strict train/test separation.
     """
 
     def __init__(
@@ -30,17 +43,24 @@ class StationaryTransformer(BaseEstimator, TransformerMixin):
         significance_level: float = 0.05,
         rolling_z_window: int = 20,
         ffd_thres: float = 1e-4,
+        z_mode: str = "rolling",
     ):
         self.d_grid = d_grid
         self.significance_level = significance_level
         self.rolling_z_window = rolling_z_window
         self.ffd_thres = ffd_thres
+        self.z_mode = z_mode
         self.optimal_d_ = {}
+        self.z_mean_ = {}
+        self.z_std_ = {}
 
     def fit(self, X: pd.DataFrame, y=None):
         """
         Determines the optimal differencing order d* for each feature column.
         Groups by 'ticker' if X is a MultiIndex DataFrame to prevent leakage.
+
+        When ``z_mode='global'``, also computes and stores per-column
+        ``z_mean_`` and ``z_std_`` from the FFD-transformed training data.
         """
         is_multi_index = isinstance(X.index, pd.MultiIndex)
 
@@ -91,11 +111,39 @@ class StationaryTransformer(BaseEstimator, TransformerMixin):
                 )
                 self.optimal_d_[col] = d_star
 
+        # --- Global z-score: freeze mean/std from training data ---
+        if self.z_mode == "global":
+            for col in X.columns:
+                d = self.optimal_d_.get(col, 1.0)
+                if is_multi_index:
+                    try:
+                        unstacked = X[col].unstack(level="ticker")
+                        diff_unstacked = unstacked.apply(
+                            lambda s: adf_screened_ffd(s, d=d, thres=self.ffd_thres)[0]
+                        )
+                        diff_series = diff_unstacked.stack(level="ticker", dropna=False)
+                        if diff_series.index.names != X.index.names:
+                            diff_series = diff_series.reorder_levels(X.index.names)
+                        diff_series = diff_series.reindex(X.index)
+                    except Exception:
+                        diff_series, _ = adf_screened_ffd(
+                            X[col], d=d, thres=self.ffd_thres
+                        )
+                else:
+                    diff_series, _ = adf_screened_ffd(X[col], d=d, thres=self.ffd_thres)
+
+                clean = diff_series.dropna()
+                self.z_mean_[col] = float(clean.mean())
+                self.z_std_[col] = float(clean.std())
+
+        self.feature_names_in_ = list(X.columns)
+
         return self
 
     def transform(self, X: pd.DataFrame) -> pd.DataFrame:
         """
-        Applies the FFD transformation using optimal d*, followed by rolling z-score.
+        Applies the FFD transformation using optimal d*, followed by z-score
+        standardisation (rolling or global, depending on ``z_mode``).
         """
         X_out = pd.DataFrame(index=X.index)
         is_multi_index = isinstance(X.index, pd.MultiIndex)
@@ -121,22 +169,63 @@ class StationaryTransformer(BaseEstimator, TransformerMixin):
             else:
                 diff_series, _ = adf_screened_ffd(X[col], d=d, thres=self.ffd_thres)
 
-            # 2. Causal Rolling Z-Score Normalisation
-            if is_multi_index:
-                roll = diff_series.groupby(level="ticker")
-                mean = roll.transform(lambda s: s.rolling(self.rolling_z_window).mean())
-                std = roll.transform(lambda s: s.rolling(self.rolling_z_window).std())
+            # 2. Z-Score Standardisation
+            if self.z_mode == "global":
+                # Frozen parameters from fit()
+                g_mean = self.z_mean_.get(col, 0.0)
+                g_std = self.z_std_.get(col, 1.0)
+                if g_std == 0 or np.isnan(g_std):
+                    g_std = 1.0
+                z_score = (diff_series - g_mean) / g_std
             else:
-                mean = diff_series.rolling(self.rolling_z_window).mean()
-                std = diff_series.rolling(self.rolling_z_window).std()
+                # Causal Rolling Z-Score Normalisation
+                if is_multi_index:
+                    roll = diff_series.groupby(level="ticker")
+                    mean = roll.transform(
+                        lambda s: s.rolling(self.rolling_z_window).mean()
+                    )
+                    std = roll.transform(
+                        lambda s: s.rolling(self.rolling_z_window).std()
+                    )
+                else:
+                    mean = diff_series.rolling(self.rolling_z_window).mean()
+                    std = diff_series.rolling(self.rolling_z_window).std()
 
-            # To avoid division by zero for constant periods
-            std = std.replace(0, np.nan)
-            z_score = (diff_series - mean) / std
+                # To avoid division by zero for constant periods
+                std = std.replace(0, np.nan)
+                z_score = (diff_series - mean) / std
 
             X_out[col] = z_score
 
         return X_out
+
+    def get_feature_names_out(self, input_features=None):
+        """
+        Returns feature names for the transformer output.
+
+        Implements the sklearn ``get_feature_names_out`` protocol so that
+        ``StationaryTransformer`` integrates seamlessly into
+        ``sklearn.pipeline.Pipeline`` objects.
+
+        Parameters
+        ----------
+        input_features : array-like of str, optional
+            Input feature names.  If ``None``, uses ``feature_names_in_``
+            stored during ``fit()``.
+
+        Returns
+        -------
+        np.ndarray of str
+            Output feature names (identical to input — no columns are
+            added or removed).
+        """
+        if input_features is not None:
+            return np.asarray(input_features)
+        if hasattr(self, "feature_names_in_"):
+            return np.asarray(self.feature_names_in_)
+        raise ValueError(
+            "No feature names available. Call fit() first or provide input_features."
+        )
 
 
 class FeatureEvaluator:
@@ -155,8 +244,22 @@ class FeatureEvaluator:
         significance_level: float = 0.05,
         freq: int = 1,
         memory_threshold: float = 0.10,
+        raw_features: Optional[List[str]] = None,
     ):
+        """
+        Parameters
+        ----------
+        features : List[str]
+            Columns to be fractionally differentiated and screened by Gate 1
+            (ACF1 memory check) via ``StationaryTransformer``.
+        raw_features : Optional[List[str]], default None
+            Columns that bypass the ``StationaryTransformer`` entirely and are
+            passed through as-is.  No FFD, no rolling z-score, and no Gate 1
+            ACF1 pruning is applied.  Useful for natively stationary features
+            such as microstructure spreads, volume, or categorical metadata.
+        """
         self.features = list(features)
+        self.raw_features: List[str] = list(raw_features) if raw_features else []
         self.target_col = target_col
         self.weight_col = weight_col
         self.t1_col = t1_col
@@ -172,11 +275,25 @@ class FeatureEvaluator:
 
     def fit_transform_features(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Diagnoses stationarity and transforms features per asset.
-        NaNs generated by FFD are propagated forward.
-        Then, performs Gate 1 Pruning by checking memory preservation (ACF1)
-        on the transformed features and dropping those that fail the threshold.
+        Dual-path feature ingestion:
+
+        **Transform path** (``self.features``)
+            1. Apply ``StationaryTransformer`` (FFD + rolling z-score).
+            2. Gate 1 Pruning — drop features whose ACF1 falls below
+               ``self.memory_threshold``.  ``self.features`` is updated
+               in-place to reflect survivors.
+
+        **Raw pass-through path** (``self.raw_features``)
+            Columns are extracted from ``df`` unchanged.  No FFD,
+            no rolling z-score, and no ACF1 pruning is applied.
+            ``self.raw_features`` is **never mutated** by this method.
+
+        Both paths are concatenated with metadata columns and returned as a
+        single unified DataFrame.
+
+        NaNs generated by FFD are propagated to preserve panel integrity.
         """
+        # --- Transform path ---
         X = df[self.features]
 
         self.stationary_transformer.fit(X)
@@ -206,8 +323,6 @@ class FeatureEvaluator:
                 if acf1_val > self.memory_threshold:
                     valid_features.append(feat)
                 else:
-                    import warnings
-
                     warnings.warn(
                         f"Feature '{feat}' failed Gate 1 memory check "
                         f"(ACF1 = {acf1_val:.4f} <= threshold {self.memory_threshold:.4f}) and was dropped."
@@ -219,6 +334,17 @@ class FeatureEvaluator:
         self.features = valid_features
         X_trans = X_trans[self.features]
 
+        # --- Raw pass-through path ---
+        frames_to_concat = [X_trans]
+        if self.raw_features:
+            # Validate that all requested raw columns exist in df
+            missing = [c for c in self.raw_features if c not in df.columns]
+            if missing:
+                raise KeyError(
+                    f"raw_features columns not found in DataFrame: {missing}"
+                )
+            frames_to_concat.append(df[self.raw_features])
+
         # Merge back with targets and metadata
         cols_to_keep = [self.target_col]
         if self.weight_col:
@@ -226,7 +352,8 @@ class FeatureEvaluator:
         if self.t1_col:
             cols_to_keep.append(self.t1_col)
 
-        df_out = pd.concat([X_trans, df[cols_to_keep]], axis=1)
+        frames_to_concat.append(df[cols_to_keep])
+        df_out = pd.concat(frames_to_concat, axis=1)
 
         # We do NOT drop NaNs here. They are propagated to preserve panel integrity.
         return df_out
@@ -294,6 +421,41 @@ class FeatureEvaluator:
         profiles = tsfeatures(df_ts, freq=self.freq, threads=1)
         return profiles.set_index("unique_id")
 
+    @staticmethod
+    def _coerce_numeric(data: pd.DataFrame) -> pd.DataFrame:
+        """
+        Ensures all columns in ``data`` are numeric before distance-matrix
+        computation.  Non-numeric columns (boolean, string, object, category)
+        are encoded via ``OrdinalEncoder`` so that hierarchical clustering
+        does not raise a ``ValueError`` on mixed-type inputs.
+
+        A warning is emitted listing the columns that were encoded so the
+        caller is aware that ordinal encoding was applied.
+        """
+        numeric_cols = data.select_dtypes(include=[np.number]).columns.tolist()
+        non_numeric_cols = [c for c in data.columns if c not in numeric_cols]
+
+        if not non_numeric_cols:
+            return data
+
+        warnings.warn(
+            f"Non-numeric columns detected in cluster_entities: {non_numeric_cols}. "
+            "Applying OrdinalEncoder before distance-matrix computation. "
+            "Consider pre-processing categorical features if the default ordinal "
+            "encoding does not reflect their true relationship."
+        )
+
+        from sklearn.preprocessing import OrdinalEncoder
+
+        enc = OrdinalEncoder()
+        encoded = pd.DataFrame(
+            enc.fit_transform(data[non_numeric_cols].astype(str)),
+            columns=non_numeric_cols,
+            index=data.index,
+        )
+        # Reconstruct in original column order
+        return pd.concat([data[numeric_cols], encoded], axis=1)[data.columns]
+
     def cluster_entities(
         self,
         data: pd.DataFrame,
@@ -304,22 +466,38 @@ class FeatureEvaluator:
         Groups entities hierarchically.
         If method == 'correlation', clusters the columns of data (features).
         If method == 'euclidean', clusters the rows of data (assets).
+
+        Non-numeric columns (boolean, string, category) are automatically
+        encoded via ``OrdinalEncoder`` before the distance matrix is
+        constructed so that mixed-type feature sets do not cause a
+        ``ValueError`` inside ``scipy.cluster.hierarchy``.
         """
+        # Type-safe coercion: encode any non-numeric columns before clustering
+        data = self._coerce_numeric(data)
+
         if method == "correlation":
+            labels_list = data.columns.tolist()
+            if len(labels_list) == 0:
+                return {}
+            if len(labels_list) == 1:
+                return {1: [labels_list[0]]}
             corr = data.corr(method="pearson")
             dist_matrix = np.sqrt(0.5 * (1 - corr.clip(-1, 1)))
-            labels_list = data.columns.tolist()
             condensed_dist = scipy.spatial.distance.squareform(
                 dist_matrix.values, checks=False
             )
         elif method == "euclidean":
+            labels_list = data.index.tolist()
+            if len(labels_list) == 0:
+                return {}
+            if len(labels_list) == 1:
+                return {1: [labels_list[0]]}
             from sklearn.preprocessing import StandardScaler
 
             scaled_data = StandardScaler().fit_transform(data)
             condensed_dist = scipy.spatial.distance.pdist(
                 scaled_data, metric="euclidean"
             )
-            labels_list = data.index.tolist()
         else:
             raise ValueError(f"Unknown clustering method: {method}")
 
@@ -364,22 +542,52 @@ class FeatureEvaluator:
         metric: Callable,
         metric_kwargs: Optional[dict] = None,
         balance_classes: bool = True,
+        greater_is_better: bool = True,
+        needs_proba: bool = True,
     ) -> Dict[int, Dict[str, pd.DataFrame]]:
         """
         Runs the Macro-Regime Loop.
         1. Clusters assets into regimes based on their statistical profiles.
         2. Iteratively performs Clustered MDA and SFI on each regime's data slice.
+
+        Parameters
+        ----------
+        df : pd.DataFrame
+            The prepared panel DataFrame (output of ``fit_transform_features``).
+        estimator : BaseEstimator
+            A scikit-learn-compatible estimator.
+        metric : Callable
+            A scoring/loss callable with signature ``metric(y_true, y_pred, **metric_kwargs)``.
+        metric_kwargs : dict, optional
+            Extra keyword arguments forwarded to ``metric``.
+        balance_classes : bool, default True
+            Whether to multiply sample weights by balanced class weights during fitting.
+        greater_is_better : bool, default True
+            Set to ``True`` for accuracy/score metrics (e.g. ``f1_score``, ``accuracy_score``)
+            where a higher value is better.  Set to ``False`` for loss metrics
+            (e.g. ``brier_score_loss``, ``log_loss``) where a lower value is better.
+            This flag determines the sign convention of the MDA calculation:
+            - ``True``  → importance = baseline_score − perturbed_score
+            - ``False`` → importance = perturbed_score − baseline_score
+        needs_proba : bool, default True
+            Set to ``True`` if the metric requires probability outputs
+            (e.g. ``log_loss``, ``roc_auc_score``, ``brier_score_loss``).
+            Set to ``False`` if the metric operates on hard class labels
+            (e.g. ``f1_score``, ``accuracy_score``).
         """
         metric_kwargs = metric_kwargs or {}
         groupby_level = "ticker"
 
+        # Combined ordered list: transformed features first, then raw pass-through
+        all_features = self.features + self.raw_features
+
         # 1. Macro-Regime Profiling & Asset Clustering
         if isinstance(df.index, pd.MultiIndex) and groupby_level in df.index.names:
             profiles = self.compute_time_series_profiles(
-                df, self.features, groupby_level=groupby_level
+                df, all_features, groupby_level=groupby_level
             )
 
-            if len(self.features) == 1:
+            if len(all_features) == 1:
                 entity_profiles = profiles.fillna(0)
             else:
                 idx_df = profiles.index.to_series().str.split("::", n=1, expand=True)
@@ -415,10 +623,10 @@ class FeatureEvaluator:
 
             # 2. Cluster Features (Multicollinearity neutralisation for this regime)
             feature_clusters = self.cluster_entities(
-                df_regime[self.features], method="correlation"
+                df_regime[all_features], method="correlation"
             )
 
-            X = df_regime[self.features]
+            X = df_regime[all_features]
             y = df_regime[self.target_col]
 
             mda_scores = {c_id: [] for c_id in feature_clusters.keys()}
@@ -456,9 +664,7 @@ class FeatureEvaluator:
                     est_sfi = clone(estimator)
                     est_sfi.fit(X_train[cols], y_train, **fit_params)
 
-                    if metric.__name__ in ("log_loss", "roc_auc_score") and hasattr(
-                        est_sfi, "predict_proba"
-                    ):
+                    if needs_proba and hasattr(est_sfi, "predict_proba"):
                         preds = est_sfi.predict_proba(X_val[cols])
                         if preds.ndim > 1 and preds.shape[1] == 2:
                             preds = preds[:, 1]
@@ -475,9 +681,7 @@ class FeatureEvaluator:
                 est_mda = clone(estimator)
                 est_mda.fit(X_train, y_train, **fit_params)
 
-                if metric.__name__ in ("log_loss", "roc_auc_score") and hasattr(
-                    est_mda, "predict_proba"
-                ):
+                if needs_proba and hasattr(est_mda, "predict_proba"):
                     base_preds = est_mda.predict_proba(X_val)
                     if base_preds.ndim > 1 and base_preds.shape[1] == 2:
                         base_preds = base_preds[:, 1]
@@ -494,9 +698,7 @@ class FeatureEvaluator:
                     for col in cols:
                         X_val_pert[col] = np.random.permutation(X_val_pert[col].values)
 
-                    if metric.__name__ in ("log_loss", "roc_auc_score") and hasattr(
-                        est_mda, "predict_proba"
-                    ):
+                    if needs_proba and hasattr(est_mda, "predict_proba"):
                         pert_preds = est_mda.predict_proba(X_val_pert)
                         if pert_preds.ndim > 1 and pert_preds.shape[1] == 2:
                             pert_preds = pert_preds[:, 1]
@@ -508,10 +710,12 @@ class FeatureEvaluator:
                     except Exception:
                         pert_score = np.nan
 
-                    if metric.__name__ == "log_loss":
-                        mda = pert_score - baseline_score
-                    else:
+                    # greater_is_better=True  (accuracy/score): importance = drop in performance
+                    # greater_is_better=False (loss metric):     importance = rise in loss
+                    if greater_is_better:
                         mda = baseline_score - pert_score
+                    else:
+                        mda = pert_score - baseline_score
                     mda_scores[c_id].append(mda)
 
             # Aggregate results for this regime

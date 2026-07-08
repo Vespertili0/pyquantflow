@@ -170,7 +170,7 @@ def frac_diff_ffd(series: pd.Series, d: float, thres: float = 1e-5) -> pd.Series
     weights = np.array(w)
 
     # 3. Apply via pure NumPy convolution
-    res = np.convolve(arr, weights[::-1], mode="full")
+    res = np.convolve(arr, weights, mode="full")
 
     # 4. Sandwich back to Pandas
     # The 'full' mode returns an array of size len(arr) + len(weights) - 1.

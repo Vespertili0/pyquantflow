@@ -2,7 +2,6 @@ import pandas as pd
 from typing import Dict, List, Optional
 from scipy.stats import entropy
 from sklearn.base import BaseEstimator
-from ..model.classifier import BaseQuantClassifier
 from .utils import align_and_ffill_multiasset, restructure_map_2_multiasset_df
 from .labels import get_cusum_events, calibrate_cusum_alpha, BaseLabelFactory
 
@@ -22,7 +21,6 @@ class AssetOrganiser:
         cutoff_date: Optional[str] = None,
         target_features: Optional[List[str]] = None,
         weight_col: Optional[str] = None,
-        classifier: Optional[BaseQuantClassifier] = None,
         multi_asset: Optional[pd.DataFrame] = None,
         label_factory: Optional[BaseLabelFactory] = None,
     ) -> None:
@@ -37,8 +35,6 @@ class AssetOrganiser:
             target_features (List[str]): List of column names to be used as targets (y).
             weight_col (Optional[str]): Optional column name in the DataFrame
                 containing target weights.
-            classifier (Optional[BaseQuantClassifier]): Optional model pipeline to fit
-                and transform the data.
             multi_asset (Optional[pd.DataFrame]): Pre-constructed multi-asset DataFrame.
             label_factory (Optional[BaseLabelFactory]): Factory for generating labels and weights.
         """
@@ -51,7 +47,6 @@ class AssetOrganiser:
         if target_features is None:
             raise ValueError("'target_features' is required.")
 
-        self.classifier: Optional[BaseQuantClassifier] = classifier
         self.data_map: Optional[Dict[str, pd.DataFrame]] = data_map
         self.cutoff_date: str = cutoff_date
         self.target_features: List[str] = target_features
@@ -61,7 +56,6 @@ class AssetOrganiser:
         self.multi_asset: Optional[pd.DataFrame] = multi_asset
         self.multi_asset_train: Optional[pd.DataFrame] = None
         self.multi_asset_test: Optional[pd.DataFrame] = None
-        self.multi_asset_transformed_test: Optional[pd.DataFrame] = None
 
         if self.multi_asset is not None:
             self._split_train_test()
@@ -192,14 +186,14 @@ class AssetOrganiser:
                 target = int(target_events_train)
 
             # Extract training series/volatility for ticker
-            try:
-                ticker_train_series = self.multi_asset_train.xs(tk, level="ticker")[
-                    filter_col
-                ]
-            except KeyError:
+            if tk not in self.multi_asset_train.index.get_level_values("ticker"):
                 # If ticker has no data in training fold, use default alpha
                 calibrated_alphas[tk] = alpha_min
                 continue
+
+            ticker_train_series = self.multi_asset_train.xs(tk, level="ticker")[
+                filter_col
+            ]
 
             ticker_train_vol = None
             if vol_col:
@@ -231,7 +225,10 @@ class AssetOrganiser:
 
             # Use pre-calculated volatility if specified
             if vol_col:
-                vol_all = self.multi_asset.xs(tk, level="ticker")[vol_col]
+                try:
+                    vol_all = self.multi_asset.xs(tk, level="ticker")[vol_col]
+                except KeyError:
+                    vol_all = series_all.ewm(span=span).std()
             else:
                 vol_all = series_all.ewm(span=span).std()
 
@@ -398,42 +395,6 @@ class AssetOrganiser:
 
         return alphas
 
-    def fit_quant_classifier(self) -> None:
-        """
-        Fits the underlying classifier on the training set and transforms the test set.
-        """
-        if self.multi_asset_train is None or self.multi_asset_test is None:
-            raise ValueError(
-                "Data not prepared. Call prepare_multi_asset_frame() first."
-            )
-
-        if self.classifier is None:
-            raise ValueError("No classifier was provided during initialization.")
-
-        # Optional: Extract sample weights if weight_col is specified
-        sw = None
-        if self.weight_col and self.weight_col in self.multi_asset_train.columns:
-            sw = self.multi_asset_train[self.weight_col].values
-
-        self.classifier.fit(
-            X=self.multi_asset_train,
-            y=self.multi_asset_train[self.target_features],
-            sample_weight=sw,
-        )
-        self.transform_test_set()
-
-        return None
-
-    def transform_test_set(self) -> None:
-        """
-        Predict-transforms the test set using the fitted classifier.
-        """
-        self.multi_asset_transformed_test = self.classifier.transform(
-            self.multi_asset_test
-        )
-
-        return None
-
     def add_model_predictions(
         self,
         model: BaseEstimator,
@@ -591,31 +552,6 @@ class AssetOrganiser:
 
         return df_ts[["unique_id", "ds", "y"]].copy()
 
-    def get_transformed_multiasset_testdata(self) -> pd.DataFrame:
-        """
-        Returns the transformed test data containing predictions.
-
-        Returns:
-            pd.DataFrame: Transformed multi-asset test DataFrame.
-        """
-        if self.multi_asset_transformed_test is None:
-            raise ValueError("Test data not transformed. Fit the classifier first.")
-        return self.multi_asset_transformed_test
-
-    def get_transformed_test_ticker(self, ticker: str) -> pd.DataFrame:
-        """
-        Retrieves the transformed test data for a specific ticker.
-
-        Args:
-            ticker (str): The symbol/ticker to retrieve.
-
-        Returns:
-            pd.DataFrame: Transformed test DataFrame for the given ticker.
-        """
-        if self.multi_asset_transformed_test is None:
-            raise ValueError("Test data not transformed. Fit the classifier first.")
-        return self.multi_asset_transformed_test.xs(ticker, level="ticker")
-
     def update_multi_asset(self, df: pd.DataFrame) -> None:
         """
         Overwrites the internal multi_asset panel dataset with engineered features
@@ -627,4 +563,43 @@ class AssetOrganiser:
             )
 
         self.multi_asset = df.copy()
+        self._split_train_test()
+
+    def replace_features(
+        self, transformed_df: pd.DataFrame, original_features: List[str]
+    ) -> None:
+        """
+        Replaces the original features in the multi_asset panel dataset with
+        transformed features, drops features that failed the pruning step,
+        aligns the dataset to the transformed dataset's index (removing rows
+        dropped during transformation), and re-synchronises the train/test split boundaries.
+        """
+        if transformed_df.index.names != ["datetime", "ticker"]:
+            raise ValueError(
+                "DataFrame index must match MultiIndex format ['datetime', 'ticker']."
+            )
+        if self.multi_asset is None:
+            raise ValueError("multi_asset is not initialised.")
+
+        # Align to transformed_df index (downsampled and dropna'd rows)
+        self.multi_asset = self.multi_asset.loc[transformed_df.index].copy()
+
+        # Identify features that were kept and those that were dropped
+        surviving_features = [
+            f for f in original_features if f in transformed_df.columns
+        ]
+        failed_features = [
+            f for f in original_features if f not in transformed_df.columns
+        ]
+
+        # Replace surviving features with transformed versions
+        for feat in surviving_features:
+            self.multi_asset[feat] = transformed_df[feat]
+
+        # Drop failed features
+        self.multi_asset = self.multi_asset.drop(
+            columns=failed_features, errors="ignore"
+        )
+
+        # Re-synchronise train and test splits
         self._split_train_test()

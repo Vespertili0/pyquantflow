@@ -45,6 +45,9 @@ class DualGatePipelineFactory:
         target_labels: List[str] = ["label", "t1", "weight"],
         span: int = 50,
         estimator: Optional[BaseEstimator] = None,
+        balance_classes: bool = True,
+        greater_is_better: bool = False,
+        needs_proba: bool = True,
     ) -> Tuple[AssetOrganiser, List[str]]:
         """
         Executes the Two-Track pipeline: continuous transformations, discrete event
@@ -76,9 +79,15 @@ class DualGatePipelineFactory:
         if organiser.multi_asset is None:
             organiser.prepare_multi_asset_frame()
 
+        # Track original *transformed* features (these will be replaced in the organiser)
+        original_features = list(evaluator.features)
+
         # TRACK B (Part 1): Snapshot the Unbroken Continuous Timeline
-        # Optimise memory usage by copying only the necessary feature columns instead of the entire panel
-        continuous_df = organiser.multi_asset[evaluator.features].copy()
+        # Include raw_features alongside transform-path features so they travel through
+        # the synchronisation bridge. Raw features are never passed to replace_features,
+        # so their original values in multi_asset are preserved by AssetOrganiser.
+        all_eval_cols = evaluator.features + (evaluator.raw_features or [])
+        continuous_df = organiser.multi_asset[all_eval_cols].copy()
 
         # TRACK A: Structural Label & Event Generation (Pure Price Action)
         organiser.build_learning_pipeline(
@@ -121,10 +130,14 @@ class DualGatePipelineFactory:
             metric_kwargs={
                 "labels": np.unique(merged_df[evaluator.target_col].astype(int).values)
             },
+            needs_proba=needs_proba,
+            greater_is_better=greater_is_better,
+            balance_classes=balance_classes,
         )
 
-        # Commit the clean, stationary panel back into the organiser's state machine
-        organiser.update_multi_asset(merged_df)
+        # Commit the clean, stationary panel back into the organiser's state machine,
+        # replacing only the features and preserving other original columns/rows.
+        organiser.replace_features(merged_df, original_features)
 
         # Return the updated organiser and the curated list of survivor features
         return organiser, evaluator.importance_df

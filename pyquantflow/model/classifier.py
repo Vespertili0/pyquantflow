@@ -89,12 +89,17 @@ class PrimarySecondaryClassifier(BaseQuantClassifier):
             if fold_sw is not None:
                 fold_primary.fit(
                     X.iloc[train_idx][self.primary_features],
-                    y_primary.iloc[train_idx],
+                    y_primary.iloc[train_idx]
+                    if hasattr(y_primary, "iloc")
+                    else y_primary[train_idx],
                     sample_weight=fold_sw,
                 )
             else:
                 fold_primary.fit(
-                    X.iloc[train_idx][self.primary_features], y_primary.iloc[train_idx]
+                    X.iloc[train_idx][self.primary_features],
+                    y_primary.iloc[train_idx]
+                    if hasattr(y_primary, "iloc")
+                    else y_primary[train_idx],
                 )
 
             # Predict on validation fold

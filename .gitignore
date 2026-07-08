@@ -11,3 +11,4 @@ venv/
 stocks.db
 mlruns/
 mlflow.db
+.pre-commit-config.yaml
