@@ -29,17 +29,17 @@ async function run() {
 
         // 1. Trigger the cloud review session, now including the head branch
         const session = await jules.session({
-            prompt: `You are an expert code reviewer operating in an autonomous, unattended environment (Passive Analysis Mode). 
+            prompt: `You are an expert code reviewer operating in an autonomous, unattended environment (Passive Analysis Mode).
             Treat the codebase as strictly read-only.
-            
+
             Review the pull request changes. Identify performance issues, bugs, and security flaws.
-            
+
             Categorize your findings using the following tags:
             - [BLOCKING]: Critical issues. Only apply this tag if you are greater than 80% confident that the code introduces a tangible runtime error, security vulnerability, or severe memory leak.
             - [WARN]: Suggestions, best practices, and non-critical performance improvements.
             - [NIT]: Minor stylistic or readability issues.
-            
-            End your review with a single line: 'VERDICT: approve' or 'VERDICT: block'. 
+
+            End your review with a single line: 'VERDICT: approve' or 'VERDICT: block'.
             Only output 'VERDICT: block' if at least one [BLOCKING] issue was identified.`,
             source: {
                 github: repo,
