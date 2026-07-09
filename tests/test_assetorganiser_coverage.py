@@ -242,6 +242,89 @@ class TestAssetOrganiserCoverage(unittest.TestCase):
         # Actually it only updates surviving features.
         self.assertIn("feature1", organiser.multi_asset.columns)
 
+    def test_apply_ichimoku_regime(self):
+        """
+        apply_ichimoku_regime() must:
+        - inject the 'ichimoku_regime' column (values 0 or 1 only),
+        - drop all raw Ichimoku component columns,
+        - preserve the original row count (no rows dropped),
+        - work correctly across multiple tickers.
+        """
+        # Build a dedicated 200-bar OHLC panel with High and Low columns.
+        # 200 bars ensures Ichimoku's warm-up (kijun=26 + displacement=26 + senkou_b=52)
+        # is satisfied without eating all available data.
+        n = 200
+        np.random.seed(99)
+        dates = pd.date_range("2018-01-01", periods=n, freq="D")
+
+        def _make_ohlc(seed_offset=0):
+            np.random.seed(99 + seed_offset)
+            close = 100.0 + np.cumsum(np.random.normal(0, 1.0, n))
+            high = close * (1 + np.abs(np.random.normal(0, 0.005, n)))
+            low = close * (1 - np.abs(np.random.normal(0, 0.005, n)))
+            open_ = (high + low) / 2
+            high = np.maximum(high, np.maximum(open_, close))
+            low = np.minimum(low, np.minimum(open_, close))
+            return pd.DataFrame(
+                {"Open": open_, "High": high, "Low": low, "Close": close},
+                index=dates,
+            )
+
+        ohlc_data_map = {
+            "TICKER_A": _make_ohlc(seed_offset=0),
+            "TICKER_B": _make_ohlc(seed_offset=1),
+        }
+        for df in ohlc_data_map.values():
+            df.index.name = "datetime"
+
+        organiser = AssetOrganiser(
+            data_map=ohlc_data_map,
+            cutoff_date="2019-01-01",
+            target_features=["Close"],
+        )
+        organiser.prepare_multi_asset_frame()
+
+        row_count_before = len(organiser.multi_asset)
+
+        organiser.apply_ichimoku_regime()
+
+        # 1. The regime column must be present
+        self.assertIn("ichimoku_regime", organiser.multi_asset.columns)
+
+        # 2. No raw Ichimoku components should remain
+        _RAW_COLS = [
+            "tenkan_sen",
+            "kijun_sen",
+            "span_a",
+            "span_b",
+            "span_a_shifted",
+            "span_b_shifted",
+        ]
+        for col in _RAW_COLS:
+            self.assertNotIn(
+                col,
+                organiser.multi_asset.columns,
+                msg=f"Raw Ichimoku column '{col}' was not dropped.",
+            )
+
+        # 3. No rows must have been dropped
+        self.assertEqual(
+            len(organiser.multi_asset),
+            row_count_before,
+            msg="apply_ichimoku_regime() must not drop any rows.",
+        )
+
+        # 4. Regime values must be strictly 0 or 1
+        unique_vals = set(organiser.multi_asset["ichimoku_regime"].unique())
+        self.assertTrue(
+            unique_vals.issubset({0, 1}),
+            msg=f"Unexpected regime values: {unique_vals}",
+        )
+
+        # 5. Train/test splits must be refreshed
+        self.assertIsNotNone(organiser.multi_asset_train)
+        self.assertIsNotNone(organiser.multi_asset_test)
+
 
 if __name__ == "__main__":
     unittest.main()

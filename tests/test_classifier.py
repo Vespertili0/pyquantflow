@@ -7,7 +7,10 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import KFold
 
 from pyquantflow.data.database import DatabaseManager
-from pyquantflow.model.classifier import PrimarySecondaryClassifier
+from pyquantflow.model.classifier import (
+    PrimarySecondaryClassifier,
+    IchimokuBaselineClassifier,
+)
 
 
 class TestPrimarySecondaryClassifier(unittest.TestCase):
@@ -221,6 +224,82 @@ class TestPrimarySecondaryClassifier(unittest.TestCase):
         ]
         for col in expected_cols:
             self.assertIn(col, res.columns)
+
+
+class TestIchimokuBaselineClassifier(unittest.TestCase):
+    """Unit tests for the stateless IchimokuBaselineClassifier."""
+
+    def _make_X(self, n=50, regime_values=None):
+        """
+        Creates a synthetic feature DataFrame with an ``ichimoku_regime`` column.
+        """
+        np.random.seed(42)
+        if regime_values is None:
+            regime_values = np.random.randint(0, 2, n)
+        return pd.DataFrame(
+            {
+                "feat_a": np.random.randn(n),
+                "feat_b": np.random.randn(n),
+                "ichimoku_regime": regime_values,
+            }
+        )
+
+    def test_fit_is_stateless_and_returns_self(self):
+        """fit() must return self and set classes_ without altering state."""
+        clf = IchimokuBaselineClassifier()
+        X = self._make_X()
+        y = np.random.randint(0, 2, len(X))
+
+        result = clf.fit(X, y)
+
+        self.assertIs(result, clf)
+        np.testing.assert_array_equal(clf.classes_, np.array([0, 1]))
+
+    def test_predict_extracts_regime_column(self):
+        """predict() must return the ichimoku_regime column as integers."""
+        regime = np.array([1, 0, 1, 1, 0])
+        X = self._make_X(n=5, regime_values=regime)
+
+        clf = IchimokuBaselineClassifier()
+        clf.fit(X)
+        preds = clf.predict(X)
+
+        self.assertIsInstance(preds, np.ndarray)
+        self.assertEqual(preds.dtype, int)
+        np.testing.assert_array_equal(preds, regime)
+
+    def test_predict_proba_shape_and_row_sums(self):
+        """predict_proba() must return (N, 2) array with rows summing to 1."""
+        regime = np.array([1, 0, 1, 0, 1])
+        X = self._make_X(n=5, regime_values=regime)
+
+        clf = IchimokuBaselineClassifier()
+        clf.fit(X)
+        probas = clf.predict_proba(X)
+
+        self.assertEqual(probas.shape, (5, 2))
+        np.testing.assert_array_almost_equal(probas.sum(axis=1), np.ones(5))
+
+        # Class 1 probability should match the regime signal exactly
+        np.testing.assert_array_equal(probas[:, 1], regime.astype(float))
+
+    def test_predict_raises_on_missing_column(self):
+        """predict() must raise KeyError when regime column is absent."""
+        X = pd.DataFrame({"feat_a": [1.0, 2.0], "feat_b": [3.0, 4.0]})
+        clf = IchimokuBaselineClassifier()
+        clf.fit(X)
+
+        with self.assertRaises(KeyError):
+            clf.predict(X)
+
+    def test_custom_regime_col_name(self):
+        """Classifier honours a custom regime_col parameter."""
+        X = pd.DataFrame({"feat": [1.0, 2.0, 3.0], "my_regime": [0, 1, 0]})
+        clf = IchimokuBaselineClassifier(regime_col="my_regime")
+        clf.fit(X)
+        preds = clf.predict(X)
+
+        np.testing.assert_array_equal(preds, np.array([0, 1, 0]))
 
 
 if __name__ == "__main__":

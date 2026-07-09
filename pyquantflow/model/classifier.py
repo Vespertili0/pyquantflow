@@ -171,3 +171,88 @@ class PrimarySecondaryClassifier(BaseQuantClassifier):
         proba_entropy = self._calculate_entropy(probas)
         X_secondary = np.hstack([X[self.secondary_features].values, proba_entropy])
         return self.secondary_model_.predict_proba(X_secondary)
+
+
+class IchimokuBaselineClassifier(BaseEstimator, ClassifierMixin):
+    """
+    A stateless, rules-based baseline classifier driven by the pre-computed
+    ``ichimoku_regime`` column in the feature matrix.
+
+    Implements the scikit-learn estimator API so it can be evaluated inside
+    ``StrategyLab`` cross-validation loops exactly like an ML model. The regime
+    signal must already exist as an integer column (0 or 1) in ``X`` before any
+    call to ``predict`` or ``predict_proba`` — typically injected upstream by
+    ``AssetOrganiser.apply_ichimoku_regime()``.
+
+    Parameters
+    ----------
+    regime_col : str, default "ichimoku_regime"
+        Name of the binary regime column in the input DataFrame.
+    """
+
+    def __init__(self, regime_col: str = "ichimoku_regime") -> None:
+        self.regime_col = regime_col
+
+    def fit(
+        self,
+        X: pd.DataFrame,
+        y=None,
+        sample_weight=None,
+    ) -> "IchimokuBaselineClassifier":
+        """
+        No-op fit. The classifier is entirely rule-based and requires no
+        training. Stores ``classes_`` to satisfy sklearn validators.
+
+        Parameters
+        ----------
+        X : pd.DataFrame
+            Feature matrix. Must contain ``self.regime_col``.
+        y : ignored
+        sample_weight : ignored
+
+        Returns
+        -------
+        self
+        """
+        self.classes_ = np.array([0, 1])
+        return self
+
+    def predict(self, X: pd.DataFrame) -> np.ndarray:
+        """
+        Returns the ``ichimoku_regime`` column as an integer prediction array.
+
+        Parameters
+        ----------
+        X : pd.DataFrame
+            Feature matrix containing ``self.regime_col``.
+
+        Returns
+        -------
+        np.ndarray
+            Integer array of shape ``(n_samples,)`` with values in ``{0, 1}``.
+        """
+        if self.regime_col not in X.columns:
+            raise KeyError(
+                f"Column '{self.regime_col}' not found in X. "
+                "Ensure AssetOrganiser.apply_ichimoku_regime() has been called."
+            )
+        return X[self.regime_col].to_numpy(dtype=int)
+
+    def predict_proba(self, X: pd.DataFrame) -> np.ndarray:
+        """
+        Returns a two-column probability matrix consistent with the binary
+        regime signal.  For each sample, the probability of class 1 equals
+        the regime value (0.0 or 1.0), giving a hard, threshold-free decision.
+
+        Parameters
+        ----------
+        X : pd.DataFrame
+            Feature matrix containing ``self.regime_col``.
+
+        Returns
+        -------
+        np.ndarray
+            Array of shape ``(n_samples, 2)`` where each row sums to 1.
+        """
+        regime = self.predict(X).astype(float)
+        return np.column_stack([1.0 - regime, regime])
