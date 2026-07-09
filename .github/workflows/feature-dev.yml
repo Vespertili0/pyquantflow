@@ -6,14 +6,15 @@ on:
     types: [ opened, synchronize, labeled ]
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 jobs:
   # Ensure linting and auto-fix immediately
   lint-and-auto-fix:
     name: Lint & Auto-fix
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout Feature Branch
         uses: actions/checkout@v6
