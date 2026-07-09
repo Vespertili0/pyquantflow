@@ -25,7 +25,7 @@ jobs:
       - name: Install dependencies
         run: npm install @google/jules-sdk
       - name: Run custom Jules review script
-        run: node .github/scripts/jules_review.mjs
+        run: node .github/scripts/jules_main_notes.mjs
         env:
           JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
