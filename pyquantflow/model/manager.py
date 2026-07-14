@@ -13,7 +13,8 @@ try:
 except ImportError:
     mlflow = None
     import logging
-    logging.getLogger(__name__).warning('mlflow not found')
+
+    logging.getLogger(__name__).warning("mlflow not found")
 
 from pyquantflow.model.training import HyperparameterOptimiser
 
