@@ -652,6 +652,10 @@ class AssetOrganiser:
             regime_df = regime_df.reset_index().set_index(["datetime", "ticker"])
             all_regime.append(regime_df)
 
+        if not all_regime:
+            self._split_train_test()
+            return
+
         regime_concat = pd.concat(all_regime)
 
         # Drop existing column if present to prevent duplicates

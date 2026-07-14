@@ -74,7 +74,10 @@ jobs:
       contents: read
       statuses: write
     steps:
-      - uses: actions/checkout@v7
+      - name: Checkout trusted base branch
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
