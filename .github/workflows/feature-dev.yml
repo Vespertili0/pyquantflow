@@ -59,7 +59,7 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        python-version: ["3.10", "3.12"]
+        python-version: ["3.10", "3.11", "3.12"]
     steps:
       - name: Checkout fresh code
         uses: actions/checkout@v7
@@ -107,20 +107,40 @@ jobs:
       contents: read
       statuses: write
     steps:
-      - name: Checkout trusted base branch
+      # Sparse-checkout: fetch ONLY .github/scripts/ from the trusted base branch
+      # (refs/heads/dev). This ensures the script executed with privileged secrets
+      # is always the maintainer-approved version on dev, never the PR author's copy.
+      - name: Checkout trusted scripts from base branch
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: refs/heads/dev
+          sparse-checkout: .github/scripts/
+          sparse-checkout-cone-mode: false
+
+      # Soft-skip: if the script hasn't landed on dev yet (e.g. this PR introduces it),
+      # emit a warning and skip the review rather than blocking the job entirely.
+      - name: Verify trusted script is present
+        id: check-script
+        run: |
+          if [ ! -f .github/scripts/jules_dev_pr_review.mjs ]; then
+            echo "::warning::jules_dev_pr_review.mjs not found on dev — jules review skipped."
+            echo "script_exists=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "script_exists=true" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Setup Node.js
+        if: steps.check-script.outputs.script_exists == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: '24'
 
       - name: Install dependencies
+        if: steps.check-script.outputs.script_exists == 'true'
         run: npm install @google/jules-sdk
 
       - name: Run custom Jules review script
+        if: steps.check-script.outputs.script_exists == 'true'
         run: node .github/scripts/jules_dev_pr_review.mjs
         env:
           JULES_API_KEY: ${{ secrets.JULES_API_KEY }}

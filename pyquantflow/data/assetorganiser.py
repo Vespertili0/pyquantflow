@@ -182,6 +182,14 @@ class AssetOrganiser:
         if self.multi_asset is None:
             self.prepare_multi_asset_frame()
 
+        if objective == "uniqueness" and t1_col is None:
+            raise ValueError(
+                "objective='uniqueness' requires a valid t1_col, but t1_col=None was "
+                "provided. Ensure apply_continuous_labels() has been called so that a "
+                "t1 barrier column exists in the DataFrame, then pass its name via "
+                "the t1_col argument."
+            )
+
         tickers = self.multi_asset.index.get_level_values("ticker").unique()
         calibrated_alphas = {}
 
