@@ -219,10 +219,15 @@ class AssetOrganiser:
             # Extract t1 series if uniqueness objective is requested
             ticker_train_t1 = None
             if objective == "uniqueness" and t1_col is not None:
-                try:
-                    ticker_train_t1 = ticker_train_df[t1_col]
-                except KeyError:
-                    pass
+                if t1_col not in ticker_train_df.columns:
+                    raise KeyError(
+                        f"Column '{t1_col}' (t1_col) not found in the training data "
+                        f"for ticker '{tk}'. Available columns: "
+                        f"{list(ticker_train_df.columns)}. "
+                        "Ensure apply_continuous_labels() has been called before "
+                        "downsample_to_cusum_events() when using objective='uniqueness'."
+                    )
+                ticker_train_t1 = ticker_train_df[t1_col]
 
             # Run calibration strictly on training set series
             alpha = calibrate_cusum_alpha(

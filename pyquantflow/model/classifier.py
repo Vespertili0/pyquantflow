@@ -230,7 +230,22 @@ class IchimokuBaselineClassifier(BaseEstimator, ClassifierMixin):
         -------
         np.ndarray
             Integer array of shape ``(n_samples,)`` with values in ``{0, 1}``.
+
+        Raises
+        ------
+        TypeError
+            If ``X`` is not a :class:`pandas.DataFrame`. This classifier requires
+            a named column and cannot fall back to positional NumPy indexing.
+        KeyError
+            If ``self.regime_col`` is not present in ``X``.
         """
+        if not isinstance(X, pd.DataFrame):
+            raise TypeError(
+                f"IchimokuBaselineClassifier requires a pandas DataFrame with a "
+                f"'{self.regime_col}' column. Received {type(X).__name__}. "
+                "Ensure the feature matrix retains its column names (e.g. use "
+                "set_output(transform='pandas') on upstream pipeline steps)."
+            )
         if self.regime_col not in X.columns:
             raise KeyError(
                 f"Column '{self.regime_col}' not found in X. "

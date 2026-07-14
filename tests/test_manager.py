@@ -16,7 +16,9 @@ class TestClassifierEngineMockMLFlowError(unittest.TestCase):
         try:
             # We capture logs from pyquantflow.model.manager
             with self.assertLogs("pyquantflow.model.manager", level="WARNING") as cm:
-                pass
+                # Reimport the module inside the context so the top-level
+                # try/except ImportError block runs and emits the warning.
+                importlib.import_module("pyquantflow.model.manager")
 
             # Verify the specific error message is present
             self.assertTrue(any("mlflow not found" in log for log in cm.output))
