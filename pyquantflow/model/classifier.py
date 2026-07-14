@@ -190,7 +190,7 @@ class IchimokuBaselineClassifier(BaseEstimator, ClassifierMixin):
         Name of the binary regime column in the input DataFrame.
     """
 
-    def __init__(self, regime_col: str = "ichimoku_regime") -> None:
+    def __init__(self, regime_col: str | int = "ichimoku_regime") -> None:
         self.regime_col = regime_col
 
     def fit(
@@ -217,14 +217,24 @@ class IchimokuBaselineClassifier(BaseEstimator, ClassifierMixin):
         self.classes_ = np.array([0, 1])
         return self
 
-    def predict(self, X: pd.DataFrame) -> np.ndarray:
+    def predict(self, X: pd.DataFrame | np.ndarray) -> np.ndarray:
         """
         Returns the ``ichimoku_regime`` column as an integer prediction array.
 
+        Supports both :class:`pandas.DataFrame` (preferred) and plain
+        :class:`numpy.ndarray` inputs so the classifier is compatible with
+        scikit-learn pipelines that do not propagate column names (i.e. where
+        ``set_output(transform='pandas')`` is not globally enforced).
+
         Parameters
         ----------
-        X : pd.DataFrame
-            Feature matrix containing ``self.regime_col``.
+        X : pd.DataFrame or np.ndarray
+            Feature matrix.  When a DataFrame is supplied the regime signal is
+            extracted by column name (``self.regime_col``).  When a NumPy array
+            is supplied, ``self.regime_col`` is used as a positional column
+            index if it is already an ``int``; otherwise column index ``0`` is
+            assumed, matching the convention that ``AssetOrganiser`` injects the
+            regime column as the sole or first feature.
 
         Returns
         -------
@@ -234,17 +244,34 @@ class IchimokuBaselineClassifier(BaseEstimator, ClassifierMixin):
         Raises
         ------
         TypeError
-            If ``X`` is not a :class:`pandas.DataFrame`. This classifier requires
-            a named column and cannot fall back to positional NumPy indexing.
+            If ``X`` is neither a :class:`pandas.DataFrame` nor a
+            :class:`numpy.ndarray`.
         KeyError
-            If ``self.regime_col`` is not present in ``X``.
+            If ``self.regime_col`` is not present in a DataFrame ``X``.
+        ValueError
+            If ``X`` is a NumPy array whose column count is too small for the
+            requested positional index.
         """
+        if isinstance(X, np.ndarray):
+            # Fallback for pipelines that strip column names.
+            # Use regime_col directly if it is an integer index; otherwise
+            # fall back to position 0 (AssetOrganiser convention).
+            col_idx = self.regime_col if isinstance(self.regime_col, int) else 0
+            if X.ndim == 1:
+                return X.astype(int)
+            if X.shape[1] <= col_idx:
+                raise ValueError(
+                    f"IchimokuBaselineClassifier: NumPy array has {X.shape[1]} "
+                    f"column(s) but regime column index {col_idx} was requested. "
+                    "Ensure the feature matrix is constructed with the regime "
+                    "column at the expected position."
+                )
+            return X[:, col_idx].astype(int)
+
         if not isinstance(X, pd.DataFrame):
             raise TypeError(
-                f"IchimokuBaselineClassifier requires a pandas DataFrame with a "
-                f"'{self.regime_col}' column. Received {type(X).__name__}. "
-                "Ensure the feature matrix retains its column names (e.g. use "
-                "set_output(transform='pandas') on upstream pipeline steps)."
+                f"IchimokuBaselineClassifier expects a pd.DataFrame or "
+                f"np.ndarray. Received {type(X).__name__}."
             )
         if self.regime_col not in X.columns:
             raise KeyError(
@@ -253,16 +280,19 @@ class IchimokuBaselineClassifier(BaseEstimator, ClassifierMixin):
             )
         return X[self.regime_col].to_numpy(dtype=int)
 
-    def predict_proba(self, X: pd.DataFrame) -> np.ndarray:
+    def predict_proba(self, X: pd.DataFrame | np.ndarray) -> np.ndarray:
         """
         Returns a two-column probability matrix consistent with the binary
         regime signal.  For each sample, the probability of class 1 equals
         the regime value (0.0 or 1.0), giving a hard, threshold-free decision.
 
+        Accepts both :class:`pandas.DataFrame` and :class:`numpy.ndarray`
+        inputs; all input-handling logic is delegated to :meth:`predict`.
+
         Parameters
         ----------
-        X : pd.DataFrame
-            Feature matrix containing ``self.regime_col``.
+        X : pd.DataFrame or np.ndarray
+            Feature matrix containing the regime signal.
 
         Returns
         -------

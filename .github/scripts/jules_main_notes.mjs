@@ -48,7 +48,7 @@ async function run() {
         // cannot break out of fenced code blocks embedded in the prompt.
         // U+FF40 (FULLWIDTH GRAVE ACCENT) is visually identical in rendered Markdown
         // but is not a special character in any fenced-block parser.
-        const sanitise = (s) => s.replace(/`/g, '\u{FF40}');
+        const sanitise = (s) => s.replace(/`/g, '\uFF40');
         const safeTitle = sanitise(prTitle);
         const safeBody  = sanitise(prBody);
         const safeDiff  = sanitise(truncatedDiff);
