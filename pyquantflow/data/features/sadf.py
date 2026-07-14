@@ -62,11 +62,7 @@ def _get_y_x(
         x = pd.DataFrame(index=y.index)
         x["const"] = 1
         # Avoid log(0)
-        with np.errstate(divide="ignore"):
-            x["log_trend"] = np.log(trend)
-            # Fix potential -inf at index 0 if trend starts at 0
-            if trend[0] == 0:
-                x.iloc[0, x.columns.get_loc("log_trend")] = 0
+        x["log_trend"] = np.log(np.maximum(trend, 1))
         beta_column = "log_trend"
     else:
         raise ValueError(f"Unknown model: {model}")
