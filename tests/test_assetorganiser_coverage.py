@@ -449,9 +449,9 @@ class TestAssetOrganiserNewBranches(unittest.TestCase):
 
         # AAA rows must all be in the event set
         aaa_event_set = {pd.Timestamp(t) for t in aaa_dts[:20]}
-        aaa_dts_remaining = org.multi_asset.xs("AAA", level="ticker").index.get_level_values(
-            "datetime"
-        )
+        aaa_dts_remaining = org.multi_asset.xs(
+            "AAA", level="ticker"
+        ).index.get_level_values("datetime")
         for dt in aaa_dts_remaining:
             self.assertIn(pd.Timestamp(dt), aaa_event_set)
 
@@ -721,4 +721,3 @@ class TestAssetOrganiserNewBranches(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

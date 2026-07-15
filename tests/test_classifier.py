@@ -428,7 +428,6 @@ class TestPrimarySecondaryClassifierExtended(unittest.TestCase):
 
         from sklearn.ensemble import RandomForestClassifier
         from sklearn.linear_model import LogisticRegression
-        from sklearn.model_selection import KFold
 
         primary = RandomForestClassifier(n_estimators=5, random_state=0)
         secondary = LogisticRegression(random_state=0)
@@ -474,9 +473,7 @@ class TestPrimarySecondaryClassifierExtended(unittest.TestCase):
 
         self.assertIsInstance(probas, np.ndarray)
         self.assertEqual(probas.shape, (len(X), 2))
-        np.testing.assert_array_almost_equal(
-            probas.sum(axis=1), np.ones(len(X))
-        )
+        np.testing.assert_array_almost_equal(probas.sum(axis=1), np.ones(len(X)))
 
     def test_fit_oof_entropy_nan_fill(self):
         """
@@ -538,4 +535,3 @@ class TestPrimarySecondaryClassifierExtended(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
