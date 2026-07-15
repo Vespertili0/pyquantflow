@@ -326,5 +326,399 @@ class TestAssetOrganiserCoverage(unittest.TestCase):
         self.assertIsNotNone(organiser.multi_asset_test)
 
 
+class TestAssetOrganiserNewBranches(unittest.TestCase):
+    """
+    Covers branches in AssetOrganiser that were not exercised by the
+    previous test classes.
+    """
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    def _make_organiser(self, n: int = 200, seed: int = 0) -> AssetOrganiser:
+        """
+        Returns a freshly constructed AssetOrganiser backed by two synthetic
+        tickers.  *prepare_multi_asset_frame* is NOT called so tests can
+        exercise the lazy-init paths themselves where needed.
+        """
+        np.random.seed(seed)
+        dates = pd.date_range("2020-01-01", periods=n, freq="D")
+
+        def _make_df(s: int = 0) -> pd.DataFrame:
+            np.random.seed(seed + s)
+            close = 100.0 + np.cumsum(np.random.normal(0, 1.0, n))
+            high = close * (1 + np.abs(np.random.normal(0, 0.005, n)))
+            low = close * (1 - np.abs(np.random.normal(0, 0.005, n)))
+            df = pd.DataFrame(
+                {
+                    "Open": (high + low) / 2,
+                    "High": high,
+                    "Low": low,
+                    "Close": close,
+                    "Volume": np.random.randint(1000, 100_000, n).astype(float),
+                    "feature1": np.random.randn(n),
+                    "target": np.random.randint(0, 2, n),
+                },
+                index=dates,
+            )
+            df.index.name = "datetime"
+            return df
+
+        data_map = {"AAA": _make_df(0), "BBB": _make_df(1)}
+        cutoff = str(dates[150])
+
+        return AssetOrganiser(
+            data_map=data_map,
+            cutoff_date=cutoff,
+            target_features=["target"],
+        )
+
+    def _make_organiser_with_labels(
+        self, n: int = 200, seed: int = 0
+    ) -> AssetOrganiser:
+        """
+        Returns an organiser that has already had continuous labels applied
+        via MockLabelFactory, ready for weight / pipeline tests.
+        """
+        org = self._make_organiser(n=n, seed=seed)
+        org.label_factory = MockLabelFactory()
+        org.prepare_multi_asset_frame()
+        org.apply_continuous_labels()
+        return org
+
+    # ------------------------------------------------------------------
+    # downsample_to_events — list / set / dict inputs
+    # ------------------------------------------------------------------
+
+    def test_downsample_to_events_list_input(self):
+        """A plain Python list of timestamps must filter correctly."""
+        org = self._make_organiser()
+        org.prepare_multi_asset_frame()
+
+        # Pick 10 datetime values from the prepared panel
+        all_dts = org.multi_asset.index.get_level_values("datetime").unique()
+        event_list = list(all_dts[:10])
+
+        org.downsample_to_events(event_list)
+
+        # After down-sampling each row's datetime must be in the event set
+        remaining_dts = org.multi_asset.index.get_level_values("datetime")
+        event_set = {pd.Timestamp(t) for t in event_list}
+        for dt in remaining_dts:
+            self.assertIn(pd.Timestamp(dt), event_set)
+
+    def test_downsample_to_events_set_input(self):
+        """A Python set of timestamps must filter correctly."""
+        org = self._make_organiser()
+        org.prepare_multi_asset_frame()
+
+        all_dts = org.multi_asset.index.get_level_values("datetime").unique()
+        event_set_input = {pd.Timestamp(t) for t in all_dts[:15]}
+
+        org.downsample_to_events(event_set_input)
+
+        remaining_dts = org.multi_asset.index.get_level_values("datetime")
+        for dt in remaining_dts:
+            self.assertIn(pd.Timestamp(dt), event_set_input)
+
+    def test_downsample_to_events_dict_input(self):
+        """
+        A per-ticker dict must retain only the matching dates for each ticker
+        and exclude tickers not in the dict.
+        """
+        org = self._make_organiser()
+        org.prepare_multi_asset_frame()
+
+        aaa_dts = (
+            org.multi_asset.xs("AAA", level="ticker")
+            .index.get_level_values("datetime")
+            .unique()
+        )
+        # Only include AAA events; BBB has no entry → all BBB rows dropped
+        events_dict = {"AAA": pd.DatetimeIndex(aaa_dts[:20])}
+
+        org.downsample_to_events(events_dict)
+
+        tickers_remaining = set(
+            org.multi_asset.index.get_level_values("ticker").unique()
+        )
+        # BBB must have been filtered out entirely
+        self.assertNotIn("BBB", tickers_remaining)
+        self.assertIn("AAA", tickers_remaining)
+
+        # AAA rows must all be in the event set
+        aaa_event_set = {pd.Timestamp(t) for t in aaa_dts[:20]}
+        aaa_dts_remaining = org.multi_asset.xs("AAA", level="ticker").index.get_level_values(
+            "datetime"
+        )
+        for dt in aaa_dts_remaining:
+            self.assertIn(pd.Timestamp(dt), aaa_event_set)
+
+    # ------------------------------------------------------------------
+    # downsample_to_cusum_events — uniqueness objective error paths
+    # ------------------------------------------------------------------
+
+    def test_cusum_uniqueness_requires_t1_col(self):
+        """
+        objective='uniqueness' without t1_col must raise ValueError before
+        any CUSUM computation starts.
+        """
+        org = self._make_organiser()
+        org.prepare_multi_asset_frame()
+
+        with self.assertRaises(ValueError):
+            org.downsample_to_cusum_events(
+                target_events_train=10,
+                filter_col="feature1",
+                objective="uniqueness",
+                t1_col=None,
+            )
+
+    def test_cusum_uniqueness_missing_t1_column_in_data(self):
+        """
+        When objective='uniqueness', t1_col is given but the column is absent
+        from the training data, a KeyError must be raised.
+        """
+        org = self._make_organiser()
+        org.prepare_multi_asset_frame()
+
+        # t1_col is specified but the column doesn't exist in the DataFrame
+        with self.assertRaises(KeyError):
+            org.downsample_to_cusum_events(
+                target_events_train=10,
+                filter_col="feature1",
+                objective="uniqueness",
+                t1_col="nonexistent_t1",
+            )
+
+    # ------------------------------------------------------------------
+    # apply_continuous_labels — happy path & duplicate-column deduplication
+    # ------------------------------------------------------------------
+
+    def test_apply_continuous_labels_happy_path(self):
+        """
+        After apply_continuous_labels, 'label' and 't1' columns must exist
+        in multi_asset and train/test splits must be refreshed.
+        """
+        org = self._make_organiser()
+        org.label_factory = MockLabelFactory()
+        org.prepare_multi_asset_frame()
+
+        org.apply_continuous_labels()
+
+        self.assertIn("label", org.multi_asset.columns)
+        self.assertIn("t1", org.multi_asset.columns)
+        self.assertIsNotNone(org.multi_asset_train)
+        self.assertIsNotNone(org.multi_asset_test)
+
+    def test_apply_continuous_labels_drops_duplicate_cols(self):
+        """
+        Calling apply_continuous_labels twice must not create duplicate columns.
+        """
+        org = self._make_organiser()
+        org.label_factory = MockLabelFactory()
+        org.prepare_multi_asset_frame()
+
+        org.apply_continuous_labels()
+        col_count_after_first = len(org.multi_asset.columns)
+
+        org.apply_continuous_labels()
+        col_count_after_second = len(org.multi_asset.columns)
+
+        self.assertEqual(
+            col_count_after_first,
+            col_count_after_second,
+            msg="Duplicate label/t1 columns should be dropped on second call.",
+        )
+
+    # ------------------------------------------------------------------
+    # apply_sample_weights — happy path
+    # ------------------------------------------------------------------
+
+    def test_apply_sample_weights_happy_path(self):
+        """
+        Full weight pipeline: continuous labels → sample weights injected.
+        The weight column must be present and all values must be positive.
+        """
+        org = self._make_organiser_with_labels()
+        org.weight_col = "weight"
+
+        org.apply_sample_weights()
+
+        self.assertIn("weight", org.multi_asset.columns)
+        self.assertTrue(
+            (org.multi_asset["weight"] > 0).all(),
+            msg="All sample weights must be positive after clipping.",
+        )
+        # Splits refreshed
+        self.assertIsNotNone(org.multi_asset_train)
+        self.assertIsNotNone(org.multi_asset_test)
+
+    def test_apply_sample_weights_uses_default_weight_col_name(self):
+        """
+        When weight_col was not set at construction time,
+        apply_sample_weights should default the column name to 'weight'
+        and update self.weight_col accordingly.
+        """
+        org = self._make_organiser_with_labels()
+        # weight_col is None by default from _make_organiser
+        self.assertIsNone(org.weight_col)
+
+        org.apply_sample_weights()
+
+        self.assertEqual(org.weight_col, "weight")
+        self.assertIn("weight", org.multi_asset.columns)
+
+    # ------------------------------------------------------------------
+    # build_learning_pipeline — end-to-end orchestration
+    # ------------------------------------------------------------------
+
+    def test_build_learning_pipeline_returns_alphas(self):
+        """
+        build_learning_pipeline must return a dict of calibrated alphas
+        (one per ticker) after running the full label → CUSUM → weight chain.
+        """
+        org = self._make_organiser(n=200, seed=7)
+        org.label_factory = MockLabelFactory()
+        org.weight_col = "weight"
+
+        alphas = org.build_learning_pipeline(
+            target_events_train=20,
+            filter_col="Close",
+            price_col="Close",
+        )
+
+        self.assertIsInstance(alphas, dict)
+        self.assertIn("AAA", alphas)
+        self.assertIn("BBB", alphas)
+        # Alphas must be within the default search range
+        for ticker, alpha in alphas.items():
+            self.assertGreaterEqual(alpha, 0.5)
+            self.assertLessEqual(alpha, 3.0)
+
+    # ------------------------------------------------------------------
+    # update_multi_asset — happy path
+    # ------------------------------------------------------------------
+
+    def test_update_multi_asset_happy_path(self):
+        """
+        update_multi_asset with a correctly indexed DataFrame must update
+        self.multi_asset and refresh the train/test splits.
+        """
+        org = self._make_organiser()
+        org.prepare_multi_asset_frame()
+
+        original_df = org.multi_asset.copy()
+        original_df["new_col"] = 99.0
+
+        org.update_multi_asset(original_df)
+
+        self.assertIn("new_col", org.multi_asset.columns)
+        self.assertTrue((org.multi_asset["new_col"] == 99.0).all())
+        self.assertIsNotNone(org.multi_asset_train)
+        self.assertIsNotNone(org.multi_asset_test)
+
+    # ------------------------------------------------------------------
+    # replace_features — surviving and dropped features
+    # ------------------------------------------------------------------
+
+    def test_replace_features_surviving_and_dropped(self):
+        """
+        replace_features must:
+        - update surviving features with transformed values,
+        - drop features absent from the transformed DataFrame,
+        - align the multi_asset index to the transformed DataFrame's index.
+        """
+        org = self._make_organiser()
+        org.prepare_multi_asset_frame()
+
+        # Create a transformed DataFrame: keep feature1 (scaled) but NOT target
+        transformed = org.multi_asset[["feature1"]].copy()
+        transformed["feature1"] = transformed["feature1"] * 10.0
+
+        # Drop a few rows to test index alignment
+        transformed = transformed.iloc[5:]
+
+        original_features = ["feature1", "target"]
+        org.replace_features(transformed, original_features)
+
+        # Row count must match the trimmed transformed DataFrame
+        self.assertEqual(len(org.multi_asset), len(transformed))
+
+        # feature1 must be updated to the scaled values
+        np.testing.assert_array_almost_equal(
+            org.multi_asset["feature1"].values,
+            transformed["feature1"].values,
+        )
+
+        # 'target' was in original_features but not in transformed → dropped
+        self.assertNotIn(
+            "target",
+            org.multi_asset.columns,
+            msg="Failed feature 'target' should have been dropped.",
+        )
+
+    # ------------------------------------------------------------------
+    # get_classifierengine_payload — weight_col stripped from features
+    # ------------------------------------------------------------------
+
+    def test_get_classifierengine_payload_strips_weight_col_from_features(self):
+        """
+        When weight_col is present in the features list passed to
+        get_classifierengine_payload it must be silently removed from
+        the returned 'features' key to prevent metadata leakage.
+        """
+        org = self._make_organiser()
+        org.weight_col = "feature1"  # Pretend feature1 is also the weight col
+        org.prepare_multi_asset_frame()
+
+        payload = org.get_classifierengine_payload(
+            features=["feature1", "target"],
+        )
+
+        self.assertNotIn(
+            "feature1",
+            payload["features"],
+            msg="weight_col 'feature1' must be stripped from payload features.",
+        )
+        # The non-weight feature must remain
+        self.assertIn("target", payload["features"])
+
+    # ------------------------------------------------------------------
+    # to_tsfeatures_format — lazy prepare paths for train / test subsets
+    # ------------------------------------------------------------------
+
+    def test_to_tsfeatures_format_lazy_train(self):
+        """
+        Calling to_tsfeatures_format(subset='train') on a cold organiser
+        (prepare_multi_asset_frame not yet called) must trigger preparation
+        and return a valid DataFrame.
+        """
+        org = self._make_organiser()
+        # Do NOT call prepare_multi_asset_frame() — test lazy init path
+        self.assertIsNone(org.multi_asset_train)
+
+        df_train = org.to_tsfeatures_format(value_col="Close", subset="train")
+
+        self.assertIn("unique_id", df_train.columns)
+        self.assertIn("ds", df_train.columns)
+        self.assertIn("y", df_train.columns)
+        self.assertGreater(len(df_train), 0)
+
+    def test_to_tsfeatures_format_lazy_test(self):
+        """
+        Same lazy-init check for subset='test'.
+        """
+        org = self._make_organiser()
+        self.assertIsNone(org.multi_asset_test)
+
+        df_test = org.to_tsfeatures_format(value_col="Close", subset="test")
+
+        self.assertIn("unique_id", df_test.columns)
+        self.assertGreater(len(df_test), 0)
+
+
 if __name__ == "__main__":
     unittest.main()
+

@@ -301,6 +301,241 @@ class TestIchimokuBaselineClassifier(unittest.TestCase):
 
         np.testing.assert_array_equal(preds, np.array([0, 1, 0]))
 
+    def test_predict_1d_numpy_array(self):
+        """predict() with a 1-D NumPy array must return the array cast to int."""
+        regime = np.array([0, 1, 1, 0, 1])
+        clf = IchimokuBaselineClassifier()
+        clf.fit(self._make_X())
+
+        preds = clf.predict(regime)
+
+        self.assertIsInstance(preds, np.ndarray)
+        np.testing.assert_array_equal(preds, regime.astype(int))
+
+    def test_predict_2d_numpy_array_default_col_0(self):
+        """
+        predict() with a 2-D NumPy array and a string regime_col must fall
+        back to column index 0.
+        """
+        regime_col_0 = np.array([1, 0, 1, 0, 1])
+        other_col = np.array([5, 6, 7, 8, 9])
+        X_np = np.column_stack([regime_col_0, other_col])
+
+        clf = IchimokuBaselineClassifier(regime_col="ichimoku_regime")
+        clf.fit(self._make_X())
+
+        preds = clf.predict(X_np)
+        np.testing.assert_array_equal(preds, regime_col_0.astype(int))
+
+    def test_predict_2d_numpy_array_integer_regime_col(self):
+        """
+        When regime_col is an integer, predict() uses it as the positional
+        column index in a 2-D NumPy array.
+        """
+        other_col = np.array([5, 6, 7, 8, 9])
+        regime_col_1 = np.array([0, 1, 0, 1, 0])
+        X_np = np.column_stack([other_col, regime_col_1])
+
+        clf = IchimokuBaselineClassifier(regime_col=1)
+        clf.fit(self._make_X())
+
+        preds = clf.predict(X_np)
+        np.testing.assert_array_equal(preds, regime_col_1.astype(int))
+
+    def test_predict_raises_value_error_ndarray_col_out_of_bounds(self):
+        """
+        predict() must raise ValueError when a 2-D NumPy array has fewer
+        columns than the requested integer regime_col index.
+        """
+        X_np = np.array([[1, 0], [0, 1], [1, 1]])  # Only 2 columns
+        clf = IchimokuBaselineClassifier(regime_col=5)  # Index 5 out of bounds
+        clf.fit(self._make_X())
+
+        with self.assertRaises(ValueError):
+            clf.predict(X_np)
+
+    def test_predict_raises_type_error_invalid_input(self):
+        """predict() must raise TypeError for unsupported input types."""
+        clf = IchimokuBaselineClassifier()
+        clf.fit(self._make_X())
+
+        with self.assertRaises(TypeError):
+            clf.predict([[1, 0], [0, 1]])  # Plain list — not ndarray or DataFrame
+
+    def test_predict_proba_with_numpy_input(self):
+        """
+        predict_proba() must accept a 2-D NumPy array input and return an
+        (N, 2) probability matrix whose rows sum to 1.
+        """
+        regime_col_0 = np.array([1, 0, 1, 0, 1])
+        other_col = np.array([9, 8, 7, 6, 5])
+        X_np = np.column_stack([regime_col_0, other_col])
+
+        clf = IchimokuBaselineClassifier(regime_col="ichimoku_regime")
+        clf.fit(self._make_X())
+
+        probas = clf.predict_proba(X_np)
+
+        self.assertEqual(probas.shape, (5, 2))
+        np.testing.assert_array_almost_equal(probas.sum(axis=1), np.ones(5))
+        # Class-1 probability must match regime column (col 0 by string fallback)
+        np.testing.assert_array_equal(probas[:, 1], regime_col_0.astype(float))
+
+
+class TestBaseQuantClassifier(unittest.TestCase):
+    """Verifies that BaseQuantClassifier cannot be instantiated directly."""
+
+    def test_cannot_instantiate_abstract_class(self):
+        """
+        BaseQuantClassifier is abstract; directly instantiating it must
+        raise TypeError due to unimplemented abstract methods.
+        """
+        from pyquantflow.model.classifier import BaseQuantClassifier
+
+        with self.assertRaises(TypeError):
+            BaseQuantClassifier()  # type: ignore[abstract]
+
+
+class TestPrimarySecondaryClassifierExtended(unittest.TestCase):
+    """
+    Additional tests for PrimarySecondaryClassifier covering branches not
+    exercised by TestPrimarySecondaryClassifier.
+    """
+
+    def _make_fitted_clf(self):
+        """
+        Returns a PrimarySecondaryClassifier that is marked prefitted=True
+        with pre-trained RandomForest and LogisticRegression models.
+        """
+        np.random.seed(0)
+        n = 100
+        dates = pd.date_range("2023-01-01", periods=n, freq="D")
+        X = pd.DataFrame(
+            {
+                "feat_1": np.random.randn(n),
+                "feat_2": np.random.randn(n),
+                "feat_3": np.random.randn(n),
+            },
+            index=dates,
+        )
+        y = pd.DataFrame(
+            {
+                "y_primary": np.random.randint(0, 2, n),
+                "y_secondary": np.random.randint(0, 2, n),
+            },
+            index=dates,
+        )
+
+        from sklearn.ensemble import RandomForestClassifier
+        from sklearn.linear_model import LogisticRegression
+        from sklearn.model_selection import KFold
+
+        primary = RandomForestClassifier(n_estimators=5, random_state=0)
+        secondary = LogisticRegression(random_state=0)
+
+        # Train them separately so we can pass them in as prefitted
+        primary.fit(X[["feat_1", "feat_2"]], y["y_primary"])
+
+        oof_entropy = np.full((n, 1), 0.5)  # dummy entropy
+        X_sec_train = np.hstack([X[["feat_2", "feat_3"]].values, oof_entropy])
+        secondary.fit(X_sec_train, y["y_secondary"])
+
+        clf = PrimarySecondaryClassifier(
+            primary_model=primary,
+            secondary_model=secondary,
+            primary_features=["feat_1", "feat_2"],
+            secondary_features=["feat_2", "feat_3"],
+            prefitted=True,
+        )
+        return clf, X
+
+    def test_predict_prefitted_no_fit_called(self):
+        """
+        predict() must work correctly when prefitted=True and fit() was never
+        called on the PrimarySecondaryClassifier instance itself.
+        """
+        clf, X = self._make_fitted_clf()
+
+        preds = clf.predict(X)
+
+        self.assertIsInstance(preds, np.ndarray)
+        self.assertEqual(len(preds), len(X))
+        # Predictions must be binary
+        self.assertTrue(set(preds).issubset({0, 1}))
+
+    def test_predict_proba_prefitted_no_fit_called(self):
+        """
+        predict_proba() must work correctly when prefitted=True without
+        calling fit() first.
+        """
+        clf, X = self._make_fitted_clf()
+
+        probas = clf.predict_proba(X)
+
+        self.assertIsInstance(probas, np.ndarray)
+        self.assertEqual(probas.shape, (len(X), 2))
+        np.testing.assert_array_almost_equal(
+            probas.sum(axis=1), np.ones(len(X))
+        )
+
+    def test_fit_oof_entropy_nan_fill(self):
+        """
+        When a CV split leaves some validation rows without entropy (NaN),
+        the ffill/bfill path in fit() must resolve those gaps before fitting
+        the secondary model.
+
+        We use a custom CV generator that produces a single fold covering
+        only part of the dataset, leaving the remaining rows without
+        predictions (NaN in oof_entropy).
+        """
+        from sklearn.ensemble import RandomForestClassifier
+        from sklearn.linear_model import LogisticRegression
+
+        np.random.seed(1)
+        n = 50
+        X = pd.DataFrame(
+            {
+                "feat_1": np.random.randn(n),
+                "feat_2": np.random.randn(n),
+                "feat_3": np.random.randn(n),
+            }
+        )
+        y = pd.DataFrame(
+            {
+                "y_primary": np.random.randint(0, 2, n),
+                "y_secondary": np.random.randint(0, 2, n),
+            }
+        )
+
+        class PartialCVGenerator:
+            """
+            A CV generator that produces only one split covering the first
+            half for training and the second quarter for validation — leaving
+            the final quarter as NaN in oof_entropy.
+            """
+
+            def split(self, X, y=None, groups=None):
+                n = len(X)
+                train_idx = np.arange(0, n // 2)
+                val_idx = np.arange(n // 2, 3 * n // 4)
+                yield train_idx, val_idx
+
+        clf = PrimarySecondaryClassifier(
+            primary_model=RandomForestClassifier(n_estimators=5, random_state=1),
+            secondary_model=LogisticRegression(random_state=1),
+            primary_features=["feat_1", "feat_2"],
+            secondary_features=["feat_2", "feat_3"],
+            cv_generator=PartialCVGenerator(),
+            prefitted=False,
+        )
+
+        # This must not raise — the ffill/bfill should handle the NaN gap
+        clf.fit(X, y)
+
+        preds = clf.predict(X)
+        self.assertEqual(len(preds), n)
+
 
 if __name__ == "__main__":
     unittest.main()
+
