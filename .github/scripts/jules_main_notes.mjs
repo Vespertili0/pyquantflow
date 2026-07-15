@@ -50,8 +50,8 @@ async function run() {
         // but is not a special character in any fenced-block parser.
         const sanitise = (s) => s.replace(/`/g, '\uFF40');
         const safeTitle = sanitise(prTitle);
-        const safeBody  = sanitise(prBody);
-        const safeDiff  = sanitise(truncatedDiff);
+        const safeBody = sanitise(prBody);
+        const safeDiff = sanitise(truncatedDiff);
 
         // 2. Build a context-complete, isolated prompt matching the marketplace standard
         const reviewPrompt = `You are a Release Manager and Technical Writer. Review the pull request below to generate a comprehensive draft release notes document.
@@ -197,7 +197,7 @@ Respond in Markdown using the following structure:
                 repo,
                 prNumber,
                 githubToken,
-                `⚠️ **Jules release notes generation failed to complete.**\n\n\`\`\`\n${error.message || error}\n\`\`\``
+                `⚠️ **Jules release notes generation failed to complete.**\n\nPlease check the GitHub Actions workflow logs for more details.`
             );
         } catch (commentError) {
             console.error("❌ Failed to post fallback error comment:", commentError);

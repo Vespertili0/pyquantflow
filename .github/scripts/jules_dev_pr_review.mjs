@@ -50,8 +50,8 @@ async function run() {
         // but is not a special character in any fenced-block parser.
         const sanitise = (s) => s.replace(/`/g, '\uFF40');
         const safeTitle = sanitise(prTitle);
-        const safeBody  = sanitise(prBody);
-        const safeDiff  = sanitise(truncatedDiff);
+        const safeBody = sanitise(prBody);
+        const safeDiff = sanitise(truncatedDiff);
 
         // 2. Build a context-complete, isolated prompt matching the marketplace standard
         const reviewPrompt = `You are an expert code reviewer. Review the pull request below with high precision and minimal false positives.
@@ -192,7 +192,7 @@ Respond in Markdown using sections: ## Summary, ## Strengths, ## Findings (group
                 repo,
                 prNumber,
                 githubToken,
-                `⚠️ **Jules PR review failed to complete.**\n\n\`\`\`\n${error.message || error}\n\`\`\``
+                `⚠️ **Jules PR review failed to complete.**\n\nPlease check the GitHub Actions workflow logs for more details.`
             );
         } catch (commentError) {
             console.error("❌ Failed to post fallback error comment:", commentError);
