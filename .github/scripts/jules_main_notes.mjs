@@ -1,12 +1,12 @@
-import { 
-    loadGitHubContext, 
-    validateEnv, 
-    fetchPrDiff, 
-    buildDiffContext, 
-    spawnJulesSession, 
-    awaitSessionResult, 
-    postGitHubComment, 
-    postCommitStatus 
+import {
+    loadGitHubContext,
+    validateEnv,
+    fetchPrDiff,
+    buildDiffContext,
+    spawnJulesSession,
+    awaitSessionResult,
+    postGitHubComment,
+    postCommitStatus
 } from './jules_utils.mjs';
 
 async function run() {
@@ -20,7 +20,7 @@ async function run() {
 
         console.log(`📝 Constructing targeted review prompt...`);
         const diffContext = buildDiffContext(repo, prTitle, prBody, diff);
-        
+
         const reviewPrompt = `You are a Release Manager and Technical Writer. Review the pull request below to generate a comprehensive draft release notes document.
 
 ${diffContext}
@@ -61,11 +61,11 @@ Respond in Markdown using the following structure:
 
         console.log(`🚦 Updating commit status for SHA ${headSha}...`);
         await postCommitStatus(
-            repo, 
-            headSha, 
-            githubToken, 
-            'success', 
-            'jules/release-notes', 
+            repo,
+            headSha,
+            githubToken,
+            'success',
+            'jules/release-notes',
             'Draft release notes generated successfully'
         );
 

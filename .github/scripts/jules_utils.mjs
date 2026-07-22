@@ -32,7 +32,7 @@ export function validateEnv() {
         console.error("❌ Missing JULES_API_KEY or GITHUB_TOKEN environment variables.");
         process.exit(1);
     }
-    
+
     return { apiKey, githubToken, repo };
 }
 
@@ -112,16 +112,16 @@ export async function spawnJulesSession(apiKey, repo, baseBranch, prompt) {
 
 /**
  * Awaits the final result from a Jules session using stream().
- * 
+ *
  * NOTE: The Jules SDK does not natively support server-to-server webhook callbacks.
  * We use \`session.stream()\` for real-time \`for await\` iteration over activity events.
- * This reacts to events immediately rather than polling on a fixed interval, eliminating 
+ * This reacts to events immediately rather than polling on a fixed interval, eliminating
  * idle spinning and unnecessary hydration calls, though it keeps the runner active.
  */
 export async function awaitSessionResult(session) {
     console.log(`⏱️ Waiting for remote agent processing (Session: ${session.id})...`);
     let reviewMarkdown = '';
-    
+
     const timeoutMs = 30 * 60 * 1000; // 30 minutes maximum
     const abortController = new AbortController();
     const timeoutId = setTimeout(() => abortController.abort(), timeoutMs);
@@ -191,7 +191,7 @@ export async function postCommitStatus(repo, sha, token, state, context, descrip
         },
         body: JSON.stringify({ state, context, description })
     });
-    
+
     if (!response.ok) {
         const errorText = await response.text();
         throw new Error(`GitHub API returned ${response.status}: ${errorText}`);

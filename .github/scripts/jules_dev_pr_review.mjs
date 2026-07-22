@@ -1,12 +1,12 @@
-import { 
-    loadGitHubContext, 
-    validateEnv, 
-    fetchPrDiff, 
-    buildDiffContext, 
-    spawnJulesSession, 
-    awaitSessionResult, 
-    postGitHubComment, 
-    postCommitStatus 
+import {
+    loadGitHubContext,
+    validateEnv,
+    fetchPrDiff,
+    buildDiffContext,
+    spawnJulesSession,
+    awaitSessionResult,
+    postGitHubComment,
+    postCommitStatus
 } from './jules_utils.mjs';
 
 async function run() {
@@ -20,7 +20,7 @@ async function run() {
 
         console.log(`📝 Constructing targeted review prompt...`);
         const diffContext = buildDiffContext(repo, prTitle, prBody, diff);
-        
+
         const reviewPrompt = `You are an expert code reviewer. Review the pull request below with high precision and minimal false positives.
 
 ${diffContext}
@@ -56,11 +56,11 @@ Respond in Markdown using sections: ## Summary, ## Strengths, ## Findings (group
         const isBlocked = reviewMarkdown.toUpperCase().includes('VERDICT: BLOCK') || reviewMarkdown.includes('[BLOCKING]');
         console.log(`🚦 Updating commit status for SHA ${headSha}...`);
         await postCommitStatus(
-            repo, 
-            headSha, 
-            githubToken, 
-            isBlocked ? 'failure' : 'success', 
-            'jules/review', 
+            repo,
+            headSha,
+            githubToken,
+            isBlocked ? 'failure' : 'success',
+            'jules/review',
             isBlocked ? 'Blocking issues found by Jules' : 'Review complete (verdict: approve)'
         );
 
