@@ -601,21 +601,34 @@ class AssetOrganiser:
 
         return df_ts[["unique_id", "ds", "y"]].copy()
 
-    def apply_ichimoku_regime(self) -> None:
+    def apply_ichimoku_regime(
+        self, mode: str = "standard", displacement: int = 26
+    ) -> None:
         """
         Computes the Ichimoku Cloud and injects a binary ``ichimoku_regime``
         column into ``self.multi_asset``, grouped by ticker.
 
-        The regime is ``1`` when the closing price is above *both* the shifted
-        Senkou Span A and Senkou Span B (i.e., the price is above the cloud),
-        and ``0`` otherwise.  Warm-up bars where the cloud spans are NaN
-        (roughly the first 78 periods) are also set to ``0``.
+        Supported modes:
+        - "standard": The regime is ``1`` when the closing price is above *both*
+          the shifted Senkou Span A and Senkou Span B (i.e., the price is above
+          the cloud), and ``0`` otherwise.
+        - "confirmed": Same as "standard", plus requires the forward cloud to be
+          bullish (Span A > Span B) and short-term momentum to be positive
+          (Tenkan > Kijun).
+        - "strict": Same as "standard", plus requires the forward cloud to be
+          bullish and the Chikou Span (current close) to break out above the
+          historical cloud from `displacement` periods ago.
 
-        Raw Ichimoku component columns are dropped immediately after the mask
-        is created to keep the feature matrix clean.  **No rows are dropped.**
-        The method mutates ``self.multi_asset`` in-place and calls
-        ``_split_train_test()`` at the end.
+        Warm-up bars where the cloud spans are NaN are set to ``0``. Raw Ichimoku
+        component columns are dropped immediately after the mask is created to
+        keep the feature matrix clean. **No rows are dropped.** The method mutates
+        ``self.multi_asset`` in-place and calls ``_split_train_test()`` at the end.
         """
+        if mode not in ("standard", "confirmed", "strict"):
+            raise ValueError(
+                f"Unsupported mode '{mode}'. Choose from 'standard', 'confirmed', or 'strict'."
+            )
+
         if self.multi_asset is None:
             self.prepare_multi_asset_frame()
 
@@ -643,12 +656,28 @@ class AssetOrganiser:
                 output_names=_ICHIMOKU_OUTPUT_NAMES,
             )
 
-            # Build binary regime: 1 if Close is above both shifted spans
+            # Build binary regime
             above_cloud = (ticker_df["Close"] > ticker_df["span_a_shifted"]) & (
                 ticker_df["Close"] > ticker_df["span_b_shifted"]
             )
-            # Fill warm-up NaNs (first ~78 bars) with 0 (no regime)
-            ticker_df["ichimoku_regime"] = above_cloud.fillna(False).astype(int)
+
+            if mode == "standard":
+                regime_mask = above_cloud
+            elif mode == "confirmed":
+                cloud_positive = ticker_df["span_a"] > ticker_df["span_b"]
+                tk_momentum = ticker_df["tenkan_sen"] > ticker_df["kijun_sen"]
+                regime_mask = above_cloud & cloud_positive & tk_momentum
+            else:  # strict
+                cloud_positive = ticker_df["span_a"] > ticker_df["span_b"]
+                chikou_breakout = (
+                    ticker_df["Close"] > ticker_df["span_a_shifted"].shift(displacement)
+                ) & (
+                    ticker_df["Close"] > ticker_df["span_b_shifted"].shift(displacement)
+                )
+                regime_mask = above_cloud & cloud_positive & chikou_breakout
+
+            # Fill warm-up NaNs with 0 (no regime)
+            ticker_df["ichimoku_regime"] = regime_mask.fillna(False).astype(int)
 
             # Drop raw Ichimoku components to keep the feature matrix clean
             ticker_df = ticker_df.drop(columns=_ICHIMOKU_COLS, errors="ignore")

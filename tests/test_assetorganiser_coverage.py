@@ -325,6 +325,82 @@ class TestAssetOrganiserCoverage(unittest.TestCase):
         self.assertIsNotNone(organiser.multi_asset_train)
         self.assertIsNotNone(organiser.multi_asset_test)
 
+    def _create_mock_organiser(self):
+        n = 200
+        np.random.seed(99)
+        dates = pd.date_range("2018-01-01", periods=n, freq="D")
+
+        def _make_ohlc(seed_offset=0):
+            np.random.seed(99 + seed_offset)
+            close = 100.0 + np.cumsum(np.random.normal(0, 1.0, n))
+            high = close * (1 + np.abs(np.random.normal(0, 0.005, n)))
+            low = close * (1 - np.abs(np.random.normal(0, 0.005, n)))
+            open_ = (high + low) / 2
+            high = np.maximum(high, np.maximum(open_, close))
+            low = np.minimum(low, np.minimum(open_, close))
+            return pd.DataFrame(
+                {"Open": open_, "High": high, "Low": low, "Close": close},
+                index=dates,
+            )
+
+        ohlc_data_map = {
+            "TICKER_A": _make_ohlc(seed_offset=0),
+            "TICKER_B": _make_ohlc(seed_offset=1),
+        }
+        for df in ohlc_data_map.values():
+            df.index.name = "datetime"
+
+        organiser = AssetOrganiser(
+            data_map=ohlc_data_map,
+            cutoff_date="2019-01-01",
+            target_features=["Close"],
+        )
+        organiser.prepare_multi_asset_frame()
+        return organiser
+
+    def test_apply_ichimoku_regime_confirmed_mode(self):
+        organiser = self._create_mock_organiser()
+        organiser.apply_ichimoku_regime(mode="standard")
+        standard_regime = organiser.multi_asset["ichimoku_regime"].copy()
+
+        organiser = self._create_mock_organiser()
+        organiser.apply_ichimoku_regime(mode="confirmed")
+        confirmed_regime = organiser.multi_asset["ichimoku_regime"].copy()
+
+        # Confirmed mode has extra filters, so it should be a subset of standard mode
+        # That means wherever confirmed is 1, standard must also be 1.
+        subset_check = (confirmed_regime == 1) & (standard_regime == 0)
+        self.assertFalse(
+            subset_check.any(),
+            "Confirmed mode signal should be a subset of standard mode signal.",
+        )
+
+        unique_vals = set(confirmed_regime.unique())
+        self.assertTrue(unique_vals.issubset({0, 1}))
+
+    def test_apply_ichimoku_regime_strict_mode(self):
+        organiser = self._create_mock_organiser()
+        organiser.apply_ichimoku_regime(mode="standard")
+        standard_regime = organiser.multi_asset["ichimoku_regime"].copy()
+
+        organiser = self._create_mock_organiser()
+        organiser.apply_ichimoku_regime(mode="strict")
+        strict_regime = organiser.multi_asset["ichimoku_regime"].copy()
+
+        subset_check = (strict_regime == 1) & (standard_regime == 0)
+        self.assertFalse(
+            subset_check.any(),
+            "Strict mode signal should be a subset of standard mode signal.",
+        )
+
+        unique_vals = set(strict_regime.unique())
+        self.assertTrue(unique_vals.issubset({0, 1}))
+
+    def test_apply_ichimoku_regime_invalid_mode(self):
+        organiser = self._create_mock_organiser()
+        with self.assertRaises(ValueError):
+            organiser.apply_ichimoku_regime(mode="invalid_mode")
+
 
 class TestAssetOrganiserNewBranches(unittest.TestCase):
     """
