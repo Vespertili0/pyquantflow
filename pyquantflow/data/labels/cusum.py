@@ -1,14 +1,22 @@
+"""
+CUSUM Labelling Module
+
+This module provides implementations of the Symmetric CUSUM Filter as proposed
+by Marcos Lopez de Prado. It includes functions for extracting CUSUM events
+and JAX-accelerated functions for calibrating the optimal alpha threshold.
+"""
+
 import numpy as np
 import pandas as pd
 import jax
 import jax.numpy as jnp
 from jax import lax
-from typing import Optional
+from typing import Optional, Union
 
 
 def get_cusum_events(
     series: pd.Series,
-    threshold: float | pd.Series,
+    threshold: Union[float, pd.Series],
 ) -> pd.DatetimeIndex:
     """
     Symmetric CUSUM Filter as proposed by Marcos Lopez de Prado in

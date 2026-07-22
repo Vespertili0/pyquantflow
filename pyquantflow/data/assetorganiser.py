@@ -1,5 +1,14 @@
+"""
+Asset Organiser Module
+
+This module provides the AssetOrganiser class for preparing, aligning, and transforming
+multi-asset panel data suitable for quantitative machine learning pipelines. It orchestrates
+continuous labelling, dynamic CUSUM down-sampling, feature generation (such as Ichimoku regimes),
+and sample weight calculation while strictly preventing sequential data hazards.
+"""
+
 import pandas as pd
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 from scipy.stats import entropy
 from sklearn.base import BaseEstimator
 from .utils import (
@@ -92,7 +101,7 @@ class AssetOrganiser:
 
     def downsample_to_events(
         self,
-        events: pd.DatetimeIndex | list | set | Dict[str, pd.DatetimeIndex],
+        events: Union[pd.DatetimeIndex, list, set, Dict[str, pd.DatetimeIndex]],
     ) -> None:
         """
         Down-samples the multi-asset DataFrame to keep only the dates matching
@@ -133,7 +142,7 @@ class AssetOrganiser:
 
     def downsample_to_cusum_events(
         self,
-        target_events_train: int | Dict[str, int],
+        target_events_train: Union[int, Dict[str, int]],
         filter_col: str,
         vol_col: Optional[str] = None,
         span: int = 100,
@@ -394,7 +403,7 @@ class AssetOrganiser:
 
     def build_learning_pipeline(
         self,
-        target_events_train: int | Dict[str, int],
+        target_events_train: Union[int, Dict[str, int]],
         filter_col: str,
         price_col: str = "Close",
         vol_col: Optional[str] = None,
@@ -501,7 +510,7 @@ class AssetOrganiser:
         self,
         features: List[str],
         tickers: Optional[List[str]] = None,
-    ) -> Dict[str, pd.DataFrame | List[str] | str | None]:
+    ) -> Dict[str, Union[pd.DataFrame, List[str], str, None]]:
         """
         Extracts the prepared data and metadata into a dictionary suitable for
         unpacking (**kwargs) directly into `ClassifierEngine.run_pipeline`.
@@ -623,6 +632,12 @@ class AssetOrganiser:
         component columns are dropped immediately after the mask is created to
         keep the feature matrix clean. **No rows are dropped.** The method mutates
         ``self.multi_asset`` in-place and calls ``_split_train_test()`` at the end.
+
+        Args:
+            mode (str): The strictness mode for determining the bullish regime.
+                Must be one of "standard", "confirmed", or "strict".
+            displacement (int): The number of periods to shift Chikou Span for
+                breakout confirmation in "strict" mode. Defaults to 26.
         """
         if mode not in ("standard", "confirmed", "strict"):
             raise ValueError(

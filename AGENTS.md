@@ -33,8 +33,15 @@ The SQLite database (`stocks.db`) has two main tables:
 The Backtest Results database (`backtest_results.db`) has one main table:
 1. `backtest_results`: Stores results of backtest runs (`id`, `ticker`, `batch_run_name`, `metrics`).
 
-### CI/CD
+### CI/CD & Automation Scripts
 A GitHub Actions workflow is set up in `.github/workflows/tests.yml`. It runs `unittest` tests via `python -m unittest discover tests` on Push and Pull Request to `main` and `dev` branches across Python versions 3.10 to 3.12. A separate `release.yml` handles releases.
+
+There is a modular AI automation architecture residing under `.github/scripts/`:
+- `jules_utils.mjs`: Centralised utility functions, including streaming event listeners and GitHub API interactions.
+- `jules_dev_pr_review.mjs`: Orchestrates PR reviews for `dev` branches.
+- `jules_main_notes.mjs`: Generates release notes for the `main` branch.
+
+**Security Note:** All automation scripts must rigorously sanitise untrusted inputs (e.g., PR titles and bodies) before passing them to prompt engines or API wrappers. Specifically, enforce backtick replacement (e.g. replacing ``` ` ``` with `\uFF40`) to prevent prompt injection and execution attacks.
 
 ## Current Status
 - Core SQLite database managers for market data and batch backtesting results are fully implemented.
