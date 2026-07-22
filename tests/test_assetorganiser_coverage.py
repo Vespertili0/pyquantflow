@@ -370,7 +370,10 @@ class TestAssetOrganiserCoverage(unittest.TestCase):
         # Confirmed mode has extra filters, so it should be a subset of standard mode
         # That means wherever confirmed is 1, standard must also be 1.
         subset_check = (confirmed_regime == 1) & (standard_regime == 0)
-        self.assertFalse(subset_check.any(), "Confirmed mode signal should be a subset of standard mode signal.")
+        self.assertFalse(
+            subset_check.any(),
+            "Confirmed mode signal should be a subset of standard mode signal.",
+        )
 
         unique_vals = set(confirmed_regime.unique())
         self.assertTrue(unique_vals.issubset({0, 1}))
@@ -385,7 +388,10 @@ class TestAssetOrganiserCoverage(unittest.TestCase):
         strict_regime = organiser.multi_asset["ichimoku_regime"].copy()
 
         subset_check = (strict_regime == 1) & (standard_regime == 0)
-        self.assertFalse(subset_check.any(), "Strict mode signal should be a subset of standard mode signal.")
+        self.assertFalse(
+            subset_check.any(),
+            "Strict mode signal should be a subset of standard mode signal.",
+        )
 
         unique_vals = set(strict_regime.unique())
         self.assertTrue(unique_vals.issubset({0, 1}))
