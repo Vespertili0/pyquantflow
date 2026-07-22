@@ -138,7 +138,9 @@ organiser = AssetOrganiser(
 #   c) Sample Weighting via Concurrency
 organiser.prepare_multi_asset_frame()
 calibrated_alphas = organiser.build_learning_pipeline(
-    target_events_train=1000, price_col="Close"
+    target_events_train=1000,
+    price_col="Close",
+    objective="budget",  # Targets a specific budget of events (e.g. 1000)
 )
 
 # 4. Extract Payload for MLOps Engine
@@ -147,6 +149,23 @@ payload = organiser.get_classifierengine_payload(features=["Close", "EMA_120"])
 # 5. Run MLOps Workflow
 engine = ClassifierEngine(optimiser=HyperparameterOptimiser(study_name="example"))
 # engine.run_pipeline(**payload, balance_classes=True, ...)
+```
+
+#### Multi-mode Market Regimes & Baselines
+
+You can explicitly label market regimes and inject them as features. `AssetOrganiser.apply_ichimoku_regime()` calculates Ichimoku Cloud regimes with three configurable modes:
+- **`standard`**: Price is above the cloud.
+- **`confirmed`**: Standard + bullish forward cloud + positive short-term momentum.
+- **`strict`**: Confirmed + Chikou Span breakout (configurable via `displacement`).
+
+```python
+# Inject 'ichimoku_regime' into the multi-asset feature matrix
+organiser.apply_ichimoku_regime(mode="strict", displacement=26)
+
+# Use the stateless baseline classifier for fair cross-validation comparisons
+from pyquantflow.model.classifier import IchimokuBaselineClassifier
+
+baseline_model = IchimokuBaselineClassifier(regime_col="ichimoku_regime")
 ```
 
 ### 4. Evaluate Financial Features
