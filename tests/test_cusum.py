@@ -89,6 +89,74 @@ class TestCUSUMFilter(unittest.TestCase):
         # Difference should be minimised
         self.assertTrue(abs(len(events) - target) <= 5)
 
+    def test_calibrate_cusum_alpha_budget_mode(self):
+        """Explicit budget objective must behave identically to legacy call."""
+        target = 5
+        returns = self.prices.pct_change()
+        alpha = calibrate_cusum_alpha(
+            series=returns,
+            target_events=target,
+            alpha_min=0.5,
+            alpha_max=6.0,
+            alpha_step=0.1,
+            span=20,
+            objective="budget",
+        )
+
+        self.assertIsInstance(alpha, float)
+        self.assertTrue(0.5 <= alpha <= 6.0)
+
+        # Confirm that the resulting event count is near the target
+        vol = returns.ewm(span=20).std()
+        threshold = alpha * vol
+        events = get_cusum_events(returns, threshold)
+        self.assertTrue(abs(len(events) - target) <= 5)
+
+    def test_calibrate_cusum_alpha_uniqueness_mode(self):
+        """Uniqueness objective must return a valid alpha within the search range."""
+        returns = self.prices.pct_change().dropna()
+
+        # Construct a synthetic t1 series: barrier ends 5 days after each bar
+        t1 = pd.Series(
+            returns.index + pd.Timedelta(days=5),
+            index=returns.index,
+            name="t1",
+        )
+
+        alpha = calibrate_cusum_alpha(
+            series=returns,
+            alpha_min=0.5,
+            alpha_max=3.0,
+            alpha_step=0.5,
+            span=20,
+            objective="uniqueness",
+            t1=t1,
+        )
+
+        self.assertIsInstance(alpha, float)
+        self.assertTrue(0.5 <= alpha <= 3.0)
+
+    def test_calibrate_cusum_alpha_uniqueness_no_t1_raises(self):
+        """Passing objective='uniqueness' without t1 must raise ValueError."""
+        returns = self.prices.pct_change()
+        with self.assertRaises(ValueError):
+            calibrate_cusum_alpha(
+                series=returns,
+                target_events=5,
+                objective="uniqueness",
+                t1=None,
+            )
+
+    def test_calibrate_cusum_alpha_budget_no_target_raises(self):
+        """Passing objective='budget' without target_events must raise ValueError."""
+        returns = self.prices.pct_change()
+        with self.assertRaises(ValueError):
+            calibrate_cusum_alpha(
+                series=returns,
+                target_events=None,
+                objective="budget",
+            )
+
 
 class TestAssetOrganiserDownsampling(unittest.TestCase):
     def setUp(self):

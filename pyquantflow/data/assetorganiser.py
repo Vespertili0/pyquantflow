@@ -2,8 +2,13 @@ import pandas as pd
 from typing import Dict, List, Optional
 from scipy.stats import entropy
 from sklearn.base import BaseEstimator
-from .utils import align_and_ffill_multiasset, restructure_map_2_multiasset_df
+from .utils import (
+    align_and_ffill_multiasset,
+    restructure_map_2_multiasset_df,
+    pipe_indicator,
+)
 from .labels import get_cusum_events, calibrate_cusum_alpha, BaseLabelFactory
+from .features.indicator import ICHIMOKU
 
 
 class AssetOrganiser:
@@ -135,16 +140,19 @@ class AssetOrganiser:
         alpha_min: float = 0.5,
         alpha_max: float = 3.0,
         alpha_step: float = 0.1,
+        objective: str = "budget",
+        t1_col: Optional[str] = None,
     ) -> Dict[str, float]:
         """
-        Calibrates optimal alpha scalars on the training set (Event Budgeting)
-        and down-samples the multi-asset DataFrame using causal dynamic thresholds.
+        Calibrates optimal alpha scalars on the training set and down-samples the
+        multi-asset DataFrame using causal dynamic thresholds.
 
         Parameters
         ----------
         target_events_train : int | Dict[str, int]
             The target event count for the training fold. If int, applied to all tickers.
             If dict, maps ticker to specific target count.
+            Required when ``objective="budget"``.
         filter_col : str
             The name of the column in the DataFrame to run CUSUM on.
         vol_col : Optional[str], default=None
@@ -158,6 +166,13 @@ class AssetOrganiser:
             Maximum alpha multiplier.
         alpha_step : float, default=0.1
             Grid search step size.
+        objective : str, default="budget"
+            Calibration objective. ``"budget"`` minimises the distance to
+            ``target_events_train``; ``"uniqueness"`` maximises average sample
+            uniqueness of the generated events (requires ``t1_col``).
+        t1_col : Optional[str], default=None
+            Column name containing ``t1`` barrier timestamps. Required when
+            ``objective="uniqueness"``.
 
         Returns
         -------
@@ -166,6 +181,14 @@ class AssetOrganiser:
         """
         if self.multi_asset is None:
             self.prepare_multi_asset_frame()
+
+        if objective == "uniqueness" and t1_col is None:
+            raise ValueError(
+                "objective='uniqueness' requires a valid t1_col, but t1_col=None was "
+                "provided. Ensure apply_continuous_labels() has been called so that a "
+                "t1 barrier column exists in the DataFrame, then pass its name via "
+                "the t1_col argument."
+            )
 
         tickers = self.multi_asset.index.get_level_values("ticker").unique()
         calibrated_alphas = {}
@@ -191,18 +214,28 @@ class AssetOrganiser:
                 calibrated_alphas[tk] = alpha_min
                 continue
 
-            ticker_train_series = self.multi_asset_train.xs(tk, level="ticker")[
-                filter_col
-            ]
+            ticker_train_df = self.multi_asset_train.xs(tk, level="ticker")
+            ticker_train_series = ticker_train_df[filter_col]
 
             ticker_train_vol = None
             if vol_col:
                 try:
-                    ticker_train_vol = self.multi_asset_train.xs(tk, level="ticker")[
-                        vol_col
-                    ]
+                    ticker_train_vol = ticker_train_df[vol_col]
                 except KeyError:
                     pass
+
+            # Extract t1 series if uniqueness objective is requested
+            ticker_train_t1 = None
+            if objective == "uniqueness" and t1_col is not None:
+                if t1_col not in ticker_train_df.columns:
+                    raise KeyError(
+                        f"Column '{t1_col}' (t1_col) not found in the training data "
+                        f"for ticker '{tk}'. Available columns: "
+                        f"{list(ticker_train_df.columns)}. "
+                        "Ensure apply_continuous_labels() has been called before "
+                        "downsample_to_cusum_events() when using objective='uniqueness'."
+                    )
+                ticker_train_t1 = ticker_train_df[t1_col]
 
             # Run calibration strictly on training set series
             alpha = calibrate_cusum_alpha(
@@ -213,6 +246,8 @@ class AssetOrganiser:
                 alpha_max=alpha_max,
                 alpha_step=alpha_step,
                 span=span,
+                objective=objective,
+                t1=ticker_train_t1,
             )
             calibrated_alphas[tk] = alpha
 
@@ -367,12 +402,24 @@ class AssetOrganiser:
         alpha_min: float = 0.5,
         alpha_max: float = 3.0,
         alpha_step: float = 0.1,
+        objective: str = "budget",
+        t1_col: Optional[str] = None,
     ) -> Dict[str, float]:
         """
         Orchestrates the preparation pipeline to strictly prevent sequential data hazards:
         1. Computes continuous labels (avoiding look-ahead scaling errors).
         2. Down-samples the dataset based on dynamic CUSUM events.
         3. Calculates sample weights based on the surviving active bets (concurrency).
+
+        Parameters
+        ----------
+        objective : str, default="budget"
+            CUSUM calibration objective forwarded to ``downsample_to_cusum_events``.
+            ``"budget"`` minimises distance to ``target_events_train``;
+            ``"uniqueness"`` maximises average sample uniqueness.
+        t1_col : Optional[str], default=None
+            Column name for ``t1`` barrier timestamps. Required when
+            ``objective="uniqueness"``.
 
         Returns
         -------
@@ -389,6 +436,8 @@ class AssetOrganiser:
             alpha_min=alpha_min,
             alpha_max=alpha_max,
             alpha_step=alpha_step,
+            objective=objective,
+            t1_col=t1_col,
         )
 
         self.apply_sample_weights(price_col=price_col)
@@ -551,6 +600,82 @@ class AssetOrganiser:
         )
 
         return df_ts[["unique_id", "ds", "y"]].copy()
+
+    def apply_ichimoku_regime(self) -> None:
+        """
+        Computes the Ichimoku Cloud and injects a binary ``ichimoku_regime``
+        column into ``self.multi_asset``, grouped by ticker.
+
+        The regime is ``1`` when the closing price is above *both* the shifted
+        Senkou Span A and Senkou Span B (i.e., the price is above the cloud),
+        and ``0`` otherwise.  Warm-up bars where the cloud spans are NaN
+        (roughly the first 78 periods) are also set to ``0``.
+
+        Raw Ichimoku component columns are dropped immediately after the mask
+        is created to keep the feature matrix clean.  **No rows are dropped.**
+        The method mutates ``self.multi_asset`` in-place and calls
+        ``_split_train_test()`` at the end.
+        """
+        if self.multi_asset is None:
+            self.prepare_multi_asset_frame()
+
+        _ICHIMOKU_COLS = [
+            "tenkan_sen",
+            "kijun_sen",
+            "span_a",
+            "span_b",
+            "span_a_shifted",
+            "span_b_shifted",
+        ]
+        _ICHIMOKU_OUTPUT_NAMES = _ICHIMOKU_COLS + [None]  # chikou skipped
+
+        tickers = self.multi_asset.index.get_level_values("ticker").unique()
+        all_regime = []
+
+        for tk in tickers:
+            ticker_df = self.multi_asset.xs(tk, level="ticker").copy()
+
+            # Compute all Ichimoku components via pipe_indicator
+            ticker_df = pipe_indicator(
+                ticker_df,
+                ICHIMOKU,
+                input_map={"high": "High", "low": "Low"},
+                output_names=_ICHIMOKU_OUTPUT_NAMES,
+            )
+
+            # Build binary regime: 1 if Close is above both shifted spans
+            above_cloud = (ticker_df["Close"] > ticker_df["span_a_shifted"]) & (
+                ticker_df["Close"] > ticker_df["span_b_shifted"]
+            )
+            # Fill warm-up NaNs (first ~78 bars) with 0 (no regime)
+            ticker_df["ichimoku_regime"] = above_cloud.fillna(False).astype(int)
+
+            # Drop raw Ichimoku components to keep the feature matrix clean
+            ticker_df = ticker_df.drop(columns=_ICHIMOKU_COLS, errors="ignore")
+
+            # Rebuild multi-index for concatenation
+            regime_df = ticker_df[["ichimoku_regime"]].copy()
+            regime_df.index.name = "datetime"
+            regime_df["ticker"] = tk
+            regime_df = regime_df.reset_index().set_index(["datetime", "ticker"])
+            all_regime.append(regime_df)
+
+        if not all_regime:
+            self._split_train_test()
+            return
+
+        regime_concat = pd.concat(all_regime)
+
+        # Drop existing column if present to prevent duplicates
+        if "ichimoku_regime" in self.multi_asset.columns:
+            self.multi_asset = self.multi_asset.drop(columns=["ichimoku_regime"])
+
+        self.multi_asset = self.multi_asset.join(regime_concat, how="left")
+        # Any remaining NaNs (e.g. misaligned index edge cases) default to 0
+        self.multi_asset["ichimoku_regime"] = (
+            self.multi_asset["ichimoku_regime"].fillna(0).astype(int)
+        )
+        self._split_train_test()
 
     def update_multi_asset(self, df: pd.DataFrame) -> None:
         """

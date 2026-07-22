@@ -12,6 +12,7 @@ try:
     from mlflow.models import infer_signature
 except ImportError:
     mlflow = None
+    logging.getLogger(__name__).warning("mlflow not found")
 
 from pyquantflow.model.training import HyperparameterOptimiser
 
