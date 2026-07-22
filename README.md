@@ -140,7 +140,7 @@ organiser.prepare_multi_asset_frame()
 calibrated_alphas = organiser.build_learning_pipeline(
     target_events_train=1000,
     price_col="Close",
-    objective="budget"  # Targets a specific budget of events (e.g. 1000)
+    objective="budget",  # Targets a specific budget of events (e.g. 1000)
 )
 
 # 4. Extract Payload for MLOps Engine
@@ -164,6 +164,7 @@ organiser.apply_ichimoku_regime(mode="strict", displacement=26)
 
 # Use the stateless baseline classifier for fair cross-validation comparisons
 from pyquantflow.model.classifier import IchimokuBaselineClassifier
+
 baseline_model = IchimokuBaselineClassifier(regime_col="ichimoku_regime")
 ```
 
