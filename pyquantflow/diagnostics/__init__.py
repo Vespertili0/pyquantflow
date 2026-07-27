@@ -10,7 +10,7 @@ from ._renderer import DiagnosticResult, DiagnosticWarning, FigureFactory
 from .events import plot_cusum_events, plot_multi_asset_events
 from .uniqueness import plot_sample_concurrency
 from .barriers import plot_barrier_trajectories
-from . import _accessors  # side-effect: injects methods onto AssetOrganiser
+from . import _accessors  # noqa: F401  # side-effect: injects methods onto AssetOrganiser
 
 __all__ = [
     "DiagnosticResult",
