@@ -13,6 +13,15 @@
   <a href="https://codecov.io/gh/Vespertili0/pyquantflow">
     <img src="https://codecov.io/gh/Vespertili0/pyquantflow/branch/main/graph/badge.svg" alt="Codecov">
   </a>
+  <a href="https://sqlite.org/">
+    <img src="https://img.shields.io/badge/SQLite-003B57?style=flat&logo=sqlite&logoColor=white" alt="SQLite">
+  </a>
+  <a href="https://scikit-learn.org/">
+    <img src="https://img.shields.io/badge/scikit--learn-F7931E?style=flat&logo=scikit-learn&logoColor=white" alt="Scikit-Learn">
+  </a>
+  <a href="https://mlflow.org/">
+    <img src="https://img.shields.io/badge/MLflow-0194E2?style=flat&logo=mlflow&logoColor=white" alt="MLflow">
+  </a>
 </p>
 
 # pyquantflow

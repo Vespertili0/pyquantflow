@@ -13,3 +13,7 @@ mlruns/
 mlflow.db
 .pre-commit-config.yaml
 .agents/
+.ruff_cache/
+.pytest_cache/
+.python-version
+notebooks/
