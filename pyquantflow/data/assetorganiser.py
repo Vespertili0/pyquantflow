@@ -285,7 +285,7 @@ class AssetOrganiser:
 
         # 3. Down-sample the organiser's multi-asset DataFrame using these events
         self.downsample_to_events(events_map)
-        
+
         self.cusum_events_map = events_map
 
         return calibrated_alphas

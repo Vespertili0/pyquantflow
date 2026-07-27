@@ -60,9 +60,7 @@ def _ao_plot_sample_concurrency(
         raise KeyError("'t1' column missing. Call apply_continuous_labels() first.")
     weight_col = self.weight_col if self.weight_col else "weight"
     weight_series = (
-        self.multi_asset[weight_col]
-        if weight_col in self.multi_asset.columns
-        else None
+        self.multi_asset[weight_col] if weight_col in self.multi_asset.columns else None
     )
     return plot_sample_concurrency(
         t1_series=self.multi_asset["t1"],
