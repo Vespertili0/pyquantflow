@@ -66,6 +66,7 @@ class AssetOrganiser:
         self.target_features: List[str] = target_features
         self.weight_col: Optional[str] = weight_col
         self.label_factory: Optional[BaseLabelFactory] = label_factory
+        self.cusum_events_map: Optional[Dict[str, pd.DatetimeIndex]] = None
 
         self.multi_asset: Optional[pd.DataFrame] = multi_asset
         self.multi_asset_train: Optional[pd.DataFrame] = None
@@ -284,6 +285,8 @@ class AssetOrganiser:
 
         # 3. Down-sample the organiser's multi-asset DataFrame using these events
         self.downsample_to_events(events_map)
+
+        self.cusum_events_map = events_map
 
         return calibrated_alphas
 

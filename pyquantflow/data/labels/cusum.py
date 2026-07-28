@@ -1,5 +1,5 @@
 """
-CUSUM Labelling Module
+ Labelling Module
 
 This module provides implementations of the Symmetric CUSUM Filter as proposed
 by Marcos Lopez de Prado. It includes functions for extracting CUSUM events

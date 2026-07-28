@@ -30,6 +30,7 @@ Focus ONLY on lines changed in this diff. Evaluate for:
 - Correctness: logic errors, null/undefined handling, race conditions, edge cases.
 - Security: injection risks, hardcoded secrets, auth flaws, sensitive data in logs.
 - Reliability: missing error handling, unhandled promise rejections.
+- Dependency Version Verification: when evaluating dependency versions (e.g., in pyproject.toml, package.json, or requirements.txt), be aware that your internal knowledge has a cut-off date. Do not confidently flag unrecognised high version numbers as [BLOCKING] hallucinations or supply chain attacks solely because you do not recognise them. Instead, flag them as a [WARN], explicitly state that your assessment is limited by your training data cut-off, and recommend that the author or CI/CD pipelines verify the availability of these versions.
 
 # Severity tags
 Tag each finding EXACTLY one of:
