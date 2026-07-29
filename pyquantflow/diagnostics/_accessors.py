@@ -148,8 +148,13 @@ def _psc_plot_meta_diagnostics(self, X, y_true):
     from .metalabel import plot_meta_label_entropy
 
     enriched = self.transform(X)
+    if not hasattr(y_true, 'iloc'):
+        y_true = pd.Series(y_true, index=enriched.index, name="label")
+    else:
+        y_true = y_true.rename("label")
+        
     return plot_meta_label_entropy(
-        enriched.join(y_true.rename("label"), how="left"),
+        enriched.join(y_true, how="left"),
     )
 
 
