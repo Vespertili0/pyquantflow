@@ -1,7 +1,7 @@
 """
 Meta-Labeling & Entropy Diagnostics
 
-Validates whether the secondary meta-model is genuinely gating on primary 
+Validates whether the secondary meta-model is genuinely gating on primary
 prediction uncertainty (Shannon entropy) or filtering arbitrarily.
 """
 
@@ -52,7 +52,10 @@ def plot_meta_label_entropy(
         cols=1,
         row_heights=[0.6, 0.4],
         vertical_spacing=0.1,
-        subplot_titles=("Primary Entropy vs True Target", "Entropy Distribution by Secondary Decision"),
+        subplot_titles=(
+            "Primary Entropy vs True Target",
+            "Entropy Distribution by Secondary Decision",
+        ),
     )
 
     y_col = return_col if return_col else target_col
@@ -60,19 +63,15 @@ def plot_meta_label_entropy(
     # Top panel: Scatter
     # We plot by label to color-encode
     label_colors = {
-        2: PALETTE["tp"],       # Take Profit
-        0: PALETTE["sl"],       # Stop Loss
-        1: PALETTE["timeout"]   # Timeout
+        2: PALETTE["tp"],  # Take Profit
+        0: PALETTE["sl"],  # Stop Loss
+        1: PALETTE["timeout"],  # Timeout
     }
-    label_names = {
-        2: "TP (2)",
-        0: "SL (0)",
-        1: "Timeout (1)"
-    }
+    label_names = {2: "TP (2)", 0: "SL (0)", 1: "Timeout (1)"}
 
     # Ensure target_col is numeric for comparison if it's the default 0,1,2
     unique_labels = df[target_col].dropna().unique()
-    
+
     for lbl in unique_labels:
         mask = df[target_col] == lbl
         color = label_colors.get(lbl, PALETTE["accent_1"])

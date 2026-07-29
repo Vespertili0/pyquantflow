@@ -1,7 +1,7 @@
 """
 CPCV Path Fan Chart & PBO Visualiser
 
-Measures and visualises the Probability of Backtest Overfitting (PBO) across all 
+Measures and visualises the Probability of Backtest Overfitting (PBO) across all
 combinatorial paths from StrategyLab's out-of-sample combinations.
 """
 
@@ -11,7 +11,7 @@ import plotly.subplots
 import plotly.graph_objects as go
 from typing import Any
 
-from ._renderer import DiagnosticResult, FigureFactory, PALETTE
+from ._renderer import DiagnosticResult, PALETTE
 
 
 def plot_cpcv_paths(
@@ -29,7 +29,7 @@ def plot_cpcv_paths(
     benchmark_sharpe : float, default=0.0
         The target Sharpe Ratio below which a strategy is considered overfit.
     annualisation_factor : float, default=252.0
-        Periods per year used in the backtest (unused mathematically here since 
+        Periods per year used in the backtest (unused mathematically here since
         the skfolio.Population handles annualisation natively, provided for API parity).
 
     Returns
@@ -66,7 +66,10 @@ def plot_cpcv_paths(
         cols=1,
         row_heights=[0.6, 0.4],
         vertical_spacing=0.1,
-        subplot_titles=("OOS Equity Paths (Combinatorial CV)", "Distribution of OOS Sharpe Ratios"),
+        subplot_titles=(
+            "OOS Equity Paths (Combinatorial CV)",
+            "Distribution of OOS Sharpe Ratios",
+        ),
     )
 
     # Top panel: Fan chart
@@ -84,7 +87,7 @@ def plot_cpcv_paths(
         row=1,
         col=1,
     )
-    
+
     fig.add_trace(
         go.Scatter(
             x=common_index,
@@ -100,7 +103,7 @@ def plot_cpcv_paths(
     )
 
     # Plot all individual paths very faintly
-    # Subsampling might be necessary if n_paths is huge (e.g. thousands), 
+    # Subsampling might be necessary if n_paths is huge (e.g. thousands),
     # but Plotly handles hundreds fine.
     for i in range(n_paths):
         fig.add_trace(
@@ -190,7 +193,7 @@ def plot_cpcv_paths(
         yaxis_title="Cumulative Equity",
         yaxis2_title="Count",
     )
-    
+
     # Use logarithmic y-axis if equity grows significantly (optional, leaving linear as default)
     # fig.update_yaxes(type="log", row=1, col=1)
 

@@ -5,7 +5,6 @@ Provides visual proof of stationarity (ADF tests) and feature distribution
 shifts (CUSUM downsampling impact) using Fractional Differentiation (FFD).
 """
 
-import warnings
 import numpy as np
 import pandas as pd
 import plotly.subplots
@@ -13,7 +12,7 @@ import plotly.graph_objects as go
 from scipy.stats import gaussian_kde, entropy as scipy_entropy, wasserstein_distance
 from typing import Optional, List
 
-from ._renderer import DiagnosticResult, FigureFactory, PALETTE
+from ._renderer import DiagnosticResult, PALETTE
 from pyquantflow.data.features.fractional_differentiation import _adf_test_stat
 
 
@@ -204,7 +203,7 @@ def plot_stationarity_profile(
 
     # Bottom panel: ACF
     lags = list(range(max_lags + 1))
-    
+
     # Calculate ACF manually avoiding statsmodels dependency
     raw_acf = [raw_series.autocorr(lag=k) for k in lags]
     ffd_acf = [ffd_series.dropna().autocorr(lag=k) for k in lags]

@@ -1,15 +1,14 @@
 """
 CV Split Leakage Auditor
 
-Provides visual proof that training label event horizons do not overlap with test 
+Provides visual proof that training label event horizons do not overlap with test
 evaluation windows, and exposes fold-to-fold feature distribution drift.
 """
 
 import warnings
 import pandas as pd
 import plotly.graph_objects as go
-import plotly.subplots
-from typing import Union, List
+from typing import Union
 
 from ._renderer import DiagnosticResult, FigureFactory, DiagnosticWarning, PALETTE
 from pyquantflow.model.cross_validation import PurgedKFoldCV, CombinatorialPurgedKFold
@@ -38,7 +37,7 @@ def plot_cv_splits(
         Figure with Gantt chart of splits and leakage metadata.
     """
     fig = FigureFactory.create()
-    
+
     # Generate splits
     splits = list(cv_splitter.split(X, y))
     n_splits = len(splits)
@@ -48,7 +47,7 @@ def plot_cv_splits(
         times = X.index.get_level_values("datetime")
     else:
         times = X.index
-        
+
     is_cpcv = isinstance(cv_splitter, CombinatorialPurgedKFold)
 
     # Get t1 series (if available)
@@ -69,15 +68,15 @@ def plot_cv_splits(
     for i, (train_idx, test_idx) in enumerate(splits):
         if len(train_idx) == 0 or len(test_idx) == 0:
             continue
-            
+
         train_start_ts = times[train_idx[0]]
         train_end_ts = times[train_idx[-1]]
         test_start_ts = times[test_idx[0]]
         test_end_ts = times[test_idx[-1]]
-        
+
         train_duration = (train_end_ts - train_start_ts).total_seconds() * 1000  # ms
         test_duration = (test_end_ts - test_start_ts).total_seconds() * 1000
-        
+
         # Check leakage
         if t1 is not None:
             # We want to find if any t1 from train overlaps with the test window.
@@ -85,7 +84,7 @@ def plot_cv_splits(
             # has a horizon that falls within the test window.
             train_times = times[train_idx]
             train_t1s = t1.iloc[train_idx]
-            
+
             # Identify train samples before test split
             mask_before = train_times < test_start_ts
             if mask_before.any():
@@ -97,7 +96,7 @@ def plot_cv_splits(
                     leaking_fold_indices.append(i)
 
         # Plot Train Segment
-        # NOTE: Plotly Bar with datetime base and timedelta x has quirks. 
+        # NOTE: Plotly Bar with datetime base and timedelta x has quirks.
         # Using ms for duration and datetime for base works well with go.Bar(orientation='h').
         fig.add_trace(
             go.Bar(
@@ -110,7 +109,7 @@ def plot_cv_splits(
                 showlegend=(i == 0),
             )
         )
-        
+
         # Plot Test Segment
         fig.add_trace(
             go.Bar(
@@ -123,31 +122,31 @@ def plot_cv_splits(
                 showlegend=(i == 0),
             )
         )
-        
+
         # Purged zone
         fig.add_vrect(
-            x0=train_end_ts, 
-            x1=test_start_ts, 
-            fillcolor=PALETTE["sl"], 
-            opacity=0.15, 
-            layer="below", 
-            line_width=0
+            x0=train_end_ts,
+            x1=test_start_ts,
+            fillcolor=PALETTE["sl"],
+            opacity=0.15,
+            layer="below",
+            line_width=0,
         )
-        
+
         # Embargo zone computation
         # Approximate visually by using test_end_ts + some delta.
         # This is purely visual representation for the Gantt.
         # A true embargo end time depends on unique times in dataset.
-        embargo_end_ts = test_end_ts + pd.Timedelta(days=5) # Visual approximation
+        embargo_end_ts = test_end_ts + pd.Timedelta(days=5)  # Visual approximation
         fig.add_vrect(
-            x0=test_end_ts, 
-            x1=embargo_end_ts, 
-            fillcolor="grey", 
-            opacity=0.10, 
-            layer="below", 
-            line_width=0
+            x0=test_end_ts,
+            x1=embargo_end_ts,
+            fillcolor="grey",
+            opacity=0.10,
+            layer="below",
+            line_width=0,
         )
-        
+
         # Plot t1 tick marks
         if t1 is not None:
             t1_train_vals = t1.iloc[train_idx].dropna().values
@@ -212,14 +211,14 @@ def plot_fold_feature_drift(
         Figure with violin plots per fold and feature drift metadata.
     """
     fig = FigureFactory.create()
-    
+
     # We just need a dummy y to generate splits
     dummy_y = pd.Series(0, index=X.index)
     splits = list(cv_splitter.split(X, dummy_y))
-    
+
     for i, (train_idx, _) in enumerate(splits):
         train_vals = X.iloc[train_idx][feature_col].dropna().values
-        
+
         fig.add_trace(
             go.Violin(
                 y=train_vals,
@@ -229,7 +228,7 @@ def plot_fold_feature_drift(
                 line_color=PALETTE["accent_1"],
             )
         )
-        
+
     fig.update_layout(
         template="plotly_dark",
         font={"family": "Inter, DM Mono, monospace", "size": 13},

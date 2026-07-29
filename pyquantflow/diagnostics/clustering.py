@@ -13,7 +13,7 @@ import scipy.cluster.hierarchy as sch
 import scipy.spatial.distance as ssd
 from typing import Optional, Dict, Union
 
-from ._renderer import DiagnosticResult, FigureFactory, PALETTE
+from ._renderer import DiagnosticResult, PALETTE
 
 
 def plot_feature_clusters(
@@ -29,7 +29,7 @@ def plot_feature_clusters(
     Parameters
     ----------
     regime_results : dict or pd.DataFrame
-        Either the raw nested dict from `evaluate_importance()` or the 
+        Either the raw nested dict from `evaluate_importance()` or the
         consolidated `importance_df` from `FeatureEvaluator`.
     correlation_matrix : pd.DataFrame
         Pearson correlation matrix of the features.
@@ -54,19 +54,25 @@ def plot_feature_clusters(
             df = df.reset_index()
         else:
             # Aggregate across regimes
-            df = regime_results.groupby(level=1).agg({
-                "features": "first",
-                "sfi_mean": "mean",
-                "sfi_std": "mean",
-                "mda_mean": "mean",
-                "mda_std": "mean",
-            }).reset_index()
+            df = (
+                regime_results.groupby(level=1)
+                .agg(
+                    {
+                        "features": "first",
+                        "sfi_mean": "mean",
+                        "sfi_std": "mean",
+                        "mda_mean": "mean",
+                        "mda_std": "mean",
+                    }
+                )
+                .reset_index()
+            )
     else:
         # We received the raw nested dict
         if regime_id is not None:
             if regime_id not in regime_results:
                 raise KeyError(f"Regime {regime_id} not found in regime_results")
-            
+
             sfi_df = regime_results[regime_id]["SFI"]
             mda_df = regime_results[regime_id]["MDA"]
             df = sfi_df.join(mda_df[["mda_mean", "mda_std"]], how="outer").reset_index()
@@ -78,15 +84,21 @@ def plot_feature_clusters(
                 mda_df = inner_dict["MDA"]
                 merged = sfi_df.join(mda_df[["mda_mean", "mda_std"]], how="outer")
                 regime_dfs.append(merged)
-            
+
             df_all = pd.concat(regime_dfs, axis=0).reset_index()
-            df = df_all.groupby("cluster_id").agg({
-                "features": "first",
-                "sfi_mean": "mean",
-                "sfi_std": "mean",
-                "mda_mean": "mean",
-                "mda_std": "mean",
-            }).reset_index()
+            df = (
+                df_all.groupby("cluster_id")
+                .agg(
+                    {
+                        "features": "first",
+                        "sfi_mean": "mean",
+                        "sfi_std": "mean",
+                        "mda_mean": "mean",
+                        "mda_std": "mean",
+                    }
+                )
+                .reset_index()
+            )
 
     # Build cluster assignments map
     cluster_assignments = {}
@@ -102,21 +114,24 @@ def plot_feature_clusters(
         dist = np.sqrt(0.5 * (1 - correlation_matrix.clip(-1, 1)))
         condensed = ssd.squareform(dist.values, checks=False)
         linkage_matrix = sch.linkage(condensed, method=method)
-    
+
     # Get dendrogram leaf ordering
     dendro = sch.dendrogram(linkage_matrix, no_plot=True)
     leaves = dendro["leaves"]
-    
+
     # Reorder correlation matrix
     ordered_labels = [correlation_matrix.columns[i] for i in leaves]
     reordered_corr = correlation_matrix.iloc[leaves, leaves]
 
     # 3. Build Figure
     fig = plotly.subplots.make_subplots(
-        rows=1, 
-        cols=2, 
+        rows=1,
+        cols=2,
         column_widths=[0.55, 0.45],
-        subplot_titles=("Feature Correlation (Dendrogram Sorted)", "Cluster Importance (MDA vs SFI)"),
+        subplot_titles=(
+            "Feature Correlation (Dendrogram Sorted)",
+            "Cluster Importance (MDA vs SFI)",
+        ),
         horizontal_spacing=0.1,
     )
 
@@ -140,13 +155,16 @@ def plot_feature_clusters(
     # Right panel: Bar Chart
     PALETTE_LIST = list(PALETTE.values())
     sorted_cluster_ids = sorted(df["cluster_id"].unique())
-    cluster_colour = {cid: PALETTE_LIST[i % len(PALETTE_LIST)] for i, cid in enumerate(sorted_cluster_ids)}
+    cluster_colour = {
+        cid: PALETTE_LIST[i % len(PALETTE_LIST)]
+        for i, cid in enumerate(sorted_cluster_ids)
+    }
 
     for _, row in df.iterrows():
         cid = int(row["cluster_id"])
         c_colour = cluster_colour[cid]
         c_name = f"Cluster {cid}"
-        
+
         # MDA Bar
         fig.add_trace(
             go.Bar(
@@ -161,7 +179,7 @@ def plot_feature_clusters(
             row=1,
             col=2,
         )
-        
+
         # SFI Bar
         fig.add_trace(
             go.Bar(

@@ -1,7 +1,7 @@
 """
 Explosive Bubble & SADF Regime Diagnostics
 
-Audits whether event triggers and model signals fire in safe, stationary regimes 
+Audits whether event triggers and model signals fire in safe, stationary regimes
 versus dangerous explosive bubble phases detected by the GSADF statistic.
 """
 
@@ -11,7 +11,7 @@ import plotly.subplots
 import plotly.graph_objects as go
 from typing import Optional, Union
 
-from ._renderer import DiagnosticResult, FigureFactory, PALETTE
+from ._renderer import DiagnosticResult, PALETTE
 
 
 def plot_sadf_regimes(
@@ -94,7 +94,7 @@ def plot_sadf_regimes(
 
         # Align events to closest price bars for y-values
         price_at_events = price_series.reindex(events_ts, method="nearest")
-        
+
         fig.add_trace(
             go.Scatter(
                 x=events_ts,
@@ -108,12 +108,12 @@ def plot_sadf_regimes(
             row=1,
             col=1,
         )
-        
+
         # Check how many events fall into explosive regimes
         sadf_at_events = sadf_series.reindex(events_ts, method="nearest")
         events_in_bubbles = sadf_at_events > critical_value
         n_events_in_explosive = int(events_in_bubbles.sum())
-        
+
         if len(events_ts) > 0:
             pct_events_in_explosive = float(n_events_in_explosive / len(events_ts))
 
@@ -149,7 +149,7 @@ def plot_sadf_regimes(
         plot_bgcolor="#0F0F13",
         title=plot_title,
     )
-    
+
     # Remove rangeslider
     fig.update_xaxes(rangeslider_visible=False)
 
