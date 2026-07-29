@@ -66,12 +66,20 @@ def plot_sadf_regimes(
     # Explosive vrects detection
     mask = sadf_series > critical_value
     if mask.any():
+        # Estimate bar size for padding single-bar regimes
+        bar_size = sadf_series.index[1] - sadf_series.index[0] if len(sadf_series) > 1 else 1
+
         # Find contiguous blocks where mask is True
         changes = mask.ne(mask.shift()).cumsum()
         for _, grp in sadf_series[mask].groupby(changes[mask]):
+            x0 = grp.index[0]
+            x1 = grp.index[-1]
+            if len(grp) == 1:
+                x1 = x0 + bar_size
+
             fig.add_vrect(
-                x0=grp.index[0],
-                x1=grp.index[-1],
+                x0=x0,
+                x1=x1,
                 fillcolor=PALETTE["sl"],
                 opacity=0.2,
                 layer="below",

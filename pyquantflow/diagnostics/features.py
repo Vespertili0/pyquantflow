@@ -65,6 +65,10 @@ def plot_downsampling_shift(
             divergence_scores[col] = np.nan
             continue
 
+        if raw_vals.var() == 0 or event_vals.var() == 0:
+            divergence_scores[col] = np.nan
+            continue
+
         raw_kde = gaussian_kde(raw_vals)
         event_kde = gaussian_kde(event_vals)
 
@@ -207,8 +211,7 @@ def plot_stationarity_profile(
     # Calculate ACF manually avoiding statsmodels dependency
     def _calc_acf(series, k):
         if isinstance(series.index, pd.MultiIndex) and "ticker" in series.index.names:
-            shifted = series.groupby(level="ticker").shift(k)
-            return series.corr(shifted)
+            return series.groupby(level="ticker").apply(lambda x: x.autocorr(lag=k)).mean()
         return series.autocorr(lag=k)
 
     raw_acf = [_calc_acf(raw_series, k) for k in lags]

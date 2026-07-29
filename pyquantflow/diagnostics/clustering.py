@@ -106,12 +106,12 @@ def plot_feature_clusters(
         c_id = int(row["cluster_id"])
         features_str = str(row["features"])
         # Split features by comma and trim whitespace
-        for feat in [f.strip() for f in features_str.split(",") if f.strip()]:
+        for feat in (f.strip() for f in features_str.split(",") if f.strip()):
             cluster_assignments[feat] = c_id
 
     # 2. Linkage Computation
     if linkage_matrix is None:
-        dist = np.sqrt(0.5 * (1 - correlation_matrix.clip(-1, 1)))
+        dist = np.sqrt(0.5 * (1 - correlation_matrix.fillna(0).clip(-1, 1)))
         condensed = ssd.squareform(dist.values, checks=False)
         linkage_matrix = sch.linkage(condensed, method=method)
 
