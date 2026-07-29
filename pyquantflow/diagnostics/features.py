@@ -211,7 +211,9 @@ def plot_stationarity_profile(
     # Calculate ACF manually avoiding statsmodels dependency
     def _calc_acf(series, k):
         if isinstance(series.index, pd.MultiIndex) and "ticker" in series.index.names:
-            return series.groupby(level="ticker").apply(lambda x: x.autocorr(lag=k)).mean()
+            return (
+                series.groupby(level="ticker").apply(lambda x: x.autocorr(lag=k)).mean()
+            )
         return series.autocorr(lag=k)
 
     raw_acf = [_calc_acf(raw_series, k) for k in lags]

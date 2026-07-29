@@ -67,7 +67,9 @@ def plot_sadf_regimes(
     mask = sadf_series > critical_value
     if mask.any():
         # Estimate bar size for padding single-bar regimes
-        bar_size = sadf_series.index[1] - sadf_series.index[0] if len(sadf_series) > 1 else 1
+        bar_size = (
+            sadf_series.index[1] - sadf_series.index[0] if len(sadf_series) > 1 else 1
+        )
 
         # Find contiguous blocks where mask is True
         changes = mask.ne(mask.shift()).cumsum()
