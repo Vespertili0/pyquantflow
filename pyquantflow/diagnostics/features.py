@@ -205,8 +205,14 @@ def plot_stationarity_profile(
     lags = list(range(max_lags + 1))
 
     # Calculate ACF manually avoiding statsmodels dependency
-    raw_acf = [raw_series.autocorr(lag=k) for k in lags]
-    ffd_acf = [ffd_series.dropna().autocorr(lag=k) for k in lags]
+    def _calc_acf(series, k):
+        if isinstance(series.index, pd.MultiIndex) and "ticker" in series.index.names:
+            shifted = series.groupby(level="ticker").shift(k)
+            return series.corr(shifted)
+        return series.autocorr(lag=k)
+
+    raw_acf = [_calc_acf(raw_series, k) for k in lags]
+    ffd_acf = [_calc_acf(ffd_series.dropna(), k) for k in lags]
 
     fig.add_trace(
         go.Bar(
@@ -235,7 +241,13 @@ def plot_stationarity_profile(
     )
 
     # Annotations & Layout
-    adf_stat = _adf_test_stat(ffd_series.dropna())
+    def _calc_adf(series):
+        if isinstance(series.index, pd.MultiIndex) and "ticker" in series.index.names:
+            stats = series.groupby(level="ticker").apply(lambda x: _adf_test_stat(x.dropna()))
+            return stats.mean()
+        return _adf_test_stat(series.dropna())
+
+    adf_stat = _calc_adf(ffd_series)
     if np.isnan(adf_stat):
         adf_stat = 0.0
 

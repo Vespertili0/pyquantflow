@@ -64,6 +64,8 @@ def plot_cv_splits(
 
     has_leakage = False
     leaking_fold_indices = []
+    
+    is_datetime = pd.api.types.is_datetime64_any_dtype(times)
 
     for i, (train_idx, test_idx) in enumerate(splits):
         if len(train_idx) == 0 or len(test_idx) == 0:
@@ -74,8 +76,12 @@ def plot_cv_splits(
         test_start_ts = times[test_idx[0]]
         test_end_ts = times[test_idx[-1]]
 
-        train_duration = (train_end_ts - train_start_ts).total_seconds() * 1000  # ms
-        test_duration = (test_end_ts - test_start_ts).total_seconds() * 1000
+        if is_datetime:
+            train_duration = (train_end_ts - train_start_ts).total_seconds() * 1000  # ms
+            test_duration = (test_end_ts - test_start_ts).total_seconds() * 1000
+        else:
+            train_duration = train_end_ts - train_start_ts
+            test_duration = test_end_ts - test_start_ts
 
         # Check leakage
         if t1 is not None:
@@ -89,8 +95,8 @@ def plot_cv_splits(
             mask_before = train_times < test_start_ts
             if mask_before.any():
                 t1s_before = train_t1s[mask_before]
-                # A leak occurs if a training sample's event end time is in the test window
-                leaks = (t1s_before >= test_start_ts) & (t1s_before <= test_end_ts)
+                # A leak occurs if a training sample's event end time extends into or past the test window
+                leaks = (t1s_before >= test_start_ts)
                 if leaks.any():
                     has_leakage = True
                     leaking_fold_indices.append(i)
@@ -137,7 +143,10 @@ def plot_cv_splits(
         # Approximate visually by using test_end_ts + some delta.
         # This is purely visual representation for the Gantt.
         # A true embargo end time depends on unique times in dataset.
-        embargo_end_ts = test_end_ts + pd.Timedelta(days=5)  # Visual approximation
+        if is_datetime:
+            embargo_end_ts = test_end_ts + pd.Timedelta(days=5)  # Visual approximation
+        else:
+            embargo_end_ts = test_end_ts + max(5, int(test_duration * 0.1))
         fig.add_vrect(
             x0=test_end_ts,
             x1=embargo_end_ts,
@@ -169,15 +178,20 @@ def plot_cv_splits(
             stacklevel=2,
         )
 
-    fig.update_layout(
+    layout_kwargs = dict(
         template="plotly_dark",
         font={"family": "Inter, DM Mono, monospace", "size": 13},
         paper_bgcolor="#0F0F13",
         plot_bgcolor="#0F0F13",
         barmode="overlay",
         title="Cross-Validation Splits & Purging",
-        xaxis_type="date",
     )
+    if is_datetime:
+        layout_kwargs["xaxis_type"] = "date"
+    else:
+        layout_kwargs["xaxis_type"] = "linear"
+        
+    fig.update_layout(**layout_kwargs)
 
     metadata = {
         "n_splits": n_splits,
