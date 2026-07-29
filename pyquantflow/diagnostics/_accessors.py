@@ -4,6 +4,7 @@ AssetOrganiser Accessors Module
 Side-effect module that binds diagnostic plotting wrapper methods directly onto `AssetOrganiser`.
 """
 
+import pandas as pd
 from pyquantflow.data.assetorganiser import AssetOrganiser
 from pyquantflow.data.sk_transformers import GSADFTransformer
 from pyquantflow.model.classifier import PrimarySecondaryClassifier
@@ -68,12 +69,22 @@ def _ao_plot_sample_concurrency(
     """
     if "t1" not in self.multi_asset.columns:
         raise KeyError("'t1' column missing. Call apply_continuous_labels() first.")
+
+    t1_series = self.multi_asset["t1"]
+    if isinstance(t1_series.index, pd.MultiIndex):
+        if "ticker" in t1_series.index.names:
+            t1_series = t1_series.reset_index(level="ticker", drop=True)
+
     weight_col = self.weight_col if self.weight_col else "weight"
     weight_series = (
         self.multi_asset[weight_col] if weight_col in self.multi_asset.columns else None
     )
+    if weight_series is not None and isinstance(weight_series.index, pd.MultiIndex):
+        if "ticker" in weight_series.index.names:
+            weight_series = weight_series.reset_index(level="ticker", drop=True)
+
     return plot_sample_concurrency(
-        t1_series=self.multi_asset["t1"],
+        t1_series=t1_series,
         weight_series=weight_series,
         concurrency_threshold_pct=concurrency_threshold_pct,
     )

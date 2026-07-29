@@ -558,5 +558,296 @@ class TestAccessors(unittest.TestCase):
         self.assertTrue(hasattr(GSADFTransformer, "plot_sadf_regimes"))
 
 
+class TestClusteringCoverage(unittest.TestCase):
+    def test_regime_dict_no_regime_id(self):
+        regime_results = make_importance_results(n_clusters=2, n_features=4)
+        corr_matrix = pd.DataFrame(
+            np.eye(4),
+            columns=["f_1_0", "f_1_1", "f_2_0", "f_2_1"],
+            index=["f_1_0", "f_1_1", "f_2_0", "f_2_1"],
+        )
+        res = plot_feature_clusters(regime_results, corr_matrix, regime_id=None)
+        self.assertIsNotNone(res)
+
+    def test_regime_dict_bad_regime_id(self):
+        regime_results = make_importance_results(n_clusters=2, n_features=4)
+        corr_matrix = pd.DataFrame(
+            np.eye(4),
+            columns=["f_1_0", "f_1_1", "f_2_0", "f_2_1"],
+            index=["f_1_0", "f_1_1", "f_2_0", "f_2_1"],
+        )
+        with self.assertRaises(KeyError):
+            plot_feature_clusters(regime_results, corr_matrix, regime_id=999)
+
+    def test_dataframe_with_regime_id(self):
+        regime_results = make_importance_results(n_clusters=2, n_features=4)
+        dfs = []
+        for r_id, r_data in regime_results.items():
+            df = r_data["SFI"].join(r_data["MDA"][["mda_mean", "mda_std"]], how="outer")
+            df["regime"] = r_id
+            dfs.append(df)
+        df_all = pd.concat(dfs).reset_index().set_index(["regime", "cluster_id"])
+
+        corr_matrix = pd.DataFrame(
+            np.eye(4),
+            columns=["f_1_0", "f_1_1", "f_2_0", "f_2_1"],
+            index=["f_1_0", "f_1_1", "f_2_0", "f_2_1"],
+        )
+        res = plot_feature_clusters(df_all, corr_matrix, regime_id=0)
+        self.assertIsNotNone(res)
+
+    def test_dataframe_no_regime_id(self):
+        regime_results = make_importance_results(n_clusters=2, n_features=4)
+        dfs = []
+        for r_id, r_data in regime_results.items():
+            df = r_data["SFI"].join(r_data["MDA"][["mda_mean", "mda_std"]], how="outer")
+            df["regime"] = r_id
+            dfs.append(df)
+        df_all = pd.concat(dfs).reset_index().set_index(["regime", "cluster_id"])
+        corr_matrix = pd.DataFrame(
+            np.eye(4),
+            columns=["f_1_0", "f_1_1", "f_2_0", "f_2_1"],
+            index=["f_1_0", "f_1_1", "f_2_0", "f_2_1"],
+        )
+        res = plot_feature_clusters(df_all, corr_matrix, regime_id=None)
+        self.assertIsNotNone(res)
+
+    def test_empty_dataframe(self):
+        df_all = pd.DataFrame(
+            columns=[
+                "regime",
+                "cluster_id",
+                "features",
+                "sfi_mean",
+                "sfi_std",
+                "mda_mean",
+                "mda_std",
+            ]
+        ).set_index(["regime", "cluster_id"])
+        corr_matrix = pd.DataFrame(
+            np.eye(4),
+            columns=["f_1_0", "f_1_1", "f_2_0", "f_2_1"],
+            index=["f_1_0", "f_1_1", "f_2_0", "f_2_1"],
+        )
+        res = plot_feature_clusters(df_all, corr_matrix, regime_id=None)
+        self.assertEqual(res.metadata["top_cluster_id"], -1)
+
+    def test_provided_linkage_matrix(self):
+        regime_results = make_importance_results(n_clusters=2, n_features=4)
+        corr_matrix = pd.DataFrame(
+            np.eye(4),
+            columns=["f_1_0", "f_1_1", "f_2_0", "f_2_1"],
+            index=["f_1_0", "f_1_1", "f_2_0", "f_2_1"],
+        )
+        dist = np.sqrt(0.5 * (1 - corr_matrix.clip(-1, 1)))
+        import scipy.spatial.distance as ssd
+        import scipy.cluster.hierarchy as sch
+
+        condensed = ssd.squareform(dist.values, checks=False)
+        linkage_matrix = sch.linkage(condensed, method="ward")
+        res = plot_feature_clusters(
+            regime_results, corr_matrix, linkage_matrix=linkage_matrix, regime_id=0
+        )
+        self.assertIsNotNone(res)
+
+
+class TestCVCoverage(unittest.TestCase):
+    def test_cpcv_splits(self):
+        cpcv = CombinatorialPurgedKFold(n_splits=4, n_test_splits=2)
+        X = pd.DataFrame(
+            np.random.randn(100, 2), index=pd.date_range("2020-01-01", periods=100)
+        )
+        y = pd.Series(np.random.randint(0, 2, 100), index=X.index)
+        res = plot_cv_splits(cpcv, X, y)
+        self.assertIsNotNone(res)
+
+    def test_pkf_t1_as_string(self):
+        X = pd.DataFrame(
+            np.random.randn(100, 2), index=pd.date_range("2020-01-01", periods=100)
+        )
+        X["t1_col"] = X.index + pd.Timedelta(days=2)
+        pkf = PurgedKFoldCV(n_splits=3, t1="t1_col", embargo_pct=0.01)
+        y = pd.Series(np.random.randint(0, 2, 100), index=X.index)
+        res = plot_cv_splits(pkf, X, y)
+        self.assertIsNotNone(res)
+
+    def test_pkf_t1_none(self):
+        X = pd.DataFrame(
+            np.random.randn(100, 2), index=pd.date_range("2020-01-01", periods=100)
+        )
+        pkf = PurgedKFoldCV(n_splits=3, t1=None)
+        y = pd.Series(np.random.randint(0, 2, 100), index=X.index)
+        res = plot_cv_splits(pkf, X, y)
+        self.assertIsNotNone(res)
+
+    def test_missing_train_test(self):
+        cv = PurgedKFoldCV(n_splits=2)
+
+        def bad_split(X, y=None):
+            yield [], []
+
+        cv.split = bad_split
+        X = pd.DataFrame(
+            np.random.randn(10, 2), index=pd.date_range("2020-01-01", periods=10)
+        )
+        y = pd.Series(np.random.randint(0, 2, 10), index=X.index)
+        res = plot_cv_splits(cv, X, y)
+        self.assertIsNotNone(res)
+
+
+class TestFeaturesCoverage(unittest.TestCase):
+    def test_wasserstein_metric(self):
+        raw_df, event_df = make_feature_matrix(n_features=2)
+        res = plot_downsampling_shift(
+            raw_df, event_df, ["feat_0"], divergence_metric="wasserstein"
+        )
+        self.assertEqual(res.metadata["divergence_metric"], "wasserstein")
+
+    def test_bad_divergence_metric(self):
+        raw_df, event_df = make_feature_matrix(n_features=2)
+        with self.assertRaises(ValueError):
+            plot_downsampling_shift(
+                raw_df, event_df, ["feat_0"], divergence_metric="invalid"
+            )
+
+    def test_short_data(self):
+        raw_df = pd.DataFrame({"f1": [1.0]})
+        event_df = pd.DataFrame({"f1": [1.0]})
+        res = plot_downsampling_shift(raw_df, event_df, ["f1"])
+        self.assertTrue(np.isnan(res.metadata["divergence_scores"]["f1"]))
+
+
+class TestRegimesCoverage(unittest.TestCase):
+    def test_events_as_series(self):
+        price, sadf = make_sadf_series()
+        events_idx = pd.DatetimeIndex(np.random.choice(price.index, 5, replace=False))
+        events_series = pd.Series(events_idx, index=events_idx)
+        res = plot_sadf_regimes(price, sadf, events=events_series)
+        self.assertIsNotNone(res)
+
+    def test_events_none(self):
+        price, sadf = make_sadf_series()
+        res = plot_sadf_regimes(price, sadf, events=None, title="Custom Title")
+        self.assertIsNotNone(res)
+        self.assertEqual(res.figure.layout.title.text, "Custom Title")
+
+    def test_empty_events(self):
+        price, sadf = make_sadf_series()
+        res = plot_sadf_regimes(price, sadf, events=pd.DatetimeIndex([]))
+        self.assertIsNotNone(res)
+
+    def test_empty_sadf(self):
+        price, sadf = make_sadf_series(n_bars=0, n_bubbles=0)
+        res = plot_sadf_regimes(price, sadf)
+        self.assertTrue(np.isnan(res.metadata["max_sadf_stat"]))
+
+
+class TestAccessorsCoverage(unittest.TestCase):
+    def test_ao_cusum_events(self):
+        df, events = make_cusum_events()
+        multi_asset = df.reset_index().set_index(["index"])
+        multi_asset["ticker"] = "ABC"
+        multi_asset = multi_asset.reset_index().set_index(["index", "ticker"])
+        multi_asset.index.names = ["datetime", "ticker"]
+        ao = AssetOrganiser(
+            multi_asset=multi_asset, cutoff_date="2020-01-01", target_features=["Close"]
+        )
+        ao.cusum_events_map = {"ABC": events}
+        res = ao.plot_cusum_events()
+        self.assertIsNotNone(res)
+
+    def test_ao_cusum_events_error(self):
+        df, _ = make_cusum_events()
+        multi_asset = df.reset_index().set_index(["index"])
+        multi_asset["ticker"] = "ABC"
+        multi_asset = multi_asset.reset_index().set_index(["index", "ticker"])
+        multi_asset.index.names = ["datetime", "ticker"]
+        ao = AssetOrganiser(
+            multi_asset=multi_asset, cutoff_date="2020-01-01", target_features=["Close"]
+        )
+        with self.assertRaises(AttributeError):
+            ao.plot_cusum_events()
+
+    def test_ao_sample_concurrency(self):
+        barrier_df = make_barrier_labels()
+        barrier_df = barrier_df.reset_index().rename(columns={"index": "datetime"})
+        barrier_df["ticker"] = "ABC"
+        barrier_df = barrier_df.set_index(["datetime", "ticker"])
+        ao = AssetOrganiser(
+            multi_asset=barrier_df, cutoff_date="2020-01-01", target_features=["Close"]
+        )
+        ao.weight_col = "sample_weight"
+        res = ao.plot_sample_concurrency()
+        self.assertIsNotNone(res)
+
+    def test_ao_sample_concurrency_error(self):
+        df = pd.DataFrame(
+            {"close": [1, 2, 3]}, index=pd.date_range("2020-01-01", periods=3)
+        )
+        df = df.reset_index().rename(columns={"index": "datetime"})
+        df["ticker"] = "ABC"
+        df = df.set_index(["datetime", "ticker"])
+        ao = AssetOrganiser(
+            multi_asset=df, cutoff_date="2020-01-01", target_features=["Close"]
+        )
+        with self.assertRaises(KeyError):
+            ao.plot_sample_concurrency()
+
+    @patch("pyquantflow.diagnostics.features.plot_stationarity_profile")
+    @patch("pyquantflow.data.features.fractional_differentiation.adf_screened_ffd")
+    def test_st_stationarity_profile(self, mock_ffd, mock_plot):
+        mock_ffd.return_value = (pd.Series([1, 2]), pd.Series([1, 2]))
+        st = StationaryTransformer()
+        st.optimal_d_ = {"ABC": 0.5}
+        st.ffd_thres = 1e-5
+        st.plot_stationarity_profile(pd.Series([1, 2, 3]), "ABC")
+        mock_plot.assert_called_once()
+
+    @patch("pyquantflow.diagnostics.clustering.plot_feature_clusters")
+    def test_fe_feature_clusters(self, mock_plot):
+        fe = FeatureEvaluator(features=["f1"])
+        fe.raw_features = ["f2"]
+        fe.importance_df = pd.DataFrame()
+        df = pd.DataFrame({"f1": [1, 2], "f2": [2, 3]})
+        fe.plot_feature_clusters(df)
+        mock_plot.assert_called_once()
+
+    @patch("pyquantflow.diagnostics.clustering.plot_feature_clusters")
+    def test_fe_feature_clusters_no_importance(self, mock_plot):
+        fe = FeatureEvaluator(features=["f1"])
+        fe.raw_features = ["f2"]
+        fe.importance_df = None
+        fe.evaluate_importance = MagicMock(return_value={})
+        df = pd.DataFrame({"f1": [1, 2], "f2": [2, 3]})
+        fe.plot_feature_clusters(df)
+        fe.evaluate_importance.assert_called_once()
+        mock_plot.assert_called_once()
+
+    @patch("pyquantflow.diagnostics.cv.plot_cv_splits")
+    def test_cv_splits_accessors(self, mock_plot):
+        pkf = PurgedKFoldCV(n_splits=2)
+        cpcv = CombinatorialPurgedKFold(n_splits=3, n_test_splits=1)
+        X = pd.DataFrame()
+        y = pd.Series()
+        pkf.plot_splits(X, y)
+        cpcv.plot_splits(X, y)
+        self.assertEqual(mock_plot.call_count, 2)
+
+    @patch("pyquantflow.diagnostics.metalabel.plot_meta_label_entropy")
+    def test_psc_meta_diagnostics(self, mock_plot):
+        psc = PrimarySecondaryClassifier(
+            MagicMock(), MagicMock(), primary_features=["a"], secondary_features=["a"]
+        )
+        psc.transform = MagicMock(return_value=pd.DataFrame({"a": [1]}))
+        psc.plot_meta_diagnostics(pd.DataFrame({"a": [1]}), pd.Series([1]))
+        mock_plot.assert_called_once()
+
+    @patch("pyquantflow.diagnostics.regimes.plot_sadf_regimes")
+    def test_gsadf_sadf_regimes(self, mock_plot):
+        gt = GSADFTransformer()
+        gt.plot_sadf_regimes(pd.Series([1]), pd.Series([1]))
+        mock_plot.assert_called_once()
+
+
 if __name__ == "__main__":
     unittest.main()
