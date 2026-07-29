@@ -64,7 +64,7 @@ def plot_cv_splits(
 
     has_leakage = False
     leaking_fold_indices = []
-    
+
     is_datetime = pd.api.types.is_datetime64_any_dtype(times)
 
     for i, (train_idx, test_idx) in enumerate(splits):
@@ -77,7 +77,9 @@ def plot_cv_splits(
         test_end_ts = times[test_idx[-1]]
 
         if is_datetime:
-            train_duration = (train_end_ts - train_start_ts).total_seconds() * 1000  # ms
+            train_duration = (
+                train_end_ts - train_start_ts
+            ).total_seconds() * 1000  # ms
             test_duration = (test_end_ts - test_start_ts).total_seconds() * 1000
         else:
             train_duration = train_end_ts - train_start_ts
@@ -96,7 +98,7 @@ def plot_cv_splits(
             if mask_before.any():
                 t1s_before = train_t1s[mask_before]
                 # A leak occurs if a training sample's event end time extends into or past the test window
-                leaks = (t1s_before >= test_start_ts)
+                leaks = t1s_before >= test_start_ts
                 if leaks.any():
                     has_leakage = True
                     leaking_fold_indices.append(i)
@@ -190,7 +192,7 @@ def plot_cv_splits(
         layout_kwargs["xaxis_type"] = "date"
     else:
         layout_kwargs["xaxis_type"] = "linear"
-        
+
     fig.update_layout(**layout_kwargs)
 
     metadata = {

@@ -243,7 +243,9 @@ def plot_stationarity_profile(
     # Annotations & Layout
     def _calc_adf(series):
         if isinstance(series.index, pd.MultiIndex) and "ticker" in series.index.names:
-            stats = series.groupby(level="ticker").apply(lambda x: _adf_test_stat(x.dropna()))
+            stats = series.groupby(level="ticker").apply(
+                lambda x: _adf_test_stat(x.dropna())
+            )
             return stats.mean()
         return _adf_test_stat(series.dropna())
 
