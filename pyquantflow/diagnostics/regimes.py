@@ -70,7 +70,11 @@ def plot_sadf_regimes(
         if len(sadf_series) > 1:
             bar_size = sadf_series.index[1] - sadf_series.index[0]
         else:
-            bar_size = pd.Timedelta(days=1) if pd.api.types.is_datetime64_any_dtype(sadf_series.index) else 1
+            bar_size = (
+                pd.Timedelta(days=1)
+                if pd.api.types.is_datetime64_any_dtype(sadf_series.index)
+                else 1
+            )
 
         # Find contiguous blocks where mask is True
         changes = mask.ne(mask.shift()).cumsum()
