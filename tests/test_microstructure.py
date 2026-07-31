@@ -55,6 +55,13 @@ class TestRollMeasure(unittest.TestCase):
         q = rng.choice([-1, 1], n)
         return (mid + half_spread * q).astype(np.float64)
 
+    def test_deterministic_small_array(self):
+        """Test exact expected values on a small known array from the docstring."""
+        close = np.array([100.0, 100.5, 99.5, 100.5, 99.5, 100.5])
+        result = ROLL_MEASURE(close, window=3)
+        expected = np.array([np.nan, np.nan, np.nan, np.nan, 2.1602469, 2.30940108])
+        np.testing.assert_allclose(result, expected, rtol=1e-6, equal_nan=True)
+
     def test_output_length_matches_input(self):
         """Output array must be the same length as the input."""
         close = np.random.randn(50).cumsum() + 100
@@ -240,6 +247,15 @@ class TestCorwinSchultz(unittest.TestCase):
         low = np.array([99.0, 98.0])
         result = CORWIN_SCHULTZ(high, low, window=10)
         self.assertTrue(np.all(np.isnan(result)))
+
+    def test_exact_spread_calculation(self):
+        """Test with small known inputs to ensure deterministic calculation output."""
+        high = np.array([101.0, 102.0, 101.5, 103.0, 102.0, 103.5])
+        low = np.array([99.0, 98.0, 99.5, 97.0, 98.0, 96.5])
+        expected = np.array([np.nan, np.nan, np.nan, np.nan, 0.00259673, 0.00561362])
+        
+        result = CORWIN_SCHULTZ(high, low, window=3)
+        np.testing.assert_allclose(result, expected, rtol=1e-5, atol=1e-8)
 
 
 if __name__ == "__main__":

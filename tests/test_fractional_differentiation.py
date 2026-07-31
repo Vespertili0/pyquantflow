@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 import numpy as np
 import pandas as pd
 import os
@@ -70,6 +71,29 @@ class TestFractionalDifferentiation(unittest.TestCase):
         # lags = 1, required length is lags + 2 = 3. 2 < 3, so should return NaN
         t_stat = _adf_test_stat(short_series, lags=1)
         self.assertTrue(np.isnan(t_stat))
+
+    def test_adf_test_stat_linalg_error_inv(self):
+        """Test that ADF t-statistic returns NaN when matrix inversion raises LinAlgError."""
+        # A perfectly collinear series (constant difference) will result in a singular X.T @ X matrix
+        # dy will be [1.0, 1.0, ...], constant column is [1.0, 1.0, ...], making them perfectly collinear
+        collinear_series = pd.Series([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+        
+        # When lags=1, X will have [y_lag, constant, dy_lag]
+        t_stat = _adf_test_stat(collinear_series, lags=1)
+        
+        # Should return NaN due to LinAlgError during np.linalg.inv
+        self.assertTrue(np.isnan(t_stat))
+
+    @patch('numpy.linalg.lstsq')
+    def test_adf_test_stat_linalg_error_lstsq(self, mock_lstsq):
+        """Test that ADF t-statistic returns NaN when np.linalg.lstsq raises LinAlgError."""
+        mock_lstsq.side_effect = np.linalg.LinAlgError("SVD did not converge in Linear Least Squares")
+        series = pd.Series([1.0, 2.5, 3.1, 4.8, 5.2, 6.9])
+        
+        t_stat = _adf_test_stat(series, lags=1)
+        
+        self.assertTrue(np.isnan(t_stat))
+        mock_lstsq.assert_called_once()
 
     def test_adf_p_value_thresholds(self):
         """Test ADF p-value approximations at MacKinnon boundary thresholds."""
