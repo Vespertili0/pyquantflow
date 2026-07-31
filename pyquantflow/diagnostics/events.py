@@ -40,6 +40,9 @@ def plot_cusum_events(
     """
     fig = FigureFactory.create()
 
+    if not df.index.is_unique or not df.index.is_monotonic_increasing:
+        df = df[~df.index.duplicated(keep="first")].sort_index()
+
     has_ohlc = all(col in df.columns for col in ["Open", "High", "Low", "Close"])
 
     if has_ohlc:
@@ -61,27 +64,33 @@ def plot_cusum_events(
     n_events = 0
     event_density = 0.0
 
-    if events is not None:
+    if events is not None and len(events) > 0:
         n_events = len(events)
         if len(df) > 1:
             days = (df.index[-1] - df.index[0]).days
             if days > 0:
                 event_density = n_events / (days / 252)
 
-        events_idx = pd.to_datetime(events.values, utc=True)
-        if df.index.tz is None:
-            events_idx = events_idx.tz_convert(None)
-
-        events_in_index = df.index.intersection(events_idx)
-        if len(events_in_index) < len(events):
-            y_vals = df[price_col].reindex(events_idx, method="nearest")
+        if isinstance(events, pd.DatetimeIndex):
+            events_idx = events
         else:
-            y_vals = df.loc[events_idx, price_col]
+            events_idx = pd.DatetimeIndex(events)
+
+        if df.index.tz is None:
+            if getattr(events_idx, "tz", None) is not None:
+                events_idx = events_idx.tz_convert(None)
+        else:
+            if getattr(events_idx, "tz", None) is None:
+                events_idx = events_idx.tz_localize(df.index.tz)
+            elif events_idx.tz != df.index.tz:
+                events_idx = events_idx.tz_convert(df.index.tz)
+
+        y_vals = df[price_col].reindex(events_idx, method="nearest")
 
         fig.add_trace(
             go.Scatter(
                 x=events_idx,
-                y=y_vals,
+                y=y_vals.values,
                 mode="markers",
                 marker_color=PALETTE["accent_1"],
                 marker_symbol="line-ns-open",
@@ -146,6 +155,8 @@ def plot_multi_asset_events(
     for i, ticker in enumerate(tickers):
         row = i + 1
         df_tk = multi_asset_df.xs(ticker, level="ticker")
+        if not df_tk.index.is_unique or not df_tk.index.is_monotonic_increasing:
+            df_tk = df_tk[~df_tk.index.duplicated(keep="first")].sort_index()
 
         has_ohlc = all(col in df_tk.columns for col in ["Open", "High", "Low", "Close"])
         if has_ohlc:
@@ -179,25 +190,32 @@ def plot_multi_asset_events(
 
         if events_map is not None and ticker in events_map:
             events = events_map[ticker]
-            n_events = len(events)
-            total_events += n_events
+            if events is not None and len(events) > 0:
+                n_events = len(events)
+                total_events += n_events
 
-            price_col = "Close" if "Close" in df_tk.columns else df_tk.columns[0]
+                price_col = "Close" if "Close" in df_tk.columns else df_tk.columns[0]
 
-            events_idx = pd.to_datetime(events.values, utc=True)
-            if df_tk.index.tz is None:
-                events_idx = events_idx.tz_convert(None)
+                if isinstance(events, pd.DatetimeIndex):
+                    events_idx = events
+                else:
+                    events_idx = pd.DatetimeIndex(events)
 
-            events_in_index = df_tk.index.intersection(events_idx)
-            if len(events_in_index) < len(events):
+                if df_tk.index.tz is None:
+                    if getattr(events_idx, "tz", None) is not None:
+                        events_idx = events_idx.tz_convert(None)
+                else:
+                    if getattr(events_idx, "tz", None) is None:
+                        events_idx = events_idx.tz_localize(df_tk.index.tz)
+                    elif events_idx.tz != df_tk.index.tz:
+                        events_idx = events_idx.tz_convert(df_tk.index.tz)
+
                 y_vals = df_tk[price_col].reindex(events_idx, method="nearest")
-            else:
-                y_vals = df_tk.loc[events_idx, price_col]
 
             fig.add_trace(
                 go.Scatter(
                     x=events_idx,
-                    y=y_vals,
+                    y=y_vals.values,
                     mode="markers",
                     marker_color=PALETTE["accent_1"],
                     marker_symbol="line-ns-open",

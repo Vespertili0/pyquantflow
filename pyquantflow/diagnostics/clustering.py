@@ -48,25 +48,29 @@ def plot_feature_clusters(
     # 1. Prepare Data
     if isinstance(regime_results, pd.DataFrame):
         # We received the consolidated DataFrame
-        if regime_id is not None:
-            # Filter by regime_id (level 0)
-            df = regime_results.loc[regime_id].copy()
-            df = df.reset_index()
-        else:
-            # Aggregate across regimes
-            df = (
-                regime_results.groupby(level=1)
-                .agg(
-                    {
-                        "features": "first",
-                        "sfi_mean": "mean",
-                        "sfi_std": "mean",
-                        "mda_mean": "mean",
-                        "mda_std": "mean",
-                    }
+        if regime_results.index.nlevels > 1:
+            if regime_id is not None:
+                df = regime_results.loc[regime_id].copy().reset_index()
+            else:
+                df = (
+                    regime_results.groupby(level=1)
+                    .agg(
+                        {
+                            "features": "first" if "features" in regime_results.columns else lambda x: x.name,
+                            "sfi_mean": "mean",
+                            "sfi_std": "mean",
+                            "mda_mean": "mean",
+                            "mda_std": "mean",
+                        }
+                    )
+                    .reset_index()
                 )
-                .reset_index()
-            )
+        else:
+            df = regime_results.copy().reset_index()
+            if "index" in df.columns:
+                df = df.rename(columns={"index": "features"})
+            if "features" not in df.columns:
+                df["features"] = df.index.astype(str)
     else:
         # We received the raw nested dict
         if regime_id is not None:

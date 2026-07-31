@@ -87,18 +87,24 @@ def plot_cv_splits(
 
         # Check leakage
         if t1 is not None:
-            # We want to find if any t1 from train overlaps with the test window.
-            # Assuming time series order, check if any t1 in train before test_start
-            # has a horizon that falls within the test window.
-            train_times = times[train_idx]
-            train_t1s = t1.iloc[train_idx]
+            train_times_dt = pd.to_datetime(times[train_idx])
+            if getattr(train_times_dt, "tz", None) is not None:
+                train_times_dt = train_times_dt.tz_convert(None)
+
+            test_start_dt = pd.to_datetime(test_start_ts)
+            if getattr(test_start_dt, "tz", None) is not None:
+                test_start_dt = test_start_dt.tz_convert(None)
+
+            train_t1s_dt = pd.to_datetime(t1.iloc[train_idx])
+            if getattr(train_t1s_dt, "dt", None) is not None and train_t1s_dt.dt.tz is not None:
+                train_t1s_dt = train_t1s_dt.dt.tz_convert(None)
 
             # Identify train samples before test split
-            mask_before = train_times < test_start_ts
+            mask_before = train_times_dt < test_start_dt
             if mask_before.any():
-                t1s_before = train_t1s[mask_before]
+                t1s_before = train_t1s_dt[mask_before]
                 # A leak occurs if a training sample's event end time extends into or past the test window
-                leaks = t1s_before >= test_start_ts
+                leaks = t1s_before >= test_start_dt
                 if leaks.any():
                     has_leakage = True
                     leaking_fold_indices.append(i)

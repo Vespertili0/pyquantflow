@@ -63,6 +63,12 @@ def plot_sadf_regimes(
         col=1,
     )
 
+    # Deduplicate and sort input series to prevent 'cannot reindex from a duplicate axis'
+    if not price_series.index.is_unique or not price_series.index.is_monotonic_increasing:
+        price_series = price_series[~price_series.index.duplicated(keep="first")].sort_index()
+    if not sadf_series.index.is_unique or not sadf_series.index.is_monotonic_increasing:
+        sadf_series = sadf_series[~sadf_series.index.duplicated(keep="first")].sort_index()
+
     # Explosive vrects detection
     mask = sadf_series > critical_value
     if mask.any():
@@ -103,9 +109,17 @@ def plot_sadf_regimes(
     # Event overlays
     if events is not None:
         if isinstance(events, pd.Series):
-            events_ts = events.index
+            events_ts = pd.DatetimeIndex(events.index)
         else:
-            events_ts = events
+            events_ts = pd.DatetimeIndex(events)
+
+        p_idx = price_series.index
+        if getattr(p_idx, "tz", None) is not None:
+            if getattr(events_ts, "tz", None) is None:
+                events_ts = events_ts.tz_localize(p_idx.tz)
+        else:
+            if getattr(events_ts, "tz", None) is not None:
+                events_ts = events_ts.tz_convert(None)
 
         # Align events to closest price bars for y-values
         price_at_events = price_series.reindex(events_ts, method="nearest")
