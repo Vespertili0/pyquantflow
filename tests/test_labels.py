@@ -209,7 +209,9 @@ class TestLabelsAndWeights(unittest.TestCase):
         # Event 0: starts at bar 0, ends at bar 2 (duration = 2 bars)
         # Event 1: starts at bar 1, ends at bar 2 (duration = 1 bar)
         # Event 2: starts at bar 2, ends at bar 3 (duration = 1 bar)
-        t1 = pd.Series([dates[2], dates[2], dates[2] + pd.Timedelta(days=1)], index=dates)
+        t1 = pd.Series(
+            [dates[2], dates[2], dates[2] + pd.Timedelta(days=1)], index=dates
+        )
 
         # Concurrency c_t:
         # bar 0: [event 0] -> c_0 = 1
@@ -239,7 +241,9 @@ class TestLabelsAndWeights(unittest.TestCase):
         returns = pd.Series([0.1, -0.05, 0.02], index=dates)
         weights_with_returns = get_sample_weights(t1, returns=returns)
         expected_weights_returns = expected_weights * np.array([0.1, 0.05, 0.02])
-        np.testing.assert_allclose(weights_with_returns.values, expected_weights_returns, rtol=1e-5)
+        np.testing.assert_allclose(
+            weights_with_returns.values, expected_weights_returns, rtol=1e-5
+        )
 
     def test_sample_weights_non_overlapping(self):
         """
@@ -249,11 +253,14 @@ class TestLabelsAndWeights(unittest.TestCase):
         # Event 0: starts at bar 0, ends strictly before bar 1
         # Event 1: starts at bar 1, ends strictly before bar 2
         # Event 2: starts at bar 2, ends strictly before bar 3
-        t1 = pd.Series([
-            dates[0] + pd.Timedelta(hours=12),
-            dates[1] + pd.Timedelta(hours=12),
-            dates[2] + pd.Timedelta(hours=12)
-        ], index=dates)
+        t1 = pd.Series(
+            [
+                dates[0] + pd.Timedelta(hours=12),
+                dates[1] + pd.Timedelta(hours=12),
+                dates[2] + pd.Timedelta(hours=12),
+            ],
+            index=dates,
+        )
 
         weights = get_sample_weights(t1)
         expected_weights = np.array([1.0, 1.0, 1.0])
@@ -315,7 +322,6 @@ class TestLabelsAndWeights(unittest.TestCase):
         )
 
 
-
 class TestTripleBarrierScenarios(unittest.TestCase):
     def setUp(self):
         self.dates = pd.date_range("2021-01-01", periods=10, freq="D", tz="UTC")
@@ -323,46 +329,50 @@ class TestTripleBarrierScenarios(unittest.TestCase):
     def test_sl_hit(self):
         # We start at 100. SL is at 90. TP mult is 2 (so TP is at 120).
         prices = pd.Series([100, 95, 90, 89, 85, 80, 80, 80, 80, 80], index=self.dates)
-        sl_col = pd.Series([90]*10, index=self.dates)
-        
+        sl_col = pd.Series([90] * 10, index=self.dates)
+
         df = apply_triple_barrier(prices, sl_col, tp_mult=2.0, horizon=5)
-        
+
         # Starts at 100, hits 90 (<=90) at index 2.
         self.assertEqual(df["label"].iloc[0], 0)
         self.assertEqual(df["t1"].iloc[0], self.dates[2])
-        self.assertAlmostEqual(df["tbl_return"].iloc[0], 90/100 - 1.0)
-        
+        self.assertAlmostEqual(df["tbl_return"].iloc[0], 90 / 100 - 1.0)
+
     def test_tp_hit(self):
         # Prices increase, hitting TP.
-        prices = pd.Series([100, 105, 110, 120, 125, 130, 130, 130, 130, 130], index=self.dates)
-        sl_col = pd.Series([90]*10, index=self.dates)
-        
+        prices = pd.Series(
+            [100, 105, 110, 120, 125, 130, 130, 130, 130, 130], index=self.dates
+        )
+        sl_col = pd.Series([90] * 10, index=self.dates)
+
         df = apply_triple_barrier(prices, sl_col, tp_mult=2.0, horizon=5)
-        
+
         # Starts at 100, hits 120 (>=120) at index 3.
         self.assertEqual(df["label"].iloc[0], 2)
         self.assertEqual(df["t1"].iloc[0], self.dates[3])
-        self.assertAlmostEqual(df["tbl_return"].iloc[0], 120/100 - 1.0)
+        self.assertAlmostEqual(df["tbl_return"].iloc[0], 120 / 100 - 1.0)
 
     def test_timeout(self):
         # Prices stay between SL and TP for the whole horizon (5 bars).
-        prices = pd.Series([100, 105, 100, 105, 100, 105, 100, 100, 100, 100], index=self.dates)
-        sl_col = pd.Series([90]*10, index=self.dates)
-        
+        prices = pd.Series(
+            [100, 105, 100, 105, 100, 105, 100, 100, 100, 100], index=self.dates
+        )
+        sl_col = pd.Series([90] * 10, index=self.dates)
+
         df = apply_triple_barrier(prices, sl_col, tp_mult=2.0, horizon=5)
-        
+
         # Horizon is 5, meaning if it starts at 0, it hits timeout at index 5.
         self.assertEqual(df["label"].iloc[0], 1)
         self.assertEqual(df["t1"].iloc[0], self.dates[5])
-        self.assertAlmostEqual(df["tbl_return"].iloc[0], 105/100 - 1.0)
-        
+        self.assertAlmostEqual(df["tbl_return"].iloc[0], 105 / 100 - 1.0)
+
     def test_incomplete_window(self):
         # No hit in the available bars, and the series ends before horizon ends.
         prices = pd.Series([100, 105, 100], index=self.dates[:3])
-        sl_col = pd.Series([90]*3, index=self.dates[:3])
-        
+        sl_col = pd.Series([90] * 3, index=self.dates[:3])
+
         df = apply_triple_barrier(prices, sl_col, tp_mult=2.0, horizon=5)
-        
+
         self.assertTrue(np.isnan(df["label"].iloc[0]))
         self.assertTrue(pd.isna(df["t1"].iloc[0]))
         self.assertTrue(np.isnan(df["tbl_return"].iloc[0]))
@@ -371,12 +381,12 @@ class TestTripleBarrierScenarios(unittest.TestCase):
         # Hits SL and TP at the exact same timestep (offset 0 because of SL above price).
         # Should be conservative and label as SL hit (0).
         prices = pd.Series([100, 105, 100, 100, 100], index=self.dates[:5])
-        sl_col = pd.Series([110]*5, index=self.dates[:5])
+        sl_col = pd.Series([110] * 5, index=self.dates[:5])
         # TP = 100 + 1 * (100 - 110) = 90
         # at offset 0, price is 100. 100 <= 110 (SL hit) and 100 >= 90 (TP hit).
         # Both hit at offset 0.
         df = apply_triple_barrier(prices, sl_col, tp_mult=1.0, horizon=3)
-        
+
         # Tie break conservative rule: label = 0 (SL)
         self.assertEqual(df["label"].iloc[0], 0)
         self.assertEqual(df["t1"].iloc[0], self.dates[0])

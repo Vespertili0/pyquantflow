@@ -96,7 +96,10 @@ def plot_cv_splits(
                 test_start_dt = test_start_dt.tz_convert(None)
 
             train_t1s_dt = pd.to_datetime(t1.iloc[train_idx])
-            if getattr(train_t1s_dt, "dt", None) is not None and train_t1s_dt.dt.tz is not None:
+            if (
+                getattr(train_t1s_dt, "dt", None) is not None
+                and train_t1s_dt.dt.tz is not None
+            ):
                 train_t1s_dt = train_t1s_dt.dt.tz_convert(None)
 
             # Identify train samples before test split

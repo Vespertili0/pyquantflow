@@ -64,10 +64,17 @@ def plot_sadf_regimes(
     )
 
     # Deduplicate and sort input series to prevent 'cannot reindex from a duplicate axis'
-    if not price_series.index.is_unique or not price_series.index.is_monotonic_increasing:
-        price_series = price_series[~price_series.index.duplicated(keep="first")].sort_index()
+    if (
+        not price_series.index.is_unique
+        or not price_series.index.is_monotonic_increasing
+    ):
+        price_series = price_series[
+            ~price_series.index.duplicated(keep="first")
+        ].sort_index()
     if not sadf_series.index.is_unique or not sadf_series.index.is_monotonic_increasing:
-        sadf_series = sadf_series[~sadf_series.index.duplicated(keep="first")].sort_index()
+        sadf_series = sadf_series[
+            ~sadf_series.index.duplicated(keep="first")
+        ].sort_index()
 
     # Explosive vrects detection
     mask = sadf_series > critical_value

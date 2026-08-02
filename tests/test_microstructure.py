@@ -253,7 +253,7 @@ class TestCorwinSchultz(unittest.TestCase):
         high = np.array([101.0, 102.0, 101.5, 103.0, 102.0, 103.5])
         low = np.array([99.0, 98.0, 99.5, 97.0, 98.0, 96.5])
         expected = np.array([np.nan, np.nan, np.nan, np.nan, 0.00259673, 0.00561362])
-        
+
         result = CORWIN_SCHULTZ(high, low, window=3)
         np.testing.assert_allclose(result, expected, rtol=1e-5, atol=1e-8)
 

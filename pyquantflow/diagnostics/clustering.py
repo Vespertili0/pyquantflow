@@ -56,7 +56,9 @@ def plot_feature_clusters(
                     regime_results.groupby(level=1)
                     .agg(
                         {
-                            "features": "first" if "features" in regime_results.columns else lambda x: x.name,
+                            "features": "first"
+                            if "features" in regime_results.columns
+                            else lambda x: x.name,
                             "sfi_mean": "mean",
                             "sfi_std": "mean",
                             "mda_mean": "mean",
