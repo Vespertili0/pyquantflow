@@ -74,7 +74,14 @@ def plot_cusum_events(
         if isinstance(events, pd.DatetimeIndex):
             events_idx = events
         else:
-            events_idx = pd.DatetimeIndex(events)
+            if isinstance(events, pd.Series) and pd.api.types.is_datetime64_any_dtype(
+                events
+            ):
+                events_idx = pd.DatetimeIndex(events.values)
+            elif isinstance(events, pd.Series):
+                events_idx = pd.DatetimeIndex(events.index)
+            else:
+                events_idx = pd.DatetimeIndex(events)
 
         if df.index.tz is None:
             if getattr(events_idx, "tz", None) is not None:
@@ -199,7 +206,14 @@ def plot_multi_asset_events(
                 if isinstance(events, pd.DatetimeIndex):
                     events_idx = events
                 else:
-                    events_idx = pd.DatetimeIndex(events)
+                    if isinstance(
+                        events, pd.Series
+                    ) and pd.api.types.is_datetime64_any_dtype(events):
+                        events_idx = pd.DatetimeIndex(events.values)
+                    elif isinstance(events, pd.Series):
+                        events_idx = pd.DatetimeIndex(events.index)
+                    else:
+                        events_idx = pd.DatetimeIndex(events)
 
                 if df_tk.index.tz is None:
                     if getattr(events_idx, "tz", None) is not None:

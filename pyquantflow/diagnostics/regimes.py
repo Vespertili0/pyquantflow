@@ -116,7 +116,10 @@ def plot_sadf_regimes(
     # Event overlays
     if events is not None:
         if isinstance(events, pd.Series):
-            events_ts = pd.DatetimeIndex(events.index)
+            if pd.api.types.is_datetime64_any_dtype(events):
+                events_ts = pd.DatetimeIndex(events.values)
+            else:
+                events_ts = pd.DatetimeIndex(events.index)
         else:
             events_ts = pd.DatetimeIndex(events)
 

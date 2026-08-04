@@ -67,6 +67,8 @@ def plot_feature_clusters(
                     )
                     .reset_index()
                 )
+                if "features" not in df.columns:
+                    df["features"] = df.index.astype(str)
         else:
             df = regime_results.copy().reset_index()
             if "index" in df.columns:
