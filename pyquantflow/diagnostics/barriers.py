@@ -66,6 +66,9 @@ def plot_barrier_trajectories(
         ],
     )
 
+    if not df.index.is_unique or not df.index.is_monotonic_increasing:
+        df = df[~df.index.duplicated(keep="first")].sort_index()
+
     if vol_col not in df.columns:
         warnings.warn(
             f"Column '{vol_col}' not found in df. Falling back to EWMA(span=20) volatility.",
@@ -76,7 +79,16 @@ def plot_barrier_trajectories(
     else:
         sigma = df[vol_col]
 
-    valid_events = event_timestamps.intersection(df.index)
+    # Normalize timezones for event_timestamps vs df.index comparison
+    df_idx = df.index
+    if getattr(df_idx, "tz", None) is not None:
+        if getattr(event_timestamps, "tz", None) is None:
+            event_timestamps = event_timestamps.tz_localize(df_idx.tz)
+    else:
+        if getattr(event_timestamps, "tz", None) is not None:
+            event_timestamps = event_timestamps.tz_convert(None)
+
+    valid_events = event_timestamps.intersection(df_idx)
     n_sampled = min(n_events, len(valid_events))
 
     if n_sampled > 0:
@@ -86,10 +98,23 @@ def plot_barrier_trajectories(
 
         for ts in sampled_ts:
             label_val = df.loc[ts, "label"]
+            if hasattr(label_val, "iloc"):
+                label_val = label_val.iloc[0]
+
             t1_val = df.loc[ts, "t1"]
+            if hasattr(t1_val, "iloc"):
+                t1_val = t1_val.iloc[0]
 
             if pd.isna(t1_val):
                 continue
+
+            t1_dt = pd.to_datetime(t1_val)
+            if getattr(df_idx, "tz", None) is not None:
+                if getattr(t1_dt, "tz", None) is None:
+                    t1_dt = t1_dt.tz_localize(df_idx.tz)
+            else:
+                if getattr(t1_dt, "tz", None) is not None:
+                    t1_dt = t1_dt.tz_convert(None)
 
             colour = (
                 PALETTE["tp"]
@@ -99,11 +124,14 @@ def plot_barrier_trajectories(
                 else PALETTE["timeout"]
             )
 
-            entry_idx = df.index.get_loc(ts)
-            end_idx_max = min(entry_idx + horizon, len(df) - 1)
-            end_ts_max = df.index[end_idx_max]
+            entry_idx = df_idx.get_indexer([ts])[0]
+            if entry_idx == -1:
+                continue
 
-            end_ts = min(t1_val, end_ts_max)
+            end_idx_max = min(entry_idx + horizon, len(df) - 1)
+            end_ts_max = df_idx[end_idx_max]
+
+            end_ts = min(t1_dt, end_ts_max)
 
             path = df.loc[ts:end_ts, price_col]
             fig.add_trace(
@@ -119,7 +147,12 @@ def plot_barrier_trajectories(
             )
 
             p_entry = df.loc[ts, price_col]
+            if hasattr(p_entry, "iloc"):
+                p_entry = p_entry.iloc[0]
+
             sig = sigma.loc[ts]
+            if hasattr(sig, "iloc"):
+                sig = sig.iloc[0]
 
             fig.add_trace(
                 go.Scatter(
@@ -183,7 +216,8 @@ def plot_barrier_trajectories(
         col=1,
     )
 
-    labels_full = df.loc[valid_events, "label"]
+    valid_mask = df.index.isin(valid_events)
+    labels_full = df.loc[valid_mask, "label"]
     pct_tp = (labels_full == 2).mean() if len(labels_full) > 0 else 0.0
     pct_sl = (labels_full == 0).mean() if len(labels_full) > 0 else 0.0
     pct_timeout = (labels_full == 1).mean() if len(labels_full) > 0 else 0.0
@@ -227,11 +261,21 @@ def plot_barrier_trajectories(
 
     fig.update_layout(barmode="stack")
 
-    t1_full = df.loc[valid_events, "t1"].dropna()
+    t1_full = df.loc[valid_mask, "t1"].dropna()
     holding_bars = []
     for ts, t1 in t1_full.items():
-        if t1 in df.index:
-            holding_bars.append(df.index.get_loc(t1) - df.index.get_loc(ts))
+        t1_dt = pd.to_datetime(t1)
+        if getattr(df_idx, "tz", None) is not None:
+            if getattr(t1_dt, "tz", None) is None:
+                t1_dt = t1_dt.tz_localize(df_idx.tz)
+        else:
+            if getattr(t1_dt, "tz", None) is not None:
+                t1_dt = t1_dt.tz_convert(None)
+
+        idx_t1 = df_idx.get_indexer([t1_dt])[0]
+        idx_ts = df_idx.get_indexer([ts])[0]
+        if idx_t1 != -1 and idx_ts != -1:
+            holding_bars.append(int(idx_t1) - int(idx_ts))
 
     if holding_bars:
         fig.add_trace(

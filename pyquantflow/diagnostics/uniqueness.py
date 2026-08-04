@@ -36,14 +36,30 @@ def plot_sample_concurrency(
         Contains dual-axis Plotly figure and metadata (`mean_uniqueness`, `peak_concurrency`, `effective_sample_size`, `pct_high_concurrency`).
     """
     # 1. Build business-day date range
-    t0_dt = pd.to_datetime(t1_series.dropna().index, utc=True)
-    t1_dt = pd.to_datetime(t1_series.dropna().values, utc=True)
+    valid_s = t1_series.dropna()
+    if isinstance(valid_s.index, pd.MultiIndex):
+        t0_vals = (
+            valid_s.index.get_level_values("datetime")
+            if "datetime" in valid_s.index.names
+            else valid_s.index.get_level_values(-1)
+        )
+    else:
+        t0_vals = valid_s.index
 
-    if len(t0_dt) == 0:
+    t0_dt = pd.to_datetime(t0_vals)
+    if getattr(t0_dt, "tz", None) is not None:
+        t0_idx_naive = t0_dt.tz_convert(None)
+    else:
+        t0_idx_naive = t0_dt
+
+    t1_dt = pd.to_datetime(valid_s.values)
+    if getattr(t1_dt, "tz", None) is not None:
+        t1_vals_naive = t1_dt.tz_convert(None)
+    else:
+        t1_vals_naive = t1_dt
+
+    if len(t0_idx_naive) == 0:
         raise ValueError("t1_series is empty or contains only NaTs")
-
-    t0_idx_naive = t0_dt.tz_convert(None)
-    t1_vals_naive = t1_dt.tz_convert(None)
 
     date_range = pd.date_range(
         start=t0_idx_naive.min(), end=t1_vals_naive.max(), freq="B"

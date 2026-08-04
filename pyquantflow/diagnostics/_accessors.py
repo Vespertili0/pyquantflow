@@ -116,11 +116,13 @@ def _fe_plot_feature_clusters(self, df, regime_id=None):
     all_features = self.features + self.raw_features
     corr_matrix = df[all_features].corr()
 
-    # If importance_df exists, use it, otherwise call evaluate_importance (which returns the nested dict)
     if self.importance_df is not None:
         regime_results = self.importance_df
     else:
-        regime_results = self.evaluate_importance(df)
+        raise ValueError(
+            "importance_df is None. You must run evaluate_importance() "
+            "on the FeatureEvaluator before plotting feature clusters."
+        )
 
     return plot_feature_clusters(
         regime_results=regime_results,
@@ -147,15 +149,10 @@ CombinatorialPurgedKFold.plot_splits = _cv_plot_splits
 def _psc_plot_meta_diagnostics(self, X, y_true):
     from .metalabel import plot_meta_label_entropy
 
-    enriched = self.transform(X)
-    if not hasattr(y_true, "iloc"):
-        y_true = pd.Series(y_true, index=enriched.index, name="label")
-    else:
-        y_true = y_true.rename("label")
+    enriched = self.transform(X).copy()
+    enriched["label"] = y_true
 
-    return plot_meta_label_entropy(
-        enriched.join(y_true, how="left"),
-    )
+    return plot_meta_label_entropy(enriched)
 
 
 PrimarySecondaryClassifier.plot_meta_diagnostics = _psc_plot_meta_diagnostics
