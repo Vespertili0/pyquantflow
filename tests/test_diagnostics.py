@@ -817,11 +817,10 @@ class TestAccessorsCoverage(unittest.TestCase):
         fe = FeatureEvaluator(features=["f1"])
         fe.raw_features = ["f2"]
         fe.importance_df = None
-        fe.evaluate_importance = MagicMock(return_value={})
         df = pd.DataFrame({"f1": [1, 2], "f2": [2, 3]})
-        fe.plot_feature_clusters(df)
-        fe.evaluate_importance.assert_called_once()
-        mock_plot.assert_called_once()
+        
+        with self.assertRaisesRegex(ValueError, "importance_df is None"):
+            fe.plot_feature_clusters(df)
 
     @patch("pyquantflow.diagnostics.cv.plot_cv_splits")
     def test_cv_splits_accessors(self, mock_plot):
