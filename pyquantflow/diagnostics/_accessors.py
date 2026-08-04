@@ -119,7 +119,10 @@ def _fe_plot_feature_clusters(self, df, regime_id=None):
     if self.importance_df is not None:
         regime_results = self.importance_df
     else:
-        regime_results = self.evaluate_importance(df)
+        raise ValueError(
+            "importance_df is None. You must run evaluate_importance() "
+            "on the FeatureEvaluator before plotting feature clusters."
+        )
 
     return plot_feature_clusters(
         regime_results=regime_results,
