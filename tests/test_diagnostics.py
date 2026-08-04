@@ -818,7 +818,7 @@ class TestAccessorsCoverage(unittest.TestCase):
         fe.raw_features = ["f2"]
         fe.importance_df = None
         df = pd.DataFrame({"f1": [1, 2], "f2": [2, 3]})
-        
+
         with self.assertRaisesRegex(ValueError, "importance_df is None"):
             fe.plot_feature_clusters(df)
 
