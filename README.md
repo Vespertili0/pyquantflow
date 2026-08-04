@@ -1,18 +1,7 @@
 ![](logo.png)
 
 <p align="center">
-  <a href="https://github.com/Vespertili0/pyquantflow/releases">
-    <img src="https://img.shields.io/github/v/release/Vespertili0/pyquantflow?color=orange" alt="Latest Release">
-  </a>
-  <a href="https://www.python.org/">
-    <img src="https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue" alt="Python Version">
-  </a>
-  <a href="https://github.com/Vespertili0/pyquantflow/actions/workflows/tests.yml">
-    <img src="https://github.com/Vespertili0/pyquantflow/actions/workflows/tests.yml/badge.svg" alt="Tests">
-  </a>
-  <a href="https://codecov.io/gh/Vespertili0/pyquantflow">
-    <img src="https://codecov.io/gh/Vespertili0/pyquantflow/branch/main/graph/badge.svg" alt="Codecov">
-  </a>
+  <a href="https://github.com/pre-commit/pre-commit"><img src="https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit&logoColor=white" alt="pre-commit"></a> <a href="https://github.com/astral-sh/ruff"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json" alt="Ruff"></a> <a href="https://github.com/Vespertili0/pyquantflow/releases"><img src="https://img.shields.io/github/v/release/Vespertili0/pyquantflow?color=orange" alt="Latest Release"></a> <a href="https://www.python.org/"><img src="https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue" alt="Python Version"></a> <a href="https://github.com/Vespertili0/pyquantflow/actions/workflows/pr-review.yml"><img src="https://github.com/Vespertili0/pyquantflow/actions/workflows/pr-review.yml/badge.svg?branch=main" alt="Tests"></a> <a href="https://codecov.io/gh/Vespertili0/pyquantflow"><img src="https://codecov.io/gh/Vespertili0/pyquantflow/branch/main/graph/badge.svg" alt="Codecov"></a> <a href="https://sqlite.org/"><img src="https://img.shields.io/badge/SQLite-003B57?style=flat&logo=sqlite&logoColor=white" alt="SQLite"></a> <a href="https://scikit-learn.org/"><img src="https://img.shields.io/badge/scikit--learn-F7931E?style=flat&logo=scikit-learn&logoColor=white" alt="Scikit-Learn"></a> <a href="https://mlflow.org/"><img src="https://img.shields.io/badge/MLflow-0194E2?style=flat&logo=mlflow&logoColor=white" alt="MLflow"></a>
 </p>
 
 # pyquantflow

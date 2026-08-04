@@ -1,0 +1,36 @@
+[project]
+name = "pyquantflow"
+version = "0.2.2"
+description = "A robust stock analysis and backtesting framework."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "backtesting>=0.6.6",
+    "jax>=0.10.2",
+    "mlflow>=3.14.0",
+    "numpy>=2.4.6",
+    "optuna>=4.9.0",
+    "pandas>=2.3.3",
+    "plotly>=6.9.0",
+    "scikit-learn>=1.9.0",
+    "skfolio>=0.20.1",
+    "tsfeatures>=0.4.5",
+    "yfinance>=1.5.2",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.0",
+    "pytest-cov>=6.0.0",
+    "ruff>=0.15.20",
+]
+
+[tool.setuptools.packages.find]
+include = ["pyquantflow*"]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.uv]
+package = true
