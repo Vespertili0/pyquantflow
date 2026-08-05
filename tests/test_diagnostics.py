@@ -518,6 +518,58 @@ class TestMetaLabelPrecisionRecall(unittest.TestCase):
         self.assertIn("meta_auc_pr", res.metadata)
         self.assertEqual(len(res.figure.data), 2)
 
+    def test_meta_label_pr_numpy_arrays(self):
+        y_true = np.array([0, 1, 0, 1, 1])
+        primary_preds = np.array([0.1, 0.9, 0.2, 0.8, 0.7])
+        meta_preds = np.array([0, 1, 0, 1, 1])
+        meta_probas = np.array([0.2, 0.8, 0.3, 0.9, 0.6])
+
+        res = plot_meta_label_precision_recall(
+            y_true, primary_preds, meta_preds, meta_probas
+        )
+
+        self.assertIsInstance(res, DiagnosticResult)
+        self.assertIn("primary_auc_pr", res.metadata)
+        self.assertIn("meta_auc_pr", res.metadata)
+        self.assertEqual(len(res.figure.data), 2)
+        
+        self.assertGreater(res.metadata["primary_auc_pr"], 0)
+        self.assertGreater(res.metadata["meta_auc_pr"], 0)
+
+    def test_meta_label_pr_all_zeros(self):
+        y_true = np.array([0, 0, 0, 0, 0])
+        primary_preds = np.array([0.1, 0.2, 0.3, 0.4, 0.5])
+        meta_preds = np.array([0, 0, 0, 0, 0])
+        meta_probas = np.array([0.1, 0.2, 0.3, 0.4, 0.5])
+
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            res = plot_meta_label_precision_recall(
+                y_true, primary_preds, meta_preds, meta_probas
+            )
+        
+        self.assertIsInstance(res, DiagnosticResult)
+        self.assertIn("primary_auc_pr", res.metadata)
+        self.assertIn("meta_auc_pr", res.metadata)
+        # scikit-learn might set AUC to 0.5 in case of no positive class due to interpolation
+        self.assertEqual(res.metadata["primary_auc_pr"], 0.5)
+
+    def test_meta_label_pr_all_ones(self):
+        y_true = np.array([1, 1, 1, 1, 1])
+        primary_preds = np.array([0.6, 0.7, 0.8, 0.9, 1.0])
+        meta_preds = np.array([1, 1, 1, 1, 1])
+        meta_probas = np.array([0.6, 0.7, 0.8, 0.9, 1.0])
+
+        res = plot_meta_label_precision_recall(
+            y_true, primary_preds, meta_preds, meta_probas
+        )
+
+        self.assertIsInstance(res, DiagnosticResult)
+        self.assertIn("primary_auc_pr", res.metadata)
+        self.assertIn("meta_auc_pr", res.metadata)
+        self.assertEqual(len(res.figure.data), 2)
+
 
 class TestSADFRegimes(unittest.TestCase):
     def test_sadf_regimes(self):
@@ -704,8 +756,11 @@ class TestFeaturesCoverage(unittest.TestCase):
         self.assertEqual(res.metadata["divergence_metric"], "wasserstein")
 
     def test_bad_divergence_metric(self):
-        raw_df, event_df = make_feature_matrix(n_features=2)
-        with self.assertRaises(ValueError):
+        raw_df = pd.DataFrame()
+        event_df = pd.DataFrame()
+        with self.assertRaisesRegex(
+            ValueError, "divergence_metric must be 'kl' or 'wasserstein'"
+        ):
             plot_downsampling_shift(
                 raw_df, event_df, ["feat_0"], divergence_metric="invalid"
             )
@@ -713,6 +768,12 @@ class TestFeaturesCoverage(unittest.TestCase):
     def test_short_data(self):
         raw_df = pd.DataFrame({"f1": [1.0]})
         event_df = pd.DataFrame({"f1": [1.0]})
+        res = plot_downsampling_shift(raw_df, event_df, ["f1"])
+        self.assertTrue(np.isnan(res.metadata["divergence_scores"]["f1"]))
+
+    def test_zero_variance(self):
+        raw_df = pd.DataFrame({"f1": [1.0, 1.0, 1.0]})
+        event_df = pd.DataFrame({"f1": [1.0, 1.0, 1.0]})
         res = plot_downsampling_shift(raw_df, event_df, ["f1"])
         self.assertTrue(np.isnan(res.metadata["divergence_scores"]["f1"]))
 

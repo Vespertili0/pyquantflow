@@ -175,15 +175,24 @@ class DatabaseManager:
 
         self._update_ticker_internal(ticker, row[0], row[2], commit=commit)
 
-    def _update_ticker_internal(self, ticker, ticker_id, interval, commit=True):
+    def _update_ticker_internal(
+        self,
+        ticker,
+        ticker_id,
+        interval,
+        commit=True,
+        last_date_str=None,
+        skip_max_date_lookup=False,
+    ):
         """
         Internal method to update a ticker, avoiding redundant database queries.
         """
         interval = interval or self._DEFAULT_INTERVAL
         cursor = self.conn.cursor()
 
-        cursor.execute(self._SQL_SELECT_MAX_DATETIME, (ticker_id,))
-        last_date_str = cursor.fetchone()[0]
+        if not skip_max_date_lookup:
+            cursor.execute(self._SQL_SELECT_MAX_DATETIME, (ticker_id,))
+            last_date_str = cursor.fetchone()[0]
 
         if not last_date_str:
             logger.warning(
@@ -279,9 +288,48 @@ class DatabaseManager:
         """
         Updates multiple tickers and commits once at the end.
         """
+        cursor = self.conn.cursor()
+
+        # 1. Fetch ticker_id and interval for all existing tickers in bulk
+        ticker_info = {}
+        for i in range(0, len(tickers_list), 900):
+            chunk = tickers_list[i : i + 900]
+            placeholders = ",".join(["?"] * len(chunk))
+            query = f"SELECT ticker, id, interval FROM tickers WHERE ticker IN ({placeholders})"
+            cursor.execute(query, chunk)
+            for row in cursor.fetchall():
+                ticker_info[row[0]] = (row[1], row[2])
+
+        # 2. Fetch max datetimes for existing tickers in bulk
+        max_datetimes = {}
+        ticker_ids = [info[0] for info in ticker_info.values()]
+        for i in range(0, len(ticker_ids), 900):
+            chunk = ticker_ids[i : i + 900]
+            placeholders = ",".join(["?"] * len(chunk))
+            query = f"SELECT ticker_id, MAX(datetime) FROM price_data WHERE ticker_id IN ({placeholders}) GROUP BY ticker_id"
+            cursor.execute(query, chunk)
+            for row in cursor.fetchall():
+                max_datetimes[row[0]] = row[1]
+
+        # 3. Perform the updates
         for ticker in tickers_list:
             try:
-                self.update_ticker(ticker, commit=False)
+                if ticker not in ticker_info:
+                    logger.warning(
+                        f"Ticker {ticker} not found in batch update. Adding instead."
+                    )
+                    self.add_ticker(ticker, commit=False)
+                else:
+                    ticker_id, interval = ticker_info[ticker]
+                    last_date_str = max_datetimes.get(ticker_id)
+                    self._update_ticker_internal(
+                        ticker,
+                        ticker_id,
+                        interval,
+                        commit=False,
+                        last_date_str=last_date_str,
+                        skip_max_date_lookup=True,
+                    )
             except Exception as e:
                 logger.error(f"Error updating {ticker} in batch: {e}")
 

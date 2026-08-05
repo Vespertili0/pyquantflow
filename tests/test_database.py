@@ -99,36 +99,52 @@ class TestDatabaseManager(unittest.TestCase):
         last_updated = cursor.fetchone()[0]
         self.assertIsNotNone(last_updated)
 
-    @patch.object(DatabaseManager, "update_ticker")
-    def test_update_tickers_batch(self, mock_update_ticker):
+    @patch.object(DatabaseManager, "_update_ticker_internal")
+    @patch.object(DatabaseManager, "add_ticker")
+    def test_update_tickers_batch(self, mock_add_ticker, mock_update_ticker_internal):
         tickers = ["TEST1.AX", "TEST2.AX", "TEST3.AX"]
 
-        # Test that update_tickers_batch calls update_ticker with commit=False for each ticker
+        # Insert some dummy records so they're found in ticker_info dict
+        cursor = self.db.conn.cursor()
+        for i, t in enumerate(tickers[:2]):
+            cursor.execute(self.db._SQL_INSERT_TICKER, (t, "1h", "2023-01-01"))
+            ticker_id = cursor.lastrowid
+            self.db._insert_price_data(ticker_id, pd.DataFrame({'Open': [1], 'High': [1], 'Low': [1], 'Close': [1], 'Volume': [1]}, index=pd.date_range('2023-01-01', periods=1, tz='UTC')))
+        self.db.conn.commit()
+
+        # Test that update_tickers_batch calls internal functions correctly
         self.db.update_tickers_batch(tickers)
 
-        # Assert that update_ticker was called the correct number of times
-        self.assertEqual(mock_update_ticker.call_count, len(tickers))
+        # Assert that _update_ticker_internal was called twice (for TEST1.AX and TEST2.AX)
+        self.assertEqual(mock_update_ticker_internal.call_count, 2)
+        
+        # Assert that add_ticker was called once (for TEST3.AX)
+        mock_add_ticker.assert_called_once_with("TEST3.AX", commit=False)
 
-        # Assert that each call had commit=False
-        for ticker in tickers:
-            mock_update_ticker.assert_any_call(ticker, commit=False)
 
-    @patch.object(DatabaseManager, "update_ticker")
-    def test_update_tickers_batch_handles_exceptions(self, mock_update_ticker):
+    @patch.object(DatabaseManager, "_update_ticker_internal")
+    @patch.object(DatabaseManager, "add_ticker")
+    def test_update_tickers_batch_handles_exceptions(self, mock_add_ticker, mock_update_ticker_internal):
         tickers = ["TEST1.AX", "ERROR.AX", "TEST3.AX"]
 
+        # Insert some dummy records so they're found in ticker_info dict
+        cursor = self.db.conn.cursor()
+        for i, t in enumerate(tickers):
+            cursor.execute(self.db._SQL_INSERT_TICKER, (t, "1h", "2023-01-01"))
+        self.db.conn.commit()
+
         # Make it throw an exception for ERROR.AX but not for others
-        def side_effect(ticker, commit=False):
+        def side_effect(ticker, ticker_id, interval, commit=False, last_date_str=None, skip_max_date_lookup=False):
             if ticker == "ERROR.AX":
                 raise Exception("Mock error")
 
-        mock_update_ticker.side_effect = side_effect
+        mock_update_ticker_internal.side_effect = side_effect
 
         # Should not raise an exception overall
         self.db.update_tickers_batch(tickers)
 
         # Should still process all tickers
-        self.assertEqual(mock_update_ticker.call_count, len(tickers))
+        self.assertEqual(mock_update_ticker_internal.call_count, len(tickers))
 
     def test_insert_price_data_utc_normalisation(self):
         """

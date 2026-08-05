@@ -58,7 +58,7 @@ def fetch_quarterly_data(ticker, time_dict, period="quarterly") -> pd.DataFrame:
             4: ("10-01", "12-31"),  # Q4
         }
         interval = "1h"
-    data = pd.DataFrame()  # To store the final concatenated data
+    data_frames = []  # To store the downloaded data frames
 
     # Iterate through the years and their respective quarters
     for year, timeframes in time_dict.items():
@@ -75,11 +75,17 @@ def fetch_quarterly_data(ticker, time_dict, period="quarterly") -> pd.DataFrame:
                     auto_adjust=True,
                     progress=False,  # Suppress the progress bar
                 )
-                # Concatenate the new data
-                data = pd.concat([data, new])
+                # Append the new data
+                if not new.empty:
+                    data_frames.append(new)
             except Exception as e:
                 logger.error(f"Failed to fetch data for {year} Q{t}: {e}")
                 break
+
+    if not data_frames:
+        return pd.DataFrame()
+
+    data = pd.concat(data_frames)
 
     if data.empty:
         return data
