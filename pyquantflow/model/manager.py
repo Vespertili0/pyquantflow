@@ -182,8 +182,8 @@ class ClassifierEngine(BaseModelEngine):
         """
         Executes the full pipeline.
         """
-        # 1. Run Optimization
-        logger.info("Starting Hyperparameter Optimization...")
+        # 1. Run Optimisation
+        logger.info("Starting Hyperparameter Optimisation...")
         study = self.optimiser.run(
             X=X_train,
             y=y_train,
@@ -201,7 +201,7 @@ class ClassifierEngine(BaseModelEngine):
 
         best_params = study.best_params
         best_value = study.best_value
-        logger.info(f"Optimization complete. Best CV Score: {best_value}")
+        logger.info(f"Optimisation complete. Best CV Score: {best_value}")
         logger.info(f"Best Params: {best_params}")
 
         # 2. Re-instantiate the best model using FixedTrial
