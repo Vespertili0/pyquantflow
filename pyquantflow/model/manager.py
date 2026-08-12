@@ -139,8 +139,17 @@ class ClassifierEngine(BaseModelEngine):
             # Log model
             signature = infer_signature(X, model.predict(X))
             model_info = mlflow.sklearn.log_model(
-                model, name="model", signature=signature
+                model,
+                name="model",
+                signature=signature,
+                serialization_format="skops",
+                skops_trusted_types=[
+                    "xgboost.core.Booster",
+                    "xgboost.sklearn.XGBClassifier",
+                ],
             )
+            logger.info(f"Model saved to {model_info.model_uri}")
+
             mlflow.log_params(params)
             if tags is not None:
                 mlflow.set_tags(tags)
@@ -182,8 +191,8 @@ class ClassifierEngine(BaseModelEngine):
         """
         Executes the full pipeline.
         """
-        # 1. Run Optimization
-        logger.info("Starting Hyperparameter Optimization...")
+        # 1. Run Optimisation
+        logger.info("Starting Hyperparameter Optimisation...")
         study = self.optimiser.run(
             X=X_train,
             y=y_train,
@@ -201,7 +210,7 @@ class ClassifierEngine(BaseModelEngine):
 
         best_params = study.best_params
         best_value = study.best_value
-        logger.info(f"Optimization complete. Best CV Score: {best_value}")
+        logger.info(f"Optimisation complete. Best CV Score: {best_value}")
         logger.info(f"Best Params: {best_params}")
 
         # 2. Re-instantiate the best model using FixedTrial

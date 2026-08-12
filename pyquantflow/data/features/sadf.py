@@ -290,6 +290,8 @@ def get_sadf_jax(
     pd.Series
         SADF statistics indexed by the original series index (aligned to end points).
     """
+    _ = verbose
+
     # 1. Prepare Data (Pandas/Numpy)
     X_df, y_df = _get_y_x(series, model, lags, add_const)
 
