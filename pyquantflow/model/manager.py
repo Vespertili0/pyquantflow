@@ -142,7 +142,10 @@ class ClassifierEngine(BaseModelEngine):
                 model,
                 name="model",
                 signature=signature,
-                skops_trusted_types=["xgboost.core.Booster", "xgboost.sklearn.XGBClassifier"],
+                skops_trusted_types=[
+                    "xgboost.core.Booster",
+                    "xgboost.sklearn.XGBClassifier",
+                ],
             )
             logger.info(f"Model saved to {model_info.model_uri}")
 

@@ -109,7 +109,13 @@ class TestDatabaseManager(unittest.TestCase):
         for i, t in enumerate(tickers[:2]):
             cursor.execute(self.db._SQL_INSERT_TICKER, (t, "1h", "2023-01-01"))
             ticker_id = cursor.lastrowid
-            self.db._insert_price_data(ticker_id, pd.DataFrame({'Open': [1], 'High': [1], 'Low': [1], 'Close': [1], 'Volume': [1]}, index=pd.date_range('2023-01-01', periods=1, tz='UTC')))
+            self.db._insert_price_data(
+                ticker_id,
+                pd.DataFrame(
+                    {"Open": [1], "High": [1], "Low": [1], "Close": [1], "Volume": [1]},
+                    index=pd.date_range("2023-01-01", periods=1, tz="UTC"),
+                ),
+            )
         self.db.conn.commit()
 
         # Test that update_tickers_batch calls internal functions correctly
@@ -117,14 +123,15 @@ class TestDatabaseManager(unittest.TestCase):
 
         # Assert that _update_ticker_internal was called twice (for TEST1.AX and TEST2.AX)
         self.assertEqual(mock_update_ticker_internal.call_count, 2)
-        
+
         # Assert that add_ticker was called once (for TEST3.AX)
         mock_add_ticker.assert_called_once_with("TEST3.AX", commit=False)
 
-
     @patch.object(DatabaseManager, "_update_ticker_internal")
     @patch.object(DatabaseManager, "add_ticker")
-    def test_update_tickers_batch_handles_exceptions(self, mock_add_ticker, mock_update_ticker_internal):
+    def test_update_tickers_batch_handles_exceptions(
+        self, mock_add_ticker, mock_update_ticker_internal
+    ):
         tickers = ["TEST1.AX", "ERROR.AX", "TEST3.AX"]
 
         # Insert some dummy records so they're found in ticker_info dict
@@ -134,7 +141,14 @@ class TestDatabaseManager(unittest.TestCase):
         self.db.conn.commit()
 
         # Make it throw an exception for ERROR.AX but not for others
-        def side_effect(ticker, ticker_id, interval, commit=False, last_date_str=None, skip_max_date_lookup=False):
+        def side_effect(
+            ticker,
+            ticker_id,
+            interval,
+            commit=False,
+            last_date_str=None,
+            skip_max_date_lookup=False,
+        ):
             if ticker == "ERROR.AX":
                 raise Exception("Mock error")
 

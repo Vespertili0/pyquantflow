@@ -532,7 +532,7 @@ class TestMetaLabelPrecisionRecall(unittest.TestCase):
         self.assertIn("primary_auc_pr", res.metadata)
         self.assertIn("meta_auc_pr", res.metadata)
         self.assertEqual(len(res.figure.data), 2)
-        
+
         self.assertGreater(res.metadata["primary_auc_pr"], 0)
         self.assertGreater(res.metadata["meta_auc_pr"], 0)
 
@@ -543,12 +543,13 @@ class TestMetaLabelPrecisionRecall(unittest.TestCase):
         meta_probas = np.array([0.1, 0.2, 0.3, 0.4, 0.5])
 
         import warnings
+
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", UserWarning)
             res = plot_meta_label_precision_recall(
                 y_true, primary_preds, meta_preds, meta_probas
             )
-        
+
         self.assertIsInstance(res, DiagnosticResult)
         self.assertIn("primary_auc_pr", res.metadata)
         self.assertIn("meta_auc_pr", res.metadata)
