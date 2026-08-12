@@ -142,6 +142,7 @@ class ClassifierEngine(BaseModelEngine):
                 model,
                 name="model",
                 signature=signature,
+                serialization_format="skops",
                 skops_trusted_types=[
                     "xgboost.core.Booster",
                     "xgboost.sklearn.XGBClassifier",

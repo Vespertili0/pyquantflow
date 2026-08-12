@@ -1,4 +1,4 @@
-from typing import List, Tuple, Dict, Optional
+from typing import List, Tuple, Dict, Optional, Union
 
 import numpy as np
 from sklearn.base import BaseEstimator
@@ -41,7 +41,7 @@ class DualGatePipelineFactory:
         self,
         organiser: AssetOrganiser,
         evaluator: FeatureEvaluator,
-        target_events_train: Optional[int | Dict[str, int]] = None,
+        target_events_train: Optional[Union[int, Dict[str, int]]] = None,
         target_labels: List[str] = ["label", "t1", "weight"],
         span: int = 50,
         estimator: Optional[BaseEstimator] = None,
@@ -66,7 +66,7 @@ class DualGatePipelineFactory:
             The feature evaluator that handles stationarity checks and pruning.
         target_labels : List[str], default ["label", "t1", "weight"]
             The column names for target metadata labels to isolate and synchronise.
-        target_events_train : Optional[int | Dict[str, int]], default None
+        target_events_train : Optional[Union[int, Dict[str, int]]], default None
             Target event budget for CUSUM downsampling on the training set.
             Required when ``objective="budget"``; ignored when ``objective="uniqueness"``.
         span : int, default 50

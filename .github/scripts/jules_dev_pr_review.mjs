@@ -3,7 +3,9 @@ import {
     validateEnv,
     fetchPrDiff,
     buildDiffContext,
+    sanitise,
     spawnJulesSession,
+    awaitSessionResult,
     postGitHubComment,
     postCommitStatus
 } from './jules_utils.mjs';
@@ -18,19 +20,20 @@ async function run() {
         const diff = await fetchPrDiff(repo, prNumber, githubToken);
 
         console.log(`📝 Constructing targeted review prompt...`);
+        const safeHeadRef = sanitise(headRef);
         const diffContext = buildDiffContext(repo, prTitle, prBody, diff);
 
         const reviewPrompt = `You are an expert code reviewer and release manager. Review the pull request below with high precision and minimal false positives.
 
 # Version Bump Instruction
 Before the diff context, assess whether this PR requires a Semantic Versioning bump (patch, minor, or major).
-Check the current \`version\` in \`pyproject.toml\` on the feature branch (\`${headRef}\`) against \`pyproject.toml\` on \`${baseBranch}\`. If it is already bumped, do not perform any file modifications.
+Check the current \`version\` in \`pyproject.toml\` on the feature branch (\`${safeHeadRef}\`) against \`pyproject.toml\` on \`${baseBranch}\`. If it is already bumped, do not perform any file modifications.
 If a bump is required and not already done:
 1. Canonicalise the version from \`pyproject.toml\`.
 2. Update \`version\` in \`pyproject.toml\` to the new SemVer version.
 3. Update \`__version__\` in \`pyquantflow/__init__.py\` to match.
 4. Run \`uv lock\` to update the lockfile.
-5. Create a pull request targeting the \`${headRef}\` branch with title \`chore(release): bump version to X.Y.Z\`.
+5. Create a pull request targeting the \`${safeHeadRef}\` branch with title \`chore(release): bump version to X.Y.Z\`.
 
 ${diffContext}
 
@@ -53,30 +56,60 @@ Respond in Markdown using sections: ## Summary, ## Strengths, ## Findings (group
 \`VERDICT: comment\` — has warnings/nits but nothing blocking.
 \`VERDICT: block\` — one or more BLOCKING issues.`;
 
-        console.log(`⏳ Spawning Jules cloud review & autoPr session on branch ${headRef}...`);
+        console.log(`⏳ Spawning Jules cloud review & autoPr session on branch ${safeHeadRef}...`);
         const session = await spawnJulesSession(apiKey, repo, headRef, reviewPrompt, { autoPr: true });
 
         console.log("✅ Jules session successfully dispatched to cloud environment.");
-
+        
         console.log(`💬 Posting dispatch comment back to PR #${prNumber}...`);
         await postGitHubComment(
             repo,
             prNumber,
             githubToken,
-            `## 🤖 Jules Engaged\n\nA Jules cloud session (\`${session.id}\`) has been dispatched to perform code review and assess SemVer bumping.\n\nIf a version bump is required, Jules will open a separate PR against this feature branch (\`${headRef}\`) with the updated \`pyproject.toml\`, \`__init__.py\`, and \`uv.lock\` files.`
+            `## 🤖 Jules Engaged\n\nA Jules cloud session (\`${session.id}\`) has been dispatched to perform code review and assess SemVer bumping.\n\nIf a version bump is required, Jules will open a separate PR against this feature branch (\`${safeHeadRef}\`) with the updated files.`
         );
 
-        console.log(`🚦 Updating commit status for SHA ${headSha}...`);
+        console.log(`🚦 Updating commit status to pending...`);
         await postCommitStatus(
             repo,
             headSha,
             githubToken,
-            'success',
+            'pending',
             'jules/review',
-            'Jules review & autoPr session dispatched'
+            'Jules review & autoPr session is in progress'
+        );
+
+        let reviewMarkdown = "";
+        try {
+            reviewMarkdown = await awaitSessionResult(session);
+        } catch (streamError) {
+            console.warn("⚠️ Stream failed or timed out. Jules may still complete autoPr in the background.");
+            reviewMarkdown = `⚠️ **Jules review stream interrupted.**\nThe session (\`${session.id}\`) was dispatched and may still complete the version bump PR in the background, but the review feedback stream timed out or failed to report back.\n\nError: ${streamError.message}`;
+            
+            await postGitHubComment(repo, prNumber, githubToken, reviewMarkdown);
+            await postCommitStatus(repo, headSha, githubToken, 'success', 'jules/review', 'Review stream interrupted (non-blocking)');
+            console.log("✅ Workflow complete with soft-timeout!");
+            process.exit(0);
+        }
+
+        console.log("✅ Jules Review Completed successfully!");
+
+        console.log(`💬 Posting final review comment back to PR #${prNumber}...`);
+        await postGitHubComment(repo, prNumber, githubToken, `## 🤖 Jules Review\n\n${reviewMarkdown}\n\n---\n_Session: \`${session.id}\`_`);
+
+        const isBlocked = reviewMarkdown.toUpperCase().includes('VERDICT: BLOCK') || reviewMarkdown.includes('[BLOCKING]');
+        console.log(`🚦 Updating final commit status for SHA ${headSha}...`);
+        await postCommitStatus(
+            repo,
+            headSha,
+            githubToken,
+            isBlocked ? 'failure' : 'success',
+            'jules/review',
+            isBlocked ? 'Blocking issues found by Jules' : 'Review complete (verdict: approve)'
         );
 
         console.log("✅ Workflow complete!");
+        process.exit(0);
 
     } catch (error) {
         console.error("❌ Error running Jules PR Review:", error);
@@ -85,7 +118,7 @@ Respond in Markdown using sections: ## Summary, ## Strengths, ## Findings (group
                 repo,
                 prNumber,
                 githubToken,
-                `⚠️ **Jules PR review failed to complete.**\n\nPlease check the GitHub Actions workflow logs for more details.`
+                `⚠️ **Jules PR review failed to complete.**\n\n**Error details:**\n\`\`\`text\n${error.stack || error.message || error}\n\`\`\`\n\nPlease check the GitHub Actions workflow logs for more details.`
             );
         } catch (commentError) {
             console.error("❌ Failed to post fallback error comment:", commentError);
