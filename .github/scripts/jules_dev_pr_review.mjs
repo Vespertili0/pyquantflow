@@ -32,8 +32,7 @@ If a bump is required and not already done:
 1. Canonicalise the version from \`pyproject.toml\`.
 2. Update \`version\` in \`pyproject.toml\` to the new SemVer version.
 3. Update \`__version__\` in \`pyquantflow/__init__.py\` to match.
-4. Run \`uv lock\` to update the lockfile.
-5. Create a pull request targeting the \`${safeHeadRef}\` branch with title \`chore(release): bump version to X.Y.Z\`.
+4. Create a pull request targeting the \`${safeHeadRef}\` branch with title \`chore(release): bump version to X.Y.Z\`.
 
 ${diffContext}
 
@@ -57,7 +56,7 @@ Respond in Markdown using sections: ## Summary, ## Strengths, ## Findings (group
 \`VERDICT: block\` — one or more BLOCKING issues.`;
 
         console.log(`⏳ Spawning Jules cloud review & autoPr session on branch ${safeHeadRef}...`);
-        const session = await spawnJulesSession(apiKey, repo, headRef, reviewPrompt, { autoPr: true });
+        const session = await spawnJulesSession(apiKey, repo, safeHeadRef, reviewPrompt, { autoPr: true });
 
         console.log("✅ Jules session successfully dispatched to cloud environment.");
 
@@ -88,9 +87,9 @@ Respond in Markdown using sections: ## Summary, ## Strengths, ## Findings (group
             const softTimeoutComment = `⚠️ **Jules review stream interrupted.**\nThe session (\`${session.id}\`) was dispatched and may still complete the version bump PR in the background, but the review feedback stream timed out or did not report back.\n\nPlease check the GitHub Actions workflow logs for details.`;
 
             await postGitHubComment(repo, prNumber, githubToken, softTimeoutComment);
-            await postCommitStatus(repo, headSha, githubToken, 'success', 'jules/review', 'Review stream interrupted (non-blocking)');
-            console.log("✅ Workflow complete with soft-timeout!");
-            process.exit(0);
+            await postCommitStatus(repo, headSha, githubToken, 'error', 'jules/review', 'Review stream timed out or failed');
+            console.log("❌ Workflow failed due to stream timeout.");
+            process.exit(1);
         }
 
         console.log("✅ Jules Review Completed successfully!");
