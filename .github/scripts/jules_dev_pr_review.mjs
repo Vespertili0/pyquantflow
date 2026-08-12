@@ -23,7 +23,7 @@ async function run() {
         const reviewPrompt = `You are an expert code reviewer and release manager. Review the pull request below with high precision and minimal false positives.
 
 # Version Bump Instruction
-Before the diff context, assess whether this PR requires a Semantic Versioning bump (patch, minor, or major). 
+Before the diff context, assess whether this PR requires a Semantic Versioning bump (patch, minor, or major).
 Check the current \`version\` in \`pyproject.toml\` on the feature branch (\`${headRef}\`) against \`pyproject.toml\` on \`${baseBranch}\`. If it is already bumped, do not perform any file modifications.
 If a bump is required and not already done:
 1. Canonicalise the version from \`pyproject.toml\`.
@@ -60,9 +60,9 @@ Respond in Markdown using sections: ## Summary, ## Strengths, ## Findings (group
 
         console.log(`💬 Posting dispatch comment back to PR #${prNumber}...`);
         await postGitHubComment(
-            repo, 
-            prNumber, 
-            githubToken, 
+            repo,
+            prNumber,
+            githubToken,
             `## 🤖 Jules Engaged\n\nA Jules cloud session (\`${session.id}\`) has been dispatched to perform code review and assess SemVer bumping.\n\nIf a version bump is required, Jules will open a separate PR against this feature branch (\`${headRef}\`) with the updated \`pyproject.toml\`, \`__init__.py\`, and \`uv.lock\` files.`
         );
 
