@@ -139,8 +139,13 @@ class ClassifierEngine(BaseModelEngine):
             # Log model
             signature = infer_signature(X, model.predict(X))
             model_info = mlflow.sklearn.log_model(
-                model, name="model", signature=signature
+                model,
+                name="model",
+                signature=signature,
+                skops_trusted_types=["xgboost.core.Booster", "xgboost.sklearn.XGBClassifier"],
             )
+            logger.info(f"Model saved to {model_info.model_uri}")
+
             mlflow.log_params(params)
             if tags is not None:
                 mlflow.set_tags(tags)
