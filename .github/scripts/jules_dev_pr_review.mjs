@@ -60,7 +60,7 @@ Respond in Markdown using sections: ## Summary, ## Strengths, ## Findings (group
         const session = await spawnJulesSession(apiKey, repo, headRef, reviewPrompt, { autoPr: true });
 
         console.log("✅ Jules session successfully dispatched to cloud environment.");
-        
+
         console.log(`💬 Posting dispatch comment back to PR #${prNumber}...`);
         await postGitHubComment(
             repo,
@@ -85,7 +85,7 @@ Respond in Markdown using sections: ## Summary, ## Strengths, ## Findings (group
         } catch (streamError) {
             console.warn("⚠️ Stream failed or timed out. Jules may still complete autoPr in the background.");
             reviewMarkdown = `⚠️ **Jules review stream interrupted.**\nThe session (\`${session.id}\`) was dispatched and may still complete the version bump PR in the background, but the review feedback stream timed out or failed to report back.\n\nError: ${streamError.message}`;
-            
+
             await postGitHubComment(repo, prNumber, githubToken, reviewMarkdown);
             await postCommitStatus(repo, headSha, githubToken, 'success', 'jules/review', 'Review stream interrupted (non-blocking)');
             console.log("✅ Workflow complete with soft-timeout!");
