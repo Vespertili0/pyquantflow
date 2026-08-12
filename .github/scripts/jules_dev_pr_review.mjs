@@ -83,17 +83,10 @@ Respond in Markdown using sections: ## Summary, ## Strengths, ## Findings (group
         try {
             reviewMarkdown = await awaitSessionResult(session);
         } catch (streamError) {
-<<<<<<< HEAD
             console.warn("⚠️ Stream failed or timed out. Jules may still complete autoPr in the background.");
             reviewMarkdown = `⚠️ **Jules review stream interrupted.**\nThe session (\`${session.id}\`) was dispatched and may still complete the version bump PR in the background, but the review feedback stream timed out or failed to report back.\n\nError: ${streamError.message}`;
 
             await postGitHubComment(repo, prNumber, githubToken, reviewMarkdown);
-=======
-            // Log full error details to Actions console only — never expose to public PR comments
-            console.error("⚠️ Stream failed or timed out:", streamError);
-            const softTimeoutComment = `⚠️ **Jules review stream interrupted.**\nThe session (\`${session.id}\`) was dispatched and may still complete the version bump PR in the background, but the review feedback stream timed out or did not report back.\n\nPlease check the GitHub Actions workflow logs for details.`;
-            await postGitHubComment(repo, prNumber, githubToken, softTimeoutComment);
->>>>>>> 4068e22 (refactor: sanitize error messages in PR comments to prevent exposing stack traces to public feedback)
             await postCommitStatus(repo, headSha, githubToken, 'success', 'jules/review', 'Review stream interrupted (non-blocking)');
             console.log("✅ Workflow complete with soft-timeout!");
             process.exit(0);
