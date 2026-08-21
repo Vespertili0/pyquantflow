@@ -15,6 +15,7 @@ export function loadGitHubContext() {
     return {
         prNumber: githubEvent.pull_request.number,
         headSha: githubEvent.pull_request.head.sha,
+        headRef: githubEvent.pull_request.head.ref,
         prTitle: githubEvent.pull_request.title || '',
         prBody: githubEvent.pull_request.body || '(no description)'
     };
@@ -97,7 +98,7 @@ ${safeDiff}
 /**
  * Initialises the Jules SDK and creates a session.
  */
-export async function spawnJulesSession(apiKey, repo, baseBranch, prompt) {
+export async function spawnJulesSession(apiKey, repo, baseBranch, prompt, options = {}) {
     const customJules = jules.with({ apiKey });
     return await customJules.session({
         prompt: prompt,
@@ -106,7 +107,7 @@ export async function spawnJulesSession(apiKey, repo, baseBranch, prompt) {
             baseBranch: baseBranch
         },
         requireApproval: false,
-        autoPr: false
+        ...options
     });
 }
 

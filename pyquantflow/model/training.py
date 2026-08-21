@@ -140,7 +140,7 @@ class HyperparameterOptimiser:
 
             return np.mean(fold_scores)
 
-        # Optimize the existing study object
+        # Optimise the existing study object
         self.study.optimize(objective, n_trials=n_trials, timeout=timeout)
 
         return self.study

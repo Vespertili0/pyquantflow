@@ -11,7 +11,7 @@ jax.config.update("jax_enable_x64", True)
 @partial(jax.jit, static_argnames=["window"])
 def _rolling_ols_t_stat_opt(prices, window):
     """
-    Highly optimized rolling t-statistic calculation using analytical OLS
+    Highly optimised rolling t-statistic calculation using analytical OLS
     and memory-efficient dynamic slicing.
     """
     n = prices.shape[0]
@@ -49,7 +49,7 @@ def trend_scanning(
     series: pd.Series, windows: list | int = [5, 10, 20, 40, 80, 120]
 ) -> pd.DataFrame:
     """
-    An optimized, memory-safe execution of Trend Scanning via JAX.
+    An optimised, memory-safe execution of Trend Scanning via JAX.
     """
     arr = jnp.array(series.values, dtype=jnp.float64)
     n = len(series)
