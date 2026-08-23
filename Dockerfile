@@ -1,5 +1,5 @@
 # ================================================================
-# IX03 — Multi-Architecture pyquantflow Container
+# Multi-Architecture pyquantflow Container
 #
 # Targets:
 #   quant-engine       : lean headless compute (GCP Cloud Run / amd64)
