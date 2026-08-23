@@ -34,3 +34,7 @@ build-backend = "setuptools.build_meta"
 
 [tool.uv]
 package = true
+environments = [
+    "sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "sys_platform == 'linux' and platform_machine == 'aarch64'",
+]
