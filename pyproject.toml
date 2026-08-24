@@ -1,6 +1,6 @@
 [project]
 name = "pyquantflow"
-version = "0.3.0"
+version = "0.4.0"
 description = "A robust stock analysis and backtesting framework."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -18,6 +18,9 @@ dependencies = [
     "yfinance>=1.5.2",
 ]
 
+[project.optional-dependencies]
+orchestrator = ["prefect"]
+
 [dependency-groups]
 dev = [
     "pytest>=9.1.0",
@@ -34,3 +37,7 @@ build-backend = "setuptools.build_meta"
 
 [tool.uv]
 package = true
+environments = [
+    "sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "sys_platform == 'linux' and platform_machine == 'aarch64'",
+]

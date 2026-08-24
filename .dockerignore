@@ -1,0 +1,44 @@
+# Version control
+.git/
+.gitattributes
+.gitignore
+
+# CI/CD and agent configs (never bake into image)
+.github/
+.agents/
+.pre-commit-config.yaml
+
+# Python cache and build artefacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+
+# Dev tool caches
+.pytest_cache/
+.ruff_cache/
+.python-version
+
+# Notebooks and dashboards (not part of the compute engine)
+notebooks/
+dashboard/
+
+# Local runtime data and credentials
+.env
+stocks.db
+backtest_results.db
+mlflow.db
+mlruns/
+
+# MLflow experiment tracking (local only)
+mlruns/
+
+# Tests (not needed at runtime)
+tests/
+
+# IDE and OS artefacts
+.DS_Store
+*.swp
