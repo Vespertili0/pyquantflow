@@ -68,12 +68,12 @@ FROM builder AS orchestrator-builder
 RUN uv sync --frozen --extra orchestrator --no-dev
 
 # ----------------------------------------------------------------
-# Stage 4: engine  (target: quant-engine)
-# Sterile final image for headless compute workloads.
+# Stage 4: runtime-base
+# Shared foundation for all runtime targets.
 # Non-root user is created before COPY so --chown resolves at layer
 # creation time, giving appuser ownership of all runtime files.
 # ----------------------------------------------------------------
-FROM python:3.12-slim AS engine
+FROM python:3.12-slim AS runtime-base
 
 # Create non-root user before any COPY so --chown can resolve them
 RUN groupadd --gid 1001 appgroup \
@@ -85,32 +85,36 @@ RUN groupadd --gid 1001 appgroup \
 
 WORKDIR /app
 
-# --chown: appuser owns all venv and source files; no PermissionError
-# if the application writes to paths relative to the working directory
-# via an explicitly mounted volume.
-COPY --from=builder --chown=appuser:appgroup /app/.venv      /app/.venv
-COPY --from=builder --chown=appuser:appgroup /app/pyquantflow /app/pyquantflow
-
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PATH="/app/.venv/bin:$PATH"
 
 USER appuser
 
+# ----------------------------------------------------------------
+# Stage 5: engine  (target: quant-engine)
+# Sterile final image for headless compute workloads.
+# ----------------------------------------------------------------
+FROM runtime-base AS engine
+
+# --chown: appuser owns all venv and source files; no PermissionError
+# if the application writes to paths relative to the working directory
+# via an explicitly mounted volume.
+COPY --from=builder --chown=appuser:appgroup /app/.venv      /app/.venv
+COPY --from=builder --chown=appuser:appgroup /app/pyquantflow /app/pyquantflow
+
 # Default: verify import. Override CMD at runtime for actual workloads.
 CMD ["python", "-c", "import pyquantflow; print('pyquantflow', pyquantflow.__version__)"]
 
 # ----------------------------------------------------------------
-# Stage 5: orchestrator  (target: quant-orchestrator)
-# Inherits the sterile engine image (user, PATH, ENV already set).
-# Replaces only the venv with the orchestrator-builder's venv,
-# which includes locked Prefect. No uv present at runtime.
+# Stage 6: orchestrator  (target: quant-orchestrator)
+# Inherits the shared runtime base and copies the orchestrator-specific
+# venv (with locked Prefect). This avoids dirty merges with the engine's
+# venv that would break bit-for-bit deployment guarantees.
 # ----------------------------------------------------------------
-FROM engine AS orchestrator
+FROM runtime-base AS orchestrator
 
-# Temporarily elevate to replace the venv, then return to appuser
-USER root
 COPY --from=orchestrator-builder --chown=appuser:appgroup /app/.venv /app/.venv
-USER appuser
+COPY --from=builder --chown=appuser:appgroup /app/pyquantflow /app/pyquantflow
 
 CMD ["prefect", "worker", "start", "--pool", "default-agent-pool"]
