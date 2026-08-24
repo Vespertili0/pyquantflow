@@ -94,7 +94,7 @@ AssetOrganiser.plot_cusum_events = _ao_plot_cusum_events
 AssetOrganiser.plot_sample_concurrency = _ao_plot_sample_concurrency
 
 
-# --- IX02-05: StationaryTransformer ---
+# --- StationaryTransformer ---
 def _st_plot_stationarity_profile(self, raw_series, col, max_lags=40):
     from .features import plot_stationarity_profile
     from pyquantflow.data.features.fractional_differentiation import adf_screened_ffd
@@ -109,7 +109,7 @@ def _st_plot_stationarity_profile(self, raw_series, col, max_lags=40):
 StationaryTransformer.plot_stationarity_profile = _st_plot_stationarity_profile
 
 
-# --- IX02-06: FeatureEvaluator ---
+# --- FeatureEvaluator ---
 def _fe_plot_feature_clusters(self, df, regime_id=None):
     from .clustering import plot_feature_clusters
 
@@ -134,7 +134,7 @@ def _fe_plot_feature_clusters(self, df, regime_id=None):
 FeatureEvaluator.plot_feature_clusters = _fe_plot_feature_clusters
 
 
-# --- IX02-07: Cross Validators ---
+# --- Cross Validators ---
 def _cv_plot_splits(self, X, y):
     from .cv import plot_cv_splits
 
@@ -145,7 +145,7 @@ PurgedKFoldCV.plot_splits = _cv_plot_splits
 CombinatorialPurgedKFold.plot_splits = _cv_plot_splits
 
 
-# --- IX02-08: PrimarySecondaryClassifier ---
+# --- PrimarySecondaryClassifier ---
 def _psc_plot_meta_diagnostics(self, X, y_true):
     from .metalabel import plot_meta_label_entropy
 
@@ -158,7 +158,7 @@ def _psc_plot_meta_diagnostics(self, X, y_true):
 PrimarySecondaryClassifier.plot_meta_diagnostics = _psc_plot_meta_diagnostics
 
 
-# --- IX02-09: GSADFTransformer ---
+# --- GSADFTransformer ---
 def _gsadf_plot_sadf_regimes(
     self, price_series, sadf_series, critical_value=1.4, events=None
 ):

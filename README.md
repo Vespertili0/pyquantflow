@@ -1,7 +1,7 @@
 ![](logo.png)
 
 <p align="center">
-  <a href="https://github.com/pre-commit/pre-commit"><img src="https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit&logoColor=white" alt="pre-commit"></a> <a href="https://github.com/astral-sh/ruff"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json" alt="Ruff"></a> <a href="https://github.com/Vespertili0/pyquantflow/releases"><img src="https://img.shields.io/github/v/release/Vespertili0/pyquantflow?color=orange" alt="Latest Release"></a> <a href="https://www.python.org/"><img src="https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue" alt="Python Version"></a> <a href="https://github.com/Vespertili0/pyquantflow/actions/workflows/pr-review.yml"><img src="https://github.com/Vespertili0/pyquantflow/actions/workflows/pr-review.yml/badge.svg?branch=main" alt="Tests"></a> <a href="https://codecov.io/gh/Vespertili0/pyquantflow"><img src="https://codecov.io/gh/Vespertili0/pyquantflow/branch/main/graph/badge.svg" alt="Codecov"></a> <a href="https://sqlite.org/"><img src="https://img.shields.io/badge/SQLite-003B57?style=flat&logo=sqlite&logoColor=white" alt="SQLite"></a> <a href="https://scikit-learn.org/"><img src="https://img.shields.io/badge/scikit--learn-F7931E?style=flat&logo=scikit-learn&logoColor=white" alt="Scikit-Learn"></a> <a href="https://mlflow.org/"><img src="https://img.shields.io/badge/MLflow-0194E2?style=flat&logo=mlflow&logoColor=white" alt="MLflow"></a>
+  <a href="https://github.com/pre-commit/pre-commit"><img src="https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit&logoColor=white" alt="pre-commit"></a> <a href="https://github.com/astral-sh/ruff"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json" alt="Ruff"></a> <a href="https://github.com/Vespertili0/pyquantflow/releases"><img src="https://img.shields.io/github/v/release/Vespertili0/pyquantflow?color=orange" alt="Latest Release"></a> <a href="https://www.python.org/"><img src="https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue" alt="Python Version"></a> <a href="https://github.com/Vespertili0/pyquantflow/actions/workflows/pr-review.yml"><img src="https://github.com/Vespertili0/pyquantflow/actions/workflows/pr-review.yml/badge.svg?branch=main" alt="Tests"></a> <a href="https://codecov.io/gh/Vespertili0/pyquantflow"><img src="https://codecov.io/gh/Vespertili0/pyquantflow/branch/main/graph/badge.svg" alt="Codecov"></a> <a href="https://sqlite.org/"><img src="https://img.shields.io/badge/SQLite-003B57?style=flat&logo=sqlite&logoColor=white" alt="SQLite"></a> <a href="https://scikit-learn.org/"><img src="https://img.shields.io/badge/scikit--learn-F7931E?style=flat&logo=scikit-learn&logoColor=white" alt="Scikit-Learn"></a> <a href="https://mlflow.org/"><img src="https://img.shields.io/badge/MLflow-0194E2?style=flat&logo=mlflow&logoColor=white" alt="MLflow"></a> <a href="https://www.docker.com/"><img src="https://img.shields.io/badge/Docker-2496ED?style=flat&logo=docker&logoColor=white" alt="Docker"></a>
 </p>
 
 # pyquantflow
@@ -19,8 +19,42 @@ A local-first stock analysis and backtesting framework designed for data persist
 
 ## Installation
 
+### Python Package
+
 ```bash
 pip install git+https://github.com/Vespertili0/pyquantflow.git
+```
+
+### Docker Containers
+
+Pre-built, multi-architecture (`linux/amd64` and `linux/arm64`) OCI container images are published to the GitHub Container Registry (GHCR):
+
+| Image Target | Description | Registry URI |
+|---|---|---|
+| **`quant-engine`** | Lean, headless runtime for compute jobs and backtesting (runs under unprivileged `appuser:appgroup`, UID/GID 1001). | `ghcr.io/vespertili0/quant-engine:latest` |
+| **`quant-orchestrator`** | Extended container packaging [Prefect](https://www.prefect.io/) for distributed edge workflow orchestration. | `ghcr.io/vespertili0/quant-orchestrator:latest-prefect` |
+
+#### Pull and Run with GHCR
+
+```bash
+# Pull the lean compute engine
+docker pull ghcr.io/vespertili0/quant-engine:latest
+
+# Run an ad-hoc Python command or script mounting local workspace for data persistence
+docker run --rm -v "$(pwd):/app/data" ghcr.io/vespertili0/quant-engine:latest \
+    python -c "import pyquantflow; print('pyquantflow version:', pyquantflow.__version__)"
+```
+
+#### Build Locally with Buildx
+
+You can compile the multi-stage targets locally using Docker Buildx:
+
+```bash
+# Build the headless compute engine target
+docker buildx build --target engine -t quant-engine:local .
+
+# Build the Prefect orchestrator target
+docker buildx build --target orchestrator -t quant-orchestrator:local .
 ```
 
 ## Quick Start
@@ -128,6 +162,7 @@ organiser = AssetOrganiser(
 organiser.prepare_multi_asset_frame()
 calibrated_alphas = organiser.build_learning_pipeline(
     target_events_train=1000,
+    filter_col="Close",
     price_col="Close",
     objective="budget",  # Targets a specific budget of events (e.g. 1000)
 )
