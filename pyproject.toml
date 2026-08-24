@@ -18,6 +18,9 @@ dependencies = [
     "yfinance>=1.5.2",
 ]
 
+[project.optional-dependencies]
+orchestrator = ["prefect"]
+
 [dependency-groups]
 dev = [
     "pytest>=9.1.0",
