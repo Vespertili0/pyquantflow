@@ -125,7 +125,7 @@ class TestDatabaseManager(unittest.TestCase):
         self.assertEqual(mock_update_ticker_internal.call_count, 2)
 
         # Assert that add_ticker was called once (for TEST3.AX)
-        mock_add_ticker.assert_called_once_with("TEST3.AX", commit=False)
+        mock_add_ticker.assert_called_once_with("TEST3.AX", commit=False, skip_check=True)
 
     @patch.object(DatabaseManager, "_update_ticker_internal")
     @patch.object(DatabaseManager, "add_ticker")

@@ -189,8 +189,8 @@ class BatchBacktester:
                 individual_results[sym] = stats_dict
                 logger.info(f"Finished {sym}: Return {stats_dict['Return [%]']:.2f}%")
             except Exception as e:
-                logger.error(f"Error running backtest for {sym}: {e}")
-                individual_results[sym] = {"Error": str(e)}
+                logger.error(f"Error running backtest for {sym}: {type(e).__name__}")
+                individual_results[sym] = {"Error": type(e).__name__}
 
         # Calculate averages
         average_metrics = self._calculate_averages(individual_results)

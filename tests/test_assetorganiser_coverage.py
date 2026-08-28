@@ -141,6 +141,43 @@ class TestAssetOrganiserCoverage(unittest.TestCase):
         )
         self.assertIn(self.ticker_1, alphas)
 
+    def test_downsample_cusum_fallback_vol_col_missing(self):
+        """
+        Tests the fallback behaviour when a specified vol_col is present globally or
+        in the training data, but missing from a specific ticker's MultiAsset sub-frame.
+        """
+        organiser = AssetOrganiser(
+            data_map=self.data_map,
+            cutoff_date=self.cutoff_date,
+            target_features=["target"],
+        )
+        organiser.prepare_multi_asset_frame()
+
+        # Add a mock 'volatility' column to the entire dataset
+        organiser.multi_asset["volatility"] = 0.05
+        organiser._split_train_test()
+
+        # Now explicitly drop 'volatility' from self.multi_asset so that
+        # ticker_train_df[vol_col] SUCCEEDS (because it uses multi_asset_train,
+        # which still has the column), but self.multi_asset.xs(...)[vol_col] FAILS.
+        # This will exercise lines 248 and 273 (the KeyError in the second block).
+        organiser.multi_asset = organiser.multi_asset.drop(columns=["volatility"])
+
+        from unittest.mock import patch
+
+        # Mock the fallback calculation to assert it gets called
+        with patch("pandas.core.window.ewm.ExponentialMovingWindow.std") as mock_std:
+            # We mock the Series ewm std method. Since we dropped 'volatility', it should hit the fallback.
+            # mock_std will return a Series of 0.05 to avoid breaking downstream logic
+            mock_std.return_value = pd.Series(0.05, index=organiser.multi_asset.index)
+            
+            alphas = organiser.downsample_to_cusum_events(
+                target_events_train=5, filter_col="returns", vol_col="volatility"
+            )
+            self.assertIn(self.ticker_1, alphas)
+            # The fallback std must have been called
+            mock_std.assert_called()
+
     def test_apply_continuous_labels_missing_factory(self):
         organiser = AssetOrganiser(
             data_map=self.data_map,
@@ -567,6 +604,28 @@ class TestAssetOrganiserNewBranches(unittest.TestCase):
                 objective="uniqueness",
                 t1_col="nonexistent_t1",
             )
+
+    def test_downsample_cusum_missing_vol_column_in_data(self):
+        """
+        When vol_col is given but the column is absent from the input DataFrame,
+        the KeyError should be caught internally and it should fall back to None
+        or dynamic EWMA calculation without raising an exception.
+        """
+        org = self._make_organiser()
+        org.prepare_multi_asset_frame()
+
+        # vol_col is specified but doesn't exist. We want to ensure no KeyError escapes.
+        # This tests both the try/except blocks around ticker_train_vol and vol_all
+        try:
+            alphas = org.downsample_to_cusum_events(
+                target_events_train=10,
+                filter_col="feature1",
+                vol_col="nonexistent_vol",
+            )
+            self.assertIsInstance(alphas, dict)
+            self.assertIn("AAA", alphas)
+        except KeyError:
+            self.fail("KeyError was raised when vol_col was missing in DataFrame.")
 
     # ------------------------------------------------------------------
     # apply_continuous_labels — happy path & duplicate-column deduplication

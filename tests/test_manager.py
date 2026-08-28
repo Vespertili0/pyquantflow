@@ -2,6 +2,26 @@ import unittest
 import sys
 import importlib
 
+from pyquantflow.model.manager import BaseModelEngine
+
+
+class TestBaseModelEngine(unittest.TestCase):
+    def test_abstract_method_validate_enforcement(self):
+        class DummyModelEngine(BaseModelEngine):
+            def register_mlflow_evaluation(
+                self,
+                model,
+                params,
+                metrics,
+                experiment_name=None,
+                run_name=None,
+            ):
+                pass
+            # Intentionally omit `validate` to test abstract method enforcement
+
+        with self.assertRaisesRegex(TypeError, "Can't instantiate abstract class DummyModelEngine.*validate"):
+            DummyModelEngine()
+
 
 class TestClassifierEngineMockMLFlowError(unittest.TestCase):
     def test_mlflow_import_error(self):

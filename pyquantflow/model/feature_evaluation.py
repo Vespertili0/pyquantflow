@@ -9,6 +9,7 @@ import scipy.stats
 from sklearn.base import BaseEstimator, TransformerMixin, clone
 from sklearn.metrics import silhouette_score
 from tsfeatures import tsfeatures
+from joblib import Parallel, delayed
 
 # Shared FFD + ADF utilities (canonical source: data.features.fractional_differentiation)
 from pyquantflow.data.features.fractional_differentiation import (
@@ -54,6 +55,76 @@ class StationaryTransformer(BaseEstimator, TransformerMixin):
         self.z_mean_ = {}
         self.z_std_ = {}
 
+    def _fit_column(
+        self,
+        col_name: str,
+        col_data: pd.Series,
+        is_multi_index: bool,
+        index_names: list,
+    ) -> tuple:
+        optimal_d = 1.0
+        if is_multi_index:
+            # Apply FFD per ticker group to prevent cross-asset leakage,
+            # then evaluate stationarity globally across the differenced panel.
+            for d_candidate in self.d_grid:
+                try:
+                    unstacked = col_data.unstack(level="ticker")
+                    diff_unstacked = unstacked.apply(
+                        lambda s: frac_diff_ffd(s, d=d_candidate, thres=self.ffd_thres)
+                    )
+                    # Calculate ADF per ticker and aggregate
+                    t_stats = diff_unstacked.apply(_adf_test_stat)
+                    p_values = t_stats.apply(_adf_p_value)
+                    p_value = p_values.mean()
+                except Exception:
+                    diff_series = frac_diff_ffd(
+                        col_data, d=d_candidate, thres=self.ffd_thres
+                    )
+                    t_stat = _adf_test_stat(diff_series)
+                    p_value = _adf_p_value(t_stat)
+
+                if p_value <= self.significance_level:
+                    optimal_d = d_candidate
+                    break
+        else:
+            # Single-asset path: delegate entirely to adf_screened_ffd
+            _, optimal_d = adf_screened_ffd(
+                col_data,
+                d=None,
+                thres=self.ffd_thres,
+                significance_level=self.significance_level,
+                d_grid=self.d_grid,
+            )
+
+        z_mean, z_std = None, None
+        if self.z_mode == "global":
+            if is_multi_index:
+                try:
+                    unstacked = col_data.unstack(level="ticker")
+                    diff_unstacked = unstacked.apply(
+                        lambda s: adf_screened_ffd(
+                            s, d=optimal_d, thres=self.ffd_thres
+                        )[0]
+                    )
+                    diff_series = diff_unstacked.stack(level="ticker", dropna=False)
+                    if diff_series.index.names != index_names:
+                        diff_series = diff_series.reorder_levels(index_names)
+                    diff_series = diff_series.reindex(col_data.index)
+                except Exception:
+                    diff_series, _ = adf_screened_ffd(
+                        col_data, d=optimal_d, thres=self.ffd_thres
+                    )
+            else:
+                diff_series, _ = adf_screened_ffd(
+                    col_data, d=optimal_d, thres=self.ffd_thres
+                )
+
+            clean = diff_series.dropna()
+            z_mean = float(clean.mean())
+            z_std = float(clean.std())
+
+        return col_name, optimal_d, z_mean, z_std
+
     def fit(self, X: pd.DataFrame, y=None):
         """
         Determines the optimal differencing order d* for each feature column.
@@ -63,82 +134,73 @@ class StationaryTransformer(BaseEstimator, TransformerMixin):
         ``z_mean_`` and ``z_std_`` from the FFD-transformed training data.
         """
         is_multi_index = isinstance(X.index, pd.MultiIndex)
+        index_names = list(X.index.names)
 
-        for col in X.columns:
-            if is_multi_index:
-                # Apply FFD per ticker group to prevent cross-asset leakage,
-                # then evaluate stationarity globally across the differenced panel.
-                optimal_d = 1.0
-                for d_candidate in self.d_grid:
-                    try:
-                        unstacked = X[col].unstack(level="ticker")
-                        diff_unstacked = unstacked.apply(
-                            lambda s: frac_diff_ffd(
-                                s, d=d_candidate, thres=self.ffd_thres
-                            )
-                        )
-                        # Calculate ADF per ticker and aggregate
-                        t_stats = diff_unstacked.apply(_adf_test_stat)
-                        p_values = t_stats.apply(_adf_p_value)
-                        p_value = p_values.mean()
+        results = Parallel(n_jobs=-1, prefer="threads")(
+            delayed(self._fit_column)(col, X[col], is_multi_index, index_names)
+            for col in X.columns
+        )
 
-                        diff_series = diff_unstacked.stack(level="ticker", dropna=False)
-
-                        if diff_series.index.names != X.index.names:
-                            diff_series = diff_series.reorder_levels(X.index.names)
-
-                        diff_series = diff_series.reindex(X.index)
-                    except Exception:
-                        diff_series = frac_diff_ffd(
-                            X[col], d=d_candidate, thres=self.ffd_thres
-                        )
-                        t_stat = _adf_test_stat(diff_series)
-                        p_value = _adf_p_value(t_stat)
-
-                    if p_value <= self.significance_level:
-                        optimal_d = d_candidate
-                        break
-
-                self.optimal_d_[col] = optimal_d
-            else:
-                # Single-asset path: delegate entirely to adf_screened_ffd
-                _, d_star = adf_screened_ffd(
-                    X[col],
-                    d=None,
-                    thres=self.ffd_thres,
-                    significance_level=self.significance_level,
-                    d_grid=self.d_grid,
-                )
-                self.optimal_d_[col] = d_star
-
-        # --- Global z-score: freeze mean/std from training data ---
-        if self.z_mode == "global":
-            for col in X.columns:
-                d = self.optimal_d_.get(col, 1.0)
-                if is_multi_index:
-                    try:
-                        unstacked = X[col].unstack(level="ticker")
-                        diff_unstacked = unstacked.apply(
-                            lambda s: adf_screened_ffd(s, d=d, thres=self.ffd_thres)[0]
-                        )
-                        diff_series = diff_unstacked.stack(level="ticker", dropna=False)
-                        if diff_series.index.names != X.index.names:
-                            diff_series = diff_series.reorder_levels(X.index.names)
-                        diff_series = diff_series.reindex(X.index)
-                    except Exception:
-                        diff_series, _ = adf_screened_ffd(
-                            X[col], d=d, thres=self.ffd_thres
-                        )
-                else:
-                    diff_series, _ = adf_screened_ffd(X[col], d=d, thres=self.ffd_thres)
-
-                clean = diff_series.dropna()
-                self.z_mean_[col] = float(clean.mean())
-                self.z_std_[col] = float(clean.std())
+        for col, optimal_d, z_mean, z_std in results:
+            self.optimal_d_[col] = optimal_d
+            if self.z_mode == "global":
+                self.z_mean_[col] = z_mean
+                self.z_std_[col] = z_std
 
         self.feature_names_in_ = list(X.columns)
 
         return self
+
+    def _transform_column(
+        self,
+        col_name: str,
+        col_data: pd.Series,
+        is_multi_index: bool,
+        index_names: list,
+    ) -> tuple:
+        d = self.optimal_d_.get(col_name, 1.0)
+
+        # 1. Apply FFD via adf_screened_ffd in explicit mode
+        if is_multi_index:
+            try:
+                unstacked = col_data.unstack(level="ticker")
+                diff_unstacked = unstacked.apply(
+                    lambda s: adf_screened_ffd(s, d=d, thres=self.ffd_thres)[0]
+                )
+                diff_series = diff_unstacked.stack(level="ticker", dropna=False)
+
+                if diff_series.index.names != index_names:
+                    diff_series = diff_series.reorder_levels(index_names)
+
+                diff_series = diff_series.reindex(col_data.index)
+            except Exception:
+                diff_series, _ = adf_screened_ffd(col_data, d=d, thres=self.ffd_thres)
+        else:
+            diff_series, _ = adf_screened_ffd(col_data, d=d, thres=self.ffd_thres)
+
+        # 2. Z-Score Standardisation
+        if self.z_mode == "global":
+            # Frozen parameters from fit()
+            g_mean = self.z_mean_.get(col_name, 0.0)
+            g_std = self.z_std_.get(col_name, 1.0)
+            if g_std == 0 or np.isnan(g_std):
+                g_std = 1.0
+            z_score = (diff_series - g_mean) / g_std
+        else:
+            # Causal Rolling Z-Score Normalisation
+            if is_multi_index:
+                roll = diff_series.groupby(level="ticker")
+                mean = roll.transform(lambda s: s.rolling(self.rolling_z_window).mean())
+                std = roll.transform(lambda s: s.rolling(self.rolling_z_window).std())
+            else:
+                mean = diff_series.rolling(self.rolling_z_window).mean()
+                std = diff_series.rolling(self.rolling_z_window).std()
+
+            # To avoid division by zero for constant periods
+            std = std.replace(0, np.nan)
+            z_score = (diff_series - mean) / std
+
+        return col_name, z_score
 
     def transform(self, X: pd.DataFrame) -> pd.DataFrame:
         """
@@ -147,54 +209,14 @@ class StationaryTransformer(BaseEstimator, TransformerMixin):
         """
         X_out = pd.DataFrame(index=X.index)
         is_multi_index = isinstance(X.index, pd.MultiIndex)
+        index_names = list(X.index.names)
 
-        for col in X.columns:
-            d = self.optimal_d_.get(col, 1.0)
+        results = Parallel(n_jobs=-1, prefer="threads")(
+            delayed(self._transform_column)(col, X[col], is_multi_index, index_names)
+            for col in X.columns
+        )
 
-            # 1. Apply FFD via adf_screened_ffd in explicit mode
-            if is_multi_index:
-                try:
-                    unstacked = X[col].unstack(level="ticker")
-                    diff_unstacked = unstacked.apply(
-                        lambda s: adf_screened_ffd(s, d=d, thres=self.ffd_thres)[0]
-                    )
-                    diff_series = diff_unstacked.stack(level="ticker", dropna=False)
-
-                    if diff_series.index.names != X.index.names:
-                        diff_series = diff_series.reorder_levels(X.index.names)
-
-                    diff_series = diff_series.reindex(X.index)
-                except Exception:
-                    diff_series, _ = adf_screened_ffd(X[col], d=d, thres=self.ffd_thres)
-            else:
-                diff_series, _ = adf_screened_ffd(X[col], d=d, thres=self.ffd_thres)
-
-            # 2. Z-Score Standardisation
-            if self.z_mode == "global":
-                # Frozen parameters from fit()
-                g_mean = self.z_mean_.get(col, 0.0)
-                g_std = self.z_std_.get(col, 1.0)
-                if g_std == 0 or np.isnan(g_std):
-                    g_std = 1.0
-                z_score = (diff_series - g_mean) / g_std
-            else:
-                # Causal Rolling Z-Score Normalisation
-                if is_multi_index:
-                    roll = diff_series.groupby(level="ticker")
-                    mean = roll.transform(
-                        lambda s: s.rolling(self.rolling_z_window).mean()
-                    )
-                    std = roll.transform(
-                        lambda s: s.rolling(self.rolling_z_window).std()
-                    )
-                else:
-                    mean = diff_series.rolling(self.rolling_z_window).mean()
-                    std = diff_series.rolling(self.rolling_z_window).std()
-
-                # To avoid division by zero for constant periods
-                std = std.replace(0, np.nan)
-                z_score = (diff_series - mean) / std
-
+        for col, z_score in results:
             X_out[col] = z_score
 
         return X_out

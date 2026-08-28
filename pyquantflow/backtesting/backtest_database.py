@@ -42,7 +42,7 @@ class BacktestDatabaseManager:
         try:
             metrics_json = json.dumps(result_dict, default=str)
         except Exception as e:
-            logger.error(f"Error serializing results for {ticker}: {e}")
+            logger.error(f"Error serializing results for {ticker}: {type(e).__name__}")
             return
 
         cursor.execute(

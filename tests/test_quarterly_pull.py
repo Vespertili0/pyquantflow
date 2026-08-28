@@ -137,7 +137,7 @@ class TestQuarterlyPull(unittest.TestCase):
             result = fetch_quarterly_data("AAPL", time_dict)
 
         self.assertTrue(result.empty)
-        self.assertIn("Failed to fetch data for 2023 Q1: API Error", cm.output[0])
+        self.assertIn("Failed to fetch data for 2023 Q1: Exception", cm.output[0])
 
 
 if __name__ == "__main__":

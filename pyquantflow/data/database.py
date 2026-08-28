@@ -81,7 +81,7 @@ class DatabaseManager:
         self.conn.commit()
 
     def add_ticker(
-        self, ticker, start_date=None, start_year=None, interval=None, commit=True
+        self, ticker, start_date=None, start_year=None, interval=None, commit=True, skip_check=False
     ):
         """
         Adds a new ticker to the database.
@@ -91,14 +91,16 @@ class DatabaseManager:
         interval = interval or self._DEFAULT_INTERVAL
 
         cursor = self.conn.cursor()
-        cursor.execute(self._SQL_SELECT_TICKER, (ticker,))
-        row = cursor.fetchone()
+        
+        if not skip_check:
+            cursor.execute(self._SQL_SELECT_TICKER, (ticker,))
+            row = cursor.fetchone()
 
-        if row:
-            logger.info(f"Ticker {ticker} already exists. Updating instead.")
-            # Pass ticker_id and interval to avoid redundant queries
-            self._update_ticker_internal(ticker, row[0], row[2], commit=commit)
-            return
+            if row:
+                logger.info(f"Ticker {ticker} already exists. Updating instead.")
+                # Pass ticker_id and interval to avoid redundant queries
+                self._update_ticker_internal(ticker, row[0], row[2], commit=commit)
+                return
 
         # Determine start date
         if start_date:
@@ -144,7 +146,7 @@ class DatabaseManager:
                     ticker, start=start, interval="1d", progress=False, auto_adjust=True
                 )
         except Exception as e:
-            logger.error(f"Error fetching data for {ticker}: {e}")
+            logger.error(f"Error fetching data for {ticker}: {type(e).__name__}")
             return
 
         if df.empty:
@@ -209,7 +211,9 @@ class DatabaseManager:
                     multi_level_index=False,
                 )
             except Exception as e:
-                logger.error(f"Error establishing baseline for {ticker}: {e}")
+                logger.error(
+                    f"Error establishing baseline for {ticker}: {type(e).__name__}"
+                )
                 return
 
             if not df.empty:
@@ -244,7 +248,7 @@ class DatabaseManager:
                 auto_adjust=True,
             )
         except Exception as e:
-            logger.error(f"Error updating data for {ticker}: {e}")
+            logger.error(f"Error updating data for {ticker}: {type(e).__name__}")
             return
 
         if new_data.empty:
@@ -272,7 +276,7 @@ class DatabaseManager:
                 )
         except Exception as e:
             logger.warning(
-                f"Timezone conversion failed for {ticker}. Proceeding with current index. Error: {e}"
+                f"Timezone conversion failed for {ticker}. Proceeding with current index. Error: {type(e).__name__}"
             )
 
         self._insert_price_data(ticker_id, new_data)
@@ -318,7 +322,7 @@ class DatabaseManager:
                     logger.warning(
                         f"Ticker {ticker} not found in batch update. Adding instead."
                     )
-                    self.add_ticker(ticker, commit=False)
+                    self.add_ticker(ticker, commit=False, skip_check=True)
                 else:
                     ticker_id, interval = ticker_info[ticker]
                     last_date_str = max_datetimes.get(ticker_id)
@@ -331,7 +335,7 @@ class DatabaseManager:
                         skip_max_date_lookup=True,
                     )
             except Exception as e:
-                logger.error(f"Error updating {ticker} in batch: {e}")
+                logger.error(f"Error updating {ticker} in batch: {type(e).__name__}")
 
         self.conn.commit()
         logger.info(f"Batch update completed for {len(tickers_list)} tickers.")
