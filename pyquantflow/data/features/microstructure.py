@@ -194,8 +194,8 @@ def CORWIN_SCHULTZ(
 
     # --- γ: 2-day composite high/low log-range squared ---
     # H_{t,t-1}^max = max(H_t, H_{t-1})   L_{t,t-1}^min = min(L_t, L_{t-1})
-    composite_high = pd.concat([high_s, high_s.shift(1)], axis=1).max(axis=1)
-    composite_low = pd.concat([low_s, low_s.shift(1)], axis=1).min(axis=1)
+    composite_high = np.fmax(high_s, high_s.shift(1))
+    composite_low = np.fmin(low_s, low_s.shift(1))
     gamma = np.log(composite_high / composite_low) ** 2
 
     # --- α: spread parameter ---
