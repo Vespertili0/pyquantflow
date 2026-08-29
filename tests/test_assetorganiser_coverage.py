@@ -170,7 +170,7 @@ class TestAssetOrganiserCoverage(unittest.TestCase):
             # We mock the Series ewm std method. Since we dropped 'volatility', it should hit the fallback.
             # mock_std will return a Series of 0.05 to avoid breaking downstream logic
             mock_std.return_value = pd.Series(0.05, index=organiser.multi_asset.index)
-            
+
             alphas = organiser.downsample_to_cusum_events(
                 target_events_train=5, filter_col="returns", vol_col="volatility"
             )

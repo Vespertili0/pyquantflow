@@ -4,7 +4,6 @@ from pyquantflow.strategies.example_strategy import SmaCross
 
 
 class TestSmaCross(unittest.TestCase):
-
     @patch("pyquantflow.strategies.example_strategy.crossover")
     @patch(
         "pyquantflow.strategies.example_strategy.SmaCross.position",

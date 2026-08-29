@@ -81,7 +81,13 @@ class DatabaseManager:
         self.conn.commit()
 
     def add_ticker(
-        self, ticker, start_date=None, start_year=None, interval=None, commit=True, skip_check=False
+        self,
+        ticker,
+        start_date=None,
+        start_year=None,
+        interval=None,
+        commit=True,
+        skip_check=False,
     ):
         """
         Adds a new ticker to the database.
@@ -91,7 +97,7 @@ class DatabaseManager:
         interval = interval or self._DEFAULT_INTERVAL
 
         cursor = self.conn.cursor()
-        
+
         if not skip_check:
             cursor.execute(self._SQL_SELECT_TICKER, (ticker,))
             row = cursor.fetchone()

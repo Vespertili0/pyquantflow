@@ -17,9 +17,12 @@ class TestBaseModelEngine(unittest.TestCase):
                 run_name=None,
             ):
                 pass
+
             # Intentionally omit `validate` to test abstract method enforcement
 
-        with self.assertRaisesRegex(TypeError, "Can't instantiate abstract class DummyModelEngine.*validate"):
+        with self.assertRaisesRegex(
+            TypeError, "Can't instantiate abstract class DummyModelEngine.*validate"
+        ):
             DummyModelEngine()
 
 
