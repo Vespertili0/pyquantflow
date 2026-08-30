@@ -138,7 +138,7 @@ def test_run_batch_backtest_organiser(mock_run_single, backtester, sample_data):
     """Test execution integrated with AssetOrganiser."""
     mock_run_single.return_value = {"Return [%]": 10.0}
 
-    organiser = MagicMock(spec=AssetOrganiser)
+    organiser = MagicMock()
     multi_index = pd.MultiIndex.from_tuples(
         [("2023-01-01", "SYM1"), ("2023-01-02", "SYM2")], names=["datetime", "ticker"]
     )
