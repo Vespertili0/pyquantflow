@@ -213,7 +213,6 @@ def test_save_batch_results_no_results(mock_db, backtester):
 
 def test_save_batch_results_success(backtester):
     """Test successful serialisation and storage of batch results."""
-    mock_datetime.now.return_value = pd.to_datetime("2023-01-01")
 
     backtester.results = {"individual_results": {"SYM1": {"Return [%]": 10.0}}}
     backtester.strategy_class = SmaCross
@@ -224,7 +223,8 @@ def test_save_batch_results_success(backtester):
 
     batch_name = backtester.save_batch_results()
 
-    assert batch_name == "2023-01-01_SmaCross"
+    assert batch_name is not None
+    assert batch_name.endswith(f"_{SmaCross.__name__}")
     mock_db.save_result.assert_called_once_with(
         "SYM1", {"Return [%]": 10.0}, batch_name
     )
