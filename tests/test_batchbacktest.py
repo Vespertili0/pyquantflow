@@ -147,7 +147,7 @@ def test_run_batch_backtest_organiser(mock_run_single, backtester, sample_data):
 
     organiser = MagicMock(spec=AssetOrganiser)
 =======
-    
+
     organiser = MagicMock()
 >>>>>>> bb42c04 (test: loosen MagicMock specs and update batch result naming assertion in batchbacktest tests)
     multi_index = pd.MultiIndex.from_tuples(
@@ -229,7 +229,7 @@ def test_save_batch_results_success(backtester):
 
     backtester.results = {"individual_results": {"SYM1": {"Return [%]": 10.0}}}
 =======
-    
+
     backtester.results = {
         "individual_results": {"SYM1": {"Return [%]": 10.0}}
     }
@@ -248,7 +248,7 @@ def test_save_batch_results_success(backtester):
         "SYM1", {"Return [%]": 10.0}, batch_name
     )
 =======
-    
+
     assert batch_name is not None
     assert batch_name.endswith(f"_{SmaCross.__name__}")
     mock_db.save_result.assert_called_once_with("SYM1", {"Return [%]": 10.0}, batch_name)
