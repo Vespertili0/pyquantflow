@@ -82,8 +82,12 @@ def test_run_single_backtest_success(mock_backtest, backtester, sample_data):
 def test_run_batch_backtest_conflict(backtester, sample_data):
     """Test that providing both data and asset_organiser raises an error."""
     organiser = MagicMock(spec=AssetOrganiser)
-    with pytest.raises(ValueError, match="Cannot provide both 'data' and 'asset_organiser'"):
-        backtester.run_batch_backtest(SmaCross, data=sample_data, asset_organiser=organiser)
+    with pytest.raises(
+        ValueError, match="Cannot provide both 'data' and 'asset_organiser'"
+    ):
+        backtester.run_batch_backtest(
+            SmaCross, data=sample_data, asset_organiser=organiser
+        )
 
 
 def test_run_batch_backtest_no_data(backtester):
@@ -95,7 +99,9 @@ def test_run_batch_backtest_no_data(backtester):
 
 def test_run_batch_backtest_invalid_data(backtester):
     """Test behaviour when data is not a DataFrame or dictionary."""
-    with pytest.raises(ValueError, match="Data must be a pandas DataFrame or a dictionary"):
+    with pytest.raises(
+        ValueError, match="Data must be a pandas DataFrame or a dictionary"
+    ):
         backtester.run_batch_backtest(SmaCross, data=[1, 2, 3])
 
 
@@ -110,7 +116,7 @@ def test_run_batch_backtest_single_df(mock_run_single, backtester, sample_data):
     assert avg["Return [%]"] == 5.0
 
     # symbols=["CUSTOM"]
-    avg2 = backtester.run_batch_backtest(SmaCross, data=sample_data, symbols=["CUSTOM"])
+    backtester.run_batch_backtest(SmaCross, data=sample_data, symbols=["CUSTOM"])
     assert "CUSTOM" in backtester.results["individual_results"]
 
 
@@ -131,40 +137,46 @@ def test_run_batch_backtest_dict(mock_run_single, backtester, sample_data):
 def test_run_batch_backtest_organiser(mock_run_single, backtester, sample_data):
     """Test execution integrated with AssetOrganiser."""
     mock_run_single.return_value = {"Return [%]": 10.0}
-    
+
     organiser = MagicMock(spec=AssetOrganiser)
     multi_index = pd.MultiIndex.from_tuples(
-        [("2023-01-01", "SYM1"), ("2023-01-02", "SYM2")], 
-        names=["datetime", "ticker"]
+        [("2023-01-01", "SYM1"), ("2023-01-02", "SYM2")], names=["datetime", "ticker"]
     )
-    organiser.get_transformed_multiasset_testdata.return_value = pd.DataFrame(index=multi_index)
+    organiser.get_transformed_multiasset_testdata.return_value = pd.DataFrame(
+        index=multi_index
+    )
     organiser.get_transformed_test_ticker.return_value = sample_data
 
     # Test "all"
     backtester.run_batch_backtest(SmaCross, asset_organiser=organiser, symbols="all")
     assert "SYM1" in backtester.results["individual_results"]
     assert "SYM2" in backtester.results["individual_results"]
-    
+
     # Test unknown symbol warning (should just log and ignore without crashing)
-    backtester.run_batch_backtest(SmaCross, asset_organiser=organiser, symbols=["NONEXISTENT"])
+    backtester.run_batch_backtest(
+        SmaCross, asset_organiser=organiser, symbols=["NONEXISTENT"]
+    )
     assert "NONEXISTENT" not in backtester.results["individual_results"]
 
 
 @patch.object(BatchBacktester, "run_single_backtest")
-def test_run_batch_backtest_exception_handling(mock_run_single, backtester, sample_data):
+def test_run_batch_backtest_exception_handling(
+    mock_run_single, backtester, sample_data
+):
     """Test that a single asset failure is caught and recorded without terminating the batch."""
+
     # Simulate an error for SYM1 and success for SYM2
     def side_effect(df, **kwargs):
         if len(mock_run_single.call_args_list) == 1:
             raise ValueError("Test error")
         return {"Return [%]": 10.0}
-        
+
     mock_run_single.side_effect = side_effect
     data_map = {"SYM1": sample_data, "SYM2": sample_data}
-    
+
     avg = backtester.run_batch_backtest(SmaCross, data=data_map)
     ind_res = backtester.results["individual_results"]
-    
+
     assert ind_res["SYM1"] == {"Error": "ValueError"}
     assert ind_res["SYM2"] == {"Return [%]": 10.0}
     assert avg["Return [%]"] == 10.0
@@ -180,7 +192,11 @@ def test_calculate_averages_with_errors_and_nans(backtester):
     """Test averaging logic with errors, NaNs, and Timedelta values."""
     results = {
         "SYM1": {"Error": "Exception"},
-        "SYM2": {"Return [%]": 5.0, "Sharpe Ratio": np.nan, "Duration": pd.Timedelta(days=1)}
+        "SYM2": {
+            "Return [%]": 5.0,
+            "Sharpe Ratio": np.nan,
+            "Duration": pd.Timedelta(days=1),
+        },
     }
     avg = backtester._calculate_averages(results)
     assert avg["Return [%]"] == 5.0
@@ -199,17 +215,17 @@ def test_save_batch_results_no_results(mock_db, backtester):
 def test_save_batch_results_success(mock_datetime, backtester):
     """Test successful serialisation and storage of batch results."""
     mock_datetime.now.return_value = pd.to_datetime("2023-01-01")
-    
-    backtester.results = {
-        "individual_results": {"SYM1": {"Return [%]": 10.0}}
-    }
+
+    backtester.results = {"individual_results": {"SYM1": {"Return [%]": 10.0}}}
     backtester.strategy_class = SmaCross
-    
+
     # Mock the database manager
     mock_db = MagicMock()
     backtester.results_db = mock_db
-    
+
     batch_name = backtester.save_batch_results()
-    
+
     assert batch_name == "2023-01-01_SmaCross"
-    mock_db.save_result.assert_called_once_with("SYM1", {"Return [%]": 10.0}, batch_name)
+    mock_db.save_result.assert_called_once_with(
+        "SYM1", {"Return [%]": 10.0}, batch_name
+    )

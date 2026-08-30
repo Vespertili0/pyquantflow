@@ -223,10 +223,10 @@ class TestDatabaseManager(unittest.TestCase):
             """
         )
         self.db.conn.commit()
-        
+
         # Call create_tables to trigger migration
         self.db.create_tables()
-        
+
         cursor = self.db.conn.cursor()
         cursor.execute("PRAGMA table_info(tickers)")
         columns = [info[1] for info in cursor.fetchall()]
@@ -237,7 +237,7 @@ class TestDatabaseManager(unittest.TestCase):
         """Test add_ticker when fetched data is empty."""
         mock_fetch.return_value = pd.DataFrame()
         self.db.add_ticker("EMPTY.AX")
-        
+
         cursor = self.db.conn.cursor()
         cursor.execute("SELECT id FROM tickers WHERE ticker = ?", ("EMPTY.AX",))
         self.assertIsNone(cursor.fetchone())
@@ -258,6 +258,6 @@ class TestDatabaseManager(unittest.TestCase):
         df = self.db.get_data("UNKNOWN.AX")
         self.assertTrue(df.empty)
 
+
 if __name__ == "__main__":
     unittest.main()
-
