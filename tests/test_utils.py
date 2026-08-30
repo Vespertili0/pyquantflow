@@ -1,7 +1,11 @@
 import unittest
 import pandas as pd
 
-from pyquantflow.data.utils import align_and_ffill_multiasset
+from pyquantflow.data.utils import (
+    align_and_ffill_multiasset,
+    generate_ema_ribbon_names,
+    restructure_map_2_multiasset_df,
+)
 
 
 class TestUtils(unittest.TestCase):
@@ -68,6 +72,79 @@ class TestUtils(unittest.TestCase):
 
         # DataFrame should be unchanged
         pd.testing.assert_frame_equal(df, aligned_df)
+
+    def test_generate_ema_ribbon_names_default(self):
+        names = generate_ema_ribbon_names()
+        self.assertEqual(len(names), 24)
+        self.assertEqual(names[0], "EMAR_RS_VOL")
+        self.assertEqual(names[-1], "EMAR_VELOCITY_9v10")
+        self.assertIn("EMAR_MACRO", names)
+        self.assertIn("EMAR_STD", names)
+
+    def test_generate_ema_ribbon_names_custom(self):
+        names = generate_ema_ribbon_names(prefix="CUSTOM", M=3)
+        self.assertEqual(len(names), 10)
+        expected = [
+            "CUSTOM_RS_VOL",
+            "CUSTOM_MICRO_1v2",
+            "CUSTOM_MICRO_2v3",
+            "CUSTOM_MACRO",
+            "CUSTOM_STD",
+            "CUSTOM_SKEW",
+            "CUSTOM_KURT",
+            "CUSTOM_CONSENSUS_RANK",
+            "CUSTOM_VELOCITY_1v2",
+            "CUSTOM_VELOCITY_2v3",
+        ]
+        self.assertEqual(names, expected)
+
+    def test_restructure_map_empty(self):
+        # Empty dict should return empty DataFrame
+        result = restructure_map_2_multiasset_df({})
+        self.assertTrue(result.empty)
+        self.assertIsInstance(result, pd.DataFrame)
+
+    def test_restructure_map_basic(self):
+        # Test basic functionality with no timezone
+        dates = pd.date_range("2023-01-01", periods=2)
+        df1 = pd.DataFrame({"price": [100.0, 105.0]}, index=dates)
+        df1.index.name = "datetime"
+        df2 = pd.DataFrame({"price": [200.0, 210.0]}, index=dates)
+        df2.index.name = "datetime"
+
+        df_dict = {"AAPL": df1, "MSFT": df2}
+        result = restructure_map_2_multiasset_df(df_dict)
+
+        self.assertEqual(result.index.names, ["datetime", "ticker"])
+        self.assertEqual(len(result), 4)
+
+        # Check values and sorting
+        aapl_0101 = result.loc[(dates[0], "AAPL"), "price"]
+        self.assertEqual(aapl_0101, 100.0)
+        msft_0102 = result.loc[(dates[1], "MSFT"), "price"]
+        self.assertEqual(msft_0102, 210.0)
+
+    def test_restructure_map_with_timezone(self):
+        # Test that timezone is preserved
+        dates = pd.date_range("2023-01-01", periods=2, tz="UTC")
+        df1 = pd.DataFrame({"price": [100.0, 105.0]}, index=dates)
+        df1.index.name = "datetime"
+
+        df_dict = {"AAPL": df1}
+        result = restructure_map_2_multiasset_df(df_dict)
+
+        self.assertEqual(str(result.index.get_level_values("datetime").tz), "UTC")
+
+    def test_restructure_map_no_index_name(self):
+        # Test when input df has no index name, it should be named 'datetime'
+        dates = pd.date_range("2023-01-01", periods=2)
+        df1 = pd.DataFrame({"price": [100.0, 105.0]}, index=dates)
+        df1.index.name = None  # Ensure it is None
+
+        df_dict = {"AAPL": df1}
+        result = restructure_map_2_multiasset_df(df_dict)
+
+        self.assertEqual(result.index.names, ["datetime", "ticker"])
 
 
 if __name__ == "__main__":

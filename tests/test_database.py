@@ -125,7 +125,9 @@ class TestDatabaseManager(unittest.TestCase):
         self.assertEqual(mock_update_ticker_internal.call_count, 2)
 
         # Assert that add_ticker was called once (for TEST3.AX)
-        mock_add_ticker.assert_called_once_with("TEST3.AX", commit=False)
+        mock_add_ticker.assert_called_once_with(
+            "TEST3.AX", commit=False, skip_check=True
+        )
 
     @patch.object(DatabaseManager, "_update_ticker_internal")
     @patch.object(DatabaseManager, "add_ticker")
@@ -205,6 +207,56 @@ class TestDatabaseManager(unittest.TestCase):
                 dt_str,
                 msg=f"Expected UTC offset in '{dt_str}' but found a different offset.",
             )
+
+    def test_create_tables_migration(self):
+        """Test that the interval column is added if it does not exist."""
+        # Create table without interval
+        self.db.conn.execute("DROP TABLE IF EXISTS tickers")
+        self.db.conn.execute(
+            """
+            CREATE TABLE tickers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ticker TEXT UNIQUE NOT NULL,
+                first_added TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                last_updated TIMESTAMP
+            )
+            """
+        )
+        self.db.conn.commit()
+
+        # Call create_tables to trigger migration
+        self.db.create_tables()
+
+        cursor = self.db.conn.cursor()
+        cursor.execute("PRAGMA table_info(tickers)")
+        columns = [info[1] for info in cursor.fetchall()]
+        self.assertIn("interval", columns)
+
+    @patch("pyquantflow.data.database.fetch_quarterly_data")
+    def test_add_ticker_empty_df(self, mock_fetch):
+        """Test add_ticker when fetched data is empty."""
+        mock_fetch.return_value = pd.DataFrame()
+        self.db.add_ticker("EMPTY.AX")
+
+        cursor = self.db.conn.cursor()
+        cursor.execute("SELECT id FROM tickers WHERE ticker = ?", ("EMPTY.AX",))
+        self.assertIsNone(cursor.fetchone())
+
+    @patch.object(DatabaseManager, "add_ticker")
+    def test_update_ticker_not_found(self, mock_add):
+        """Test update_ticker falls back to add_ticker if not found."""
+        self.db.update_ticker("NEW.AX")
+        mock_add.assert_called_once_with("NEW.AX", commit=True)
+
+    def test_insert_price_data_empty(self):
+        """Test _insert_price_data with empty DataFrame."""
+        # Should not raise any error
+        self.db._insert_price_data(1, pd.DataFrame())
+
+    def test_get_data_not_found(self):
+        """Test get_data returns empty DataFrame for unknown ticker."""
+        df = self.db.get_data("UNKNOWN.AX")
+        self.assertTrue(df.empty)
 
 
 if __name__ == "__main__":

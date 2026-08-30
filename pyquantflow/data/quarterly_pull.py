@@ -79,7 +79,9 @@ def fetch_quarterly_data(ticker, time_dict, period="quarterly") -> pd.DataFrame:
                 if not new.empty:
                     data_frames.append(new)
             except Exception as e:
-                logger.error(f"Failed to fetch data for {year} Q{t}: {e}")
+                logger.error(
+                    f"Failed to fetch data for {year} Q{t}: {type(e).__name__}"
+                )
                 break
 
     if not data_frames:
