@@ -81,7 +81,6 @@ def test_run_single_backtest_success(mock_backtest, backtester, sample_data):
 
 def test_run_batch_backtest_conflict(backtester, sample_data):
     """Test that providing both data and asset_organiser raises an error."""
-<<<<<<< HEAD
     organiser = MagicMock(spec=AssetOrganiser)
     with pytest.raises(
         ValueError, match="Cannot provide both 'data' and 'asset_organiser'"
@@ -89,11 +88,6 @@ def test_run_batch_backtest_conflict(backtester, sample_data):
         backtester.run_batch_backtest(
             SmaCross, data=sample_data, asset_organiser=organiser
         )
-=======
-    organiser = MagicMock()
-    with pytest.raises(ValueError, match="Cannot provide both 'data' and 'asset_organiser'"):
-        backtester.run_batch_backtest(SmaCross, data=sample_data, asset_organiser=organiser)
->>>>>>> bb42c04 (test: loosen MagicMock specs and update batch result naming assertion in batchbacktest tests)
 
 
 def test_run_batch_backtest_no_data(backtester):
@@ -143,13 +137,8 @@ def test_run_batch_backtest_dict(mock_run_single, backtester, sample_data):
 def test_run_batch_backtest_organiser(mock_run_single, backtester, sample_data):
     """Test execution integrated with AssetOrganiser."""
     mock_run_single.return_value = {"Return [%]": 10.0}
-<<<<<<< HEAD
 
     organiser = MagicMock(spec=AssetOrganiser)
-=======
-
-    organiser = MagicMock()
->>>>>>> bb42c04 (test: loosen MagicMock specs and update batch result naming assertion in batchbacktest tests)
     multi_index = pd.MultiIndex.from_tuples(
         [("2023-01-01", "SYM1"), ("2023-01-02", "SYM2")], names=["datetime", "ticker"]
     )
@@ -224,16 +213,9 @@ def test_save_batch_results_no_results(mock_db, backtester):
 
 def test_save_batch_results_success(backtester):
     """Test successful serialisation and storage of batch results."""
-<<<<<<< HEAD
     mock_datetime.now.return_value = pd.to_datetime("2023-01-01")
 
     backtester.results = {"individual_results": {"SYM1": {"Return [%]": 10.0}}}
-=======
-
-    backtester.results = {
-        "individual_results": {"SYM1": {"Return [%]": 10.0}}
-    }
->>>>>>> bb42c04 (test: loosen MagicMock specs and update batch result naming assertion in batchbacktest tests)
     backtester.strategy_class = SmaCross
 
     # Mock the database manager
@@ -241,15 +223,8 @@ def test_save_batch_results_success(backtester):
     backtester.results_db = mock_db
 
     batch_name = backtester.save_batch_results()
-<<<<<<< HEAD
 
     assert batch_name == "2023-01-01_SmaCross"
     mock_db.save_result.assert_called_once_with(
         "SYM1", {"Return [%]": 10.0}, batch_name
     )
-=======
-
-    assert batch_name is not None
-    assert batch_name.endswith(f"_{SmaCross.__name__}")
-    mock_db.save_result.assert_called_once_with("SYM1", {"Return [%]": 10.0}, batch_name)
->>>>>>> bb42c04 (test: loosen MagicMock specs and update batch result naming assertion in batchbacktest tests)
