@@ -51,12 +51,14 @@ def test_run_single_backtest_success(mock_backtest, backtester, sample_data):
     mock_stats.to_dict.return_value = {"Return [%]": 10.0, "Sharpe Ratio": 1.5}
     mock_bt_instance.run.return_value = mock_stats
 
-    # Call with non-DatetimeIndex to test conversion
-    df_no_tz = sample_data.copy()
-    df_no_tz.index = df_no_tz.index.tz_localize(None)
+    # Use an object/string index (not a DatetimeIndex) to exercise the conversion
+    # branch. A tz-naive DatetimeIndex would pass the isinstance check and skip it.
+    df_str_index = sample_data.copy()
+    df_str_index.index = df_str_index.index.strftime("%Y-%m-%d")
+    assert not isinstance(df_str_index.index, pd.DatetimeIndex)
 
     stats = backtester.run_single_backtest(
-        df=df_no_tz,
+        df=df_str_index,
         strategy_class=SmaCross,
         cash=10000,
         commission=0.0,
@@ -66,9 +68,9 @@ def test_run_single_backtest_success(mock_backtest, backtester, sample_data):
         custom_param=123,
     )
 
-    # Check conversion to UTC DatetimeIndex
-    assert isinstance(df_no_tz.index, pd.DatetimeIndex)
-    assert df_no_tz.index.tz is not None
+    # After calling run_single_backtest the index should be a UTC DatetimeIndex
+    assert isinstance(df_str_index.index, pd.DatetimeIndex)
+    assert df_str_index.index.tz is not None
 
     mock_backtest.assert_called_once()
     kwargs = mock_backtest.call_args[1]
@@ -93,8 +95,10 @@ def test_run_batch_backtest_conflict(backtester, sample_data):
 def test_run_batch_backtest_no_data(backtester):
     """Test behaviour when neither data nor asset_organiser is provided."""
     results = backtester.run_batch_backtest(SmaCross)
-    assert backtester.results == {"individual_results": {}, "average_metrics": {}}
-    assert results == {}
+    expected = {"individual_results": {}, "average_metrics": {}}
+    assert backtester.results == expected
+    # The no-data branch returns self.results directly (not just average_metrics)
+    assert results == expected
 
 
 def test_run_batch_backtest_invalid_data(backtester):
