@@ -1,6 +1,8 @@
 import unittest
 from unittest.mock import patch
+
 import pandas as pd
+
 from pyquantflow.data.database import DatabaseManager
 
 
@@ -257,6 +259,58 @@ class TestDatabaseManager(unittest.TestCase):
         """Test get_data returns empty DataFrame for unknown ticker."""
         df = self.db.get_data("UNKNOWN.AX")
         self.assertTrue(df.empty)
+
+    def test_context_manager(self):
+        """Test context manager and close method."""
+        with DatabaseManager(":memory:") as db:
+            db.create_tables()
+            # Verify we can execute something
+            db.conn.execute("SELECT 1")
+
+        # Verify connection is closed
+        with self.assertRaises(Exception):
+            db.conn.execute("SELECT 1")
+
+    def test_insert_duplicate_row(self):
+        """Test that UNIQUE constraint and INSERT OR IGNORE prevent duplicate data."""
+        # Insert a ticker first
+        cursor = self.db.conn.cursor()
+        cursor.execute(
+            "INSERT INTO tickers (ticker, interval, last_updated) VALUES (?, ?, ?)",
+            ("DUPLICATE.AX", "1d", "2023-01-01"),
+        )
+        ticker_id = cursor.lastrowid
+        self.db.conn.commit()
+
+        dates = pd.date_range(
+            start="2023-01-04", periods=1, freq="D", tz="Australia/Sydney"
+        )
+        mock_df = pd.DataFrame(
+            {
+                "Open": [1.0],
+                "High": [1.5],
+                "Low": [0.5],
+                "Close": [1.2],
+                "Volume": [100],
+            },
+            index=dates,
+        )
+        mock_df.index.name = "Datetime"
+
+        # Insert first time
+        self.db._insert_price_data(ticker_id, mock_df)
+        self.db.conn.commit()
+
+        # Insert second time (duplicate)
+        self.db._insert_price_data(ticker_id, mock_df)
+        self.db.conn.commit()
+
+        # Check total records
+        cursor.execute(
+            "SELECT COUNT(*) FROM price_data WHERE ticker_id = ?", (ticker_id,)
+        )
+        count = cursor.fetchone()[0]
+        self.assertEqual(count, 1)
 
 
 if __name__ == "__main__":

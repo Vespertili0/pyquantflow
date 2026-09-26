@@ -3,7 +3,8 @@ from math import comb
 
 import numpy as np
 import pandas as pd
-from pyquantflow.model.cross_validation import PurgedKFoldCV, CombinatorialPurgedKFold
+
+from pyquantflow.model.cross_validation import CombinatorialPurgedKFold, PurgedKFoldCV
 
 
 class TestPurgedKFoldCV(unittest.TestCase):

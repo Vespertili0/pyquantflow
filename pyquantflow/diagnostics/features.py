@@ -7,19 +7,20 @@ shifts (CUSUM downsampling impact) using Fractional Differentiation (FFD).
 
 import numpy as np
 import pandas as pd
-import plotly.subplots
 import plotly.graph_objects as go
-from scipy.stats import gaussian_kde, entropy as scipy_entropy, wasserstein_distance
-from typing import Optional, List
+import plotly.subplots
+from scipy.stats import entropy as scipy_entropy
+from scipy.stats import gaussian_kde, wasserstein_distance
 
-from ._renderer import DiagnosticResult, PALETTE
 from pyquantflow.data.features.fractional_differentiation import _adf_test_stat
+
+from ._renderer import PALETTE, DiagnosticResult
 
 
 def plot_downsampling_shift(
     raw_df: pd.DataFrame,
     event_df: pd.DataFrame,
-    feature_cols: List[str],
+    feature_cols: list[str],
     n_bins: int = 50,
     divergence_metric: str = "kl",
 ) -> DiagnosticResult:
@@ -144,7 +145,7 @@ def plot_stationarity_profile(
     raw_series: pd.Series,
     ffd_series: pd.Series,
     d_order: float,
-    ticker: Optional[str] = None,
+    ticker: str | None = None,
     max_lags: int = 40,
 ) -> DiagnosticResult:
     """

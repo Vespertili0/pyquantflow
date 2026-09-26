@@ -1,6 +1,5 @@
 import numpy as np
 import pandas as pd
-from typing import Optional, Union
 
 
 def ICHIMOKU(
@@ -241,8 +240,8 @@ def EMA_RIBBON(
 
 
 def FRACTIONAL_DIFF(
-    close: Union[np.ndarray, pd.Series],
-    d: Optional[float] = None,
+    close: np.ndarray | pd.Series,
+    d: float | None = None,
     thres: float = 1e-4,
     significance_level: float = 0.05,
 ) -> np.ndarray:
@@ -314,7 +313,7 @@ def FRACTIONAL_DIFF(
 
 
 def SADF_JAX(
-    close: Union[np.ndarray, pd.Series],
+    close: np.ndarray | pd.Series,
     model: str = "linear",
     lags: int = 1,
     min_length: int = 20,

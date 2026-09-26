@@ -7,21 +7,20 @@ to help resolve multicollinearity distortion.
 
 import numpy as np
 import pandas as pd
-import plotly.subplots
 import plotly.graph_objects as go
+import plotly.subplots
 import scipy.cluster.hierarchy as sch
 import scipy.spatial.distance as ssd
-from typing import Optional, Dict, Union
 
-from ._renderer import DiagnosticResult, PALETTE
+from ._renderer import PALETTE, DiagnosticResult
 
 
 def plot_feature_clusters(
-    regime_results: Union[Dict[int, Dict[str, pd.DataFrame]], pd.DataFrame],
+    regime_results: dict[int, dict[str, pd.DataFrame]] | pd.DataFrame,
     correlation_matrix: pd.DataFrame,
-    linkage_matrix: Optional[np.ndarray] = None,
+    linkage_matrix: np.ndarray | None = None,
     method: str = "ward",
-    regime_id: Optional[int] = None,
+    regime_id: int | None = None,
 ) -> DiagnosticResult:
     """
     Renders a dendrogram-ordered correlation heatmap alongside cluster importance scores.

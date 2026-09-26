@@ -1,10 +1,12 @@
-import pytest
-import pandas as pd
+from unittest.mock import MagicMock, patch
+
 import numpy as np
-from unittest.mock import patch, MagicMock
+import pandas as pd
+import pytest
+
 from pyquantflow.backtesting.batchbacktest import BatchBacktester
-from pyquantflow.strategies.example_strategy import SmaCross
 from pyquantflow.data.assetorganiser import AssetOrganiser
+from pyquantflow.strategies.example_strategy import SmaCross
 
 
 @pytest.fixture

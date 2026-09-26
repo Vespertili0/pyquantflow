@@ -6,17 +6,16 @@ by Marcos Lopez de Prado. It includes functions for extracting CUSUM events
 and JAX-accelerated functions for calibrating the optimal alpha threshold.
 """
 
-import numpy as np
-import pandas as pd
 import jax
 import jax.numpy as jnp
+import numpy as np
+import pandas as pd
 from jax import lax
-from typing import Optional, Union
 
 
 def get_cusum_events(
     series: pd.Series,
-    threshold: Union[float, pd.Series],
+    threshold: float | pd.Series,
 ) -> pd.DatetimeIndex:
     """
     Symmetric CUSUM Filter as proposed by Marcos Lopez de Prado in
@@ -67,11 +66,7 @@ def get_cusum_events(
         s_pos = max(0.0, s_pos + val)
         s_neg = min(0.0, s_neg + val)
 
-        if s_pos >= h:
-            s_pos = 0.0
-            s_neg = 0.0
-            t_events.append(times[i])
-        elif s_neg <= -h:
+        if s_pos >= h or s_neg <= -h:
             s_pos = 0.0
             s_neg = 0.0
             t_events.append(times[i])
@@ -178,14 +173,14 @@ def _run_cusum_for_alphas(
 
 def calibrate_cusum_alpha(
     series: pd.Series,
-    target_events: Optional[int] = None,
-    volatility: Optional[pd.Series] = None,
+    target_events: int | None = None,
+    volatility: pd.Series | None = None,
     alpha_min: float = 0.5,
     alpha_max: float = 3.0,
     alpha_step: float = 0.1,
     span: int = 100,
     objective: str = "budget",
-    t1: Optional[pd.Series] = None,
+    t1: pd.Series | None = None,
 ) -> float:
     """
     Calibrates the CUSUM scalar multiplier ``alpha`` using one of two objectives.

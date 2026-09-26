@@ -1,13 +1,16 @@
 import unittest
+
 import numpy as np
 import pandas as pd
-from pyquantflow.data.labels import get_cusum_events, calibrate_cusum_alpha
+
 from pyquantflow.data.assetorganiser import AssetOrganiser
+from pyquantflow.data.labels import calibrate_cusum_alpha, get_cusum_events
 
 
 class TestCUSUMFilter(unittest.TestCase):
     def setUp(self):
         import os
+
         from pyquantflow.data.database import DatabaseManager
 
         source_db_path = os.path.join(os.path.dirname(__file__), "stocks.db")
@@ -161,6 +164,7 @@ class TestCUSUMFilter(unittest.TestCase):
 class TestAssetOrganiserDownsampling(unittest.TestCase):
     def setUp(self):
         import os
+
         from pyquantflow.data.database import DatabaseManager
 
         self.data_map = {}

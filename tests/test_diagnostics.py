@@ -1,34 +1,33 @@
 import unittest
 from unittest.mock import MagicMock, patch
+
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 
+from pyquantflow.data.assetorganiser import AssetOrganiser
+from pyquantflow.data.features.fractional_differentiation import frac_diff_ffd
+from pyquantflow.data.sk_transformers import GSADFTransformer
 from pyquantflow.diagnostics import (
-    FigureFactory,
     DiagnosticResult,
-    plot_cusum_events,
-    plot_multi_asset_events,
-    plot_sample_concurrency,
+    FigureFactory,
     plot_barrier_trajectories,
-    plot_downsampling_shift,
-    plot_stationarity_profile,
-    plot_feature_clusters,
+    plot_cpcv_paths,
+    plot_cusum_events,
     plot_cv_splits,
+    plot_downsampling_shift,
+    plot_feature_clusters,
     plot_fold_feature_drift,
     plot_meta_label_entropy,
     plot_meta_label_precision_recall,
+    plot_multi_asset_events,
     plot_sadf_regimes,
-    plot_cpcv_paths,
+    plot_sample_concurrency,
+    plot_stationarity_profile,
 )
-
-from pyquantflow.data.assetorganiser import AssetOrganiser
-from pyquantflow.data.features.fractional_differentiation import frac_diff_ffd
-from pyquantflow.model.feature_evaluation import StationaryTransformer, FeatureEvaluator
-from pyquantflow.model.cross_validation import PurgedKFoldCV, CombinatorialPurgedKFold
 from pyquantflow.model.classifier import PrimarySecondaryClassifier
-from pyquantflow.data.sk_transformers import GSADFTransformer
-
+from pyquantflow.model.cross_validation import CombinatorialPurgedKFold, PurgedKFoldCV
+from pyquantflow.model.feature_evaluation import FeatureEvaluator, StationaryTransformer
 
 # ==============================================================================
 # Synthetic Data Fixtures
@@ -693,8 +692,8 @@ class TestClusteringCoverage(unittest.TestCase):
             index=["f_1_0", "f_1_1", "f_2_0", "f_2_1"],
         )
         dist = np.sqrt(0.5 * (1 - corr_matrix.clip(-1, 1)))
-        import scipy.spatial.distance as ssd
         import scipy.cluster.hierarchy as sch
+        import scipy.spatial.distance as ssd
 
         condensed = ssd.squareform(dist.values, checks=False)
         linkage_matrix = sch.linkage(condensed, method="ward")

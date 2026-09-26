@@ -7,13 +7,12 @@ prediction uncertainty (Shannon entropy) or filtering arbitrarily.
 
 import numpy as np
 import pandas as pd
-import plotly.subplots
 import plotly.graph_objects as go
+import plotly.subplots
 from scipy.stats import spearmanr
-from sklearn.metrics import precision_recall_curve, auc
-from typing import Optional
+from sklearn.metrics import auc, precision_recall_curve
 
-from ._renderer import DiagnosticResult, FigureFactory, PALETTE
+from ._renderer import PALETTE, DiagnosticResult, FigureFactory
 
 
 def plot_meta_label_entropy(
@@ -21,7 +20,7 @@ def plot_meta_label_entropy(
     primary_pred_col: str = "primary_pred",
     entropy_col: str = "primary_entropy",
     target_col: str = "label",
-    return_col: Optional[str] = None,
+    return_col: str | None = None,
     decision_col: str = "final_decision",
 ) -> DiagnosticResult:
     """

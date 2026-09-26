@@ -1,5 +1,5 @@
-import unittest
 import json
+import unittest
 from unittest.mock import patch
 
 from pyquantflow.backtesting.backtest_database import BacktestDatabaseManager
@@ -80,6 +80,17 @@ class TestBacktestDatabaseManager(unittest.TestCase):
         cursor.execute("SELECT count(*) FROM backtest_results")
         count = cursor.fetchone()[0]
         self.assertEqual(count, 0)
+
+    def test_context_manager(self):
+        """Test context manager and close method."""
+        with BacktestDatabaseManager(":memory:") as db:
+            db.create_tables()
+            # Verify we can execute something
+            db.conn.execute("SELECT 1")
+
+        # Verify connection is closed
+        with self.assertRaises(Exception):
+            db.conn.execute("SELECT 1")
 
 
 if __name__ == "__main__":

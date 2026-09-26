@@ -1,8 +1,9 @@
-from sklearn.base import BaseEstimator, TransformerMixin
 import pandas as pd
+from sklearn.base import BaseEstimator, TransformerMixin
+
+from .features.fractional_differentiation import frac_diff_ffd
 from .features.sadf import get_sadf_jax as gsadf_values
 from .labels.trend_scanning import trend_scanning
-from .features.fractional_differentiation import frac_diff_ffd
 from .labels.triple_barrier import apply_triple_barrier as triple_barrier_labels
 
 

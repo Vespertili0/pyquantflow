@@ -7,19 +7,18 @@ versus dangerous explosive bubble phases detected by the GSADF statistic.
 
 import numpy as np
 import pandas as pd
-import plotly.subplots
 import plotly.graph_objects as go
-from typing import Optional, Union
+import plotly.subplots
 
-from ._renderer import DiagnosticResult, PALETTE
+from ._renderer import PALETTE, DiagnosticResult
 
 
 def plot_sadf_regimes(
     price_series: pd.Series,
     sadf_series: pd.Series,
     critical_value: float = 1.4,
-    events: Optional[Union[pd.DatetimeIndex, pd.Series]] = None,
-    title: Optional[str] = None,
+    events: pd.DatetimeIndex | pd.Series | None = None,
+    title: str | None = None,
 ) -> DiagnosticResult:
     """
     Renders price overlaid with GSADF explosive bubble regimes and event triggers.

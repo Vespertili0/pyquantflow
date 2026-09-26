@@ -1,11 +1,13 @@
+import logging
+from abc import ABC, abstractmethod
+from collections.abc import Callable
+from typing import Any
+
+import numpy as np
 import optuna
 import pandas as pd
-import numpy as np
-from abc import ABC, abstractmethod
-from typing import Callable, Any, Optional, Dict, Union
-from sklearn.model_selection import BaseCrossValidator
 from sklearn.metrics import f1_score
-import logging
+from sklearn.model_selection import BaseCrossValidator
 
 try:
     import mlflow
@@ -29,29 +31,27 @@ class BaseModelEngine(ABC):
     def validate(
         self,
         model: Any,
-        X: Union[pd.DataFrame, np.ndarray],
-        y: Union[pd.Series, np.ndarray],
+        X: pd.DataFrame | np.ndarray,
+        y: pd.Series | np.ndarray,
         metric: Callable,
-    ) -> Dict[str, float]:
+    ) -> dict[str, float]:
         """
         Validate the model on a hold-out set.
         Should return a dictionary of metrics.
         """
-        pass
 
     @abstractmethod
     def register_mlflow_evaluation(
         self,
         model: Any,
-        params: Dict[str, Any],
-        metrics: Dict[str, float],
-        experiment_name: Optional[str] = None,
-        run_name: Optional[str] = None,
+        params: dict[str, Any],
+        metrics: dict[str, float],
+        experiment_name: str | None = None,
+        run_name: str | None = None,
     ) -> None:
         """
         Register the model, parameters, and metrics to a tracking server (e.g. MLflow).
         """
-        pass
 
 
 class ClassifierEngine(BaseModelEngine):
@@ -70,11 +70,11 @@ class ClassifierEngine(BaseModelEngine):
     def validate(
         self,
         model: Any,
-        X: Union[pd.DataFrame, np.ndarray],
-        y: Union[pd.Series, np.ndarray],
+        X: pd.DataFrame | np.ndarray,
+        y: pd.Series | np.ndarray,
         metric: Callable = f1_score,
-        metric_kwargs: Optional[dict] = None,
-    ) -> Dict[str, float]:
+        metric_kwargs: dict | None = None,
+    ) -> dict[str, float]:
         """
         Computes the metric score on X, y.
         """
@@ -98,14 +98,14 @@ class ClassifierEngine(BaseModelEngine):
     def register_mlflow_evaluation(
         self,
         model: Any,
-        X: Union[pd.DataFrame, np.ndarray],
-        y: Union[pd.Series, np.ndarray],
-        params: Dict[str, Any],
-        tags: Dict[str, str],
+        X: pd.DataFrame | np.ndarray,
+        y: pd.Series | np.ndarray,
+        params: dict[str, Any],
+        tags: dict[str, str],
         #        metrics: Dict[str, float],
-        experiment_name: Optional[str] = None,
-        run_name: Optional[str] = None,
-        evaluator_config: Optional[dict] = None,
+        experiment_name: str | None = None,
+        run_name: str | None = None,
+        evaluator_config: dict | None = None,
     ) -> None:
         """
         Registers to MLflow if available.
@@ -171,21 +171,21 @@ class ClassifierEngine(BaseModelEngine):
     def run_pipeline(
         self,
         X_train: pd.DataFrame,
-        y_train: Union[pd.Series, pd.DataFrame],
+        y_train: pd.Series | pd.DataFrame,
         X_test: pd.DataFrame,
-        y_test: Union[pd.Series, pd.DataFrame],
+        y_test: pd.Series | pd.DataFrame,
         features: list[str],
         model_factory: Callable[[optuna.Trial], Any],
         cv: BaseCrossValidator,
-        weight_col: Optional[str] = None,
-        t1_col: Optional[str] = None,
+        weight_col: str | None = None,
+        t1_col: str | None = None,
         metric: Callable = f1_score,
         n_trials: int = 50,
-        timeout: Optional[int] = None,
-        metric_kwargs: Optional[dict] = None,
-        experiment_name: Optional[str] = None,
-        run_name: Optional[str] = None,
-        tags: Optional[Dict[str, str]] = None,
+        timeout: int | None = None,
+        metric_kwargs: dict | None = None,
+        experiment_name: str | None = None,
+        run_name: str | None = None,
+        tags: dict[str, str] | None = None,
         balance_classes: bool = True,
     ) -> None:
         """
@@ -261,5 +261,3 @@ class ClassifierEngine(BaseModelEngine):
             experiment_name=experiment_name,
             run_name=run_name,
         )
-
-        return None

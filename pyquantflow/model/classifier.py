@@ -1,10 +1,11 @@
-from sklearn.base import BaseEstimator, ClassifierMixin, TransformerMixin, clone
+from abc import ABC, abstractmethod
+
+import numpy as np
+import pandas as pd
 
 # from sklearn.utils.validation import check_is_fitted
 from scipy.stats import entropy
-import pandas as pd
-import numpy as np
-from abc import ABC, abstractmethod
+from sklearn.base import BaseEstimator, ClassifierMixin, TransformerMixin, clone
 
 
 class BaseQuantClassifier(ABC, BaseEstimator, ClassifierMixin, TransformerMixin):

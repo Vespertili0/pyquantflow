@@ -1,5 +1,4 @@
 import functools
-from typing import Tuple, Union
 
 import jax
 import jax.numpy as jnp
@@ -11,8 +10,8 @@ jax.config.update("jax_enable_x64", True)
 
 
 def _get_y_x(
-    series: pd.Series, model: str, lags: Union[int, list], add_const: bool
-) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    series: pd.Series, model: str, lags: int | list, add_const: bool
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Prepares the X and y datasets for SADF generation.
     (Kept largely in Pandas as this is a one-time setup step).
@@ -76,7 +75,7 @@ def _get_y_x(
     return x, y
 
 
-def _lag_df(df: pd.DataFrame, lags: Union[int, list[int]]) -> pd.DataFrame:
+def _lag_df(df: pd.DataFrame, lags: int | list[int]) -> pd.DataFrame:
     """Apply Lags to DataFrame"""
     if isinstance(lags, int):
         lags = list(range(1, lags + 1))
@@ -195,8 +194,6 @@ def _run_sadf_kernel(
         # Length = (t - start + 1) >= min_length  => start <= t + 1 - min_length
         # So valid starts are 0, 1, ..., t + 1 - min_length - 1
 
-        t - min_length + 1
-
         # We need to map over ALL possible starts up to N to keep shapes static for JIT.
         # We will mask out invalid results later.
         all_starts = jnp.arange(n_samples)
@@ -254,7 +251,7 @@ def _run_sadf_kernel(
 def get_sadf_jax(
     series: pd.Series,
     model: str,
-    lags: Union[int, list],
+    lags: int | list,
     min_length: int,
     add_const: bool = False,
     phi: float = 0,

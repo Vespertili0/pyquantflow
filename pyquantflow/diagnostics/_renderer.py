@@ -5,9 +5,10 @@ Provides rendering abstractions, custom Plotly theme settings, diagnostic result
 and context-aware figure display helpers for marimo, IPython, and standard Python execution environments.
 """
 
-from dataclasses import dataclass
-from typing import Any, Dict, Optional
 import sys
+from dataclasses import dataclass
+from typing import Any
+
 import plotly.graph_objects as go
 
 PALETTE = {
@@ -22,8 +23,6 @@ PALETTE = {
 
 class DiagnosticWarning(UserWarning):
     """Warning raised for non-fatal diagnostic issues, such as ticker truncation."""
-
-    pass
 
 
 @dataclass
@@ -40,7 +39,7 @@ class DiagnosticResult:
     """
 
     figure: go.Figure
-    metadata: Dict[str, Any]
+    metadata: dict[str, Any]
 
 
 class FigureFactory:
@@ -49,7 +48,7 @@ class FigureFactory:
     """
 
     @staticmethod
-    def create(layout_overrides: Optional[Dict[str, Any]] = None) -> go.Figure:
+    def create(layout_overrides: dict[str, Any] | None = None) -> go.Figure:
         """
         Creates a pre-themed Plotly Figure adhering to project aesthetic guidelines.
 

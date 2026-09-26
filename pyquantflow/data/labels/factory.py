@@ -1,11 +1,11 @@
-import pandas as pd
-import numpy as np
 from abc import ABC, abstractmethod
-from typing import List, Union
+
+import numpy as np
+import pandas as pd
 
 from .sample_weights import get_sample_weights
-from .triple_barrier import apply_triple_barrier
 from .trend_scanning import trend_scanning
+from .triple_barrier import apply_triple_barrier
 
 
 class BaseLabelFactory(ABC):
@@ -36,7 +36,6 @@ class BaseLabelFactory(ABC):
             - 'label': The categorical or continuous label.
             - 't1': The timestamp when the label was resolved.
         """
-        pass
 
     @abstractmethod
     def generate_weights(self, t1: pd.Series, returns: pd.Series) -> pd.Series:
@@ -55,7 +54,6 @@ class BaseLabelFactory(ABC):
         pd.Series
             Series of sample weights aligned with the input index.
         """
-        pass
 
 
 class TripleBarrierLabelFactory(BaseLabelFactory):
@@ -110,16 +108,20 @@ class TrendScanningLabelFactory(BaseLabelFactory):
 
     def __init__(
         self,
-        windows: Union[List[int], int] = [5, 10, 20, 40, 80, 120],
-        bins: Union[List[float], np.ndarray] = [-10.0, 12.0],
+        windows: list[int] | int | None = None,
+        bins: list[float] | np.ndarray | None = None,
     ):
         """
         Initialises the TrendScanningLabelFactory.
 
         Args:
-            windows (list | int): Look-forward window sizes to scan.
-            bins (list | np.ndarray): Bin boundaries for np.digitize to categorise trends.
+            windows (list | int | None): Look-forward window sizes to scan.
+            bins (list | np.ndarray | None): Bin boundaries for np.digitize to categorise trends.
         """
+        if windows is None:
+            windows = [5, 10, 20, 40, 80, 120]
+        if bins is None:
+            bins = [-10.0, 12.0]
         if isinstance(windows, int):
             self.windows = [windows]
         else:

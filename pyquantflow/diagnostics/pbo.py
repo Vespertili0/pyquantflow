@@ -5,13 +5,14 @@ Measures and visualises the Probability of Backtest Overfitting (PBO) across all
 combinatorial paths from StrategyLab's out-of-sample combinations.
 """
 
-import numpy as np
-import pandas as pd
-import plotly.subplots
-import plotly.graph_objects as go
 from typing import Any
 
-from ._renderer import DiagnosticResult, PALETTE
+import numpy as np
+import pandas as pd
+import plotly.graph_objects as go
+import plotly.subplots
+
+from ._renderer import PALETTE, DiagnosticResult
 
 
 def plot_cpcv_paths(

@@ -1,14 +1,16 @@
+import os
 import unittest
 from unittest.mock import patch
+
 import numpy as np
 import pandas as pd
-import os
+
 from pyquantflow.data.database import DatabaseManager
 from pyquantflow.data.features.fractional_differentiation import (
-    frac_diff_ffd,
-    adf_screened_ffd,
-    _adf_test_stat,
     _adf_p_value,
+    _adf_test_stat,
+    adf_screened_ffd,
+    frac_diff_ffd,
 )
 
 
@@ -202,6 +204,19 @@ class TestFractionalDifferentiation(unittest.TestCase):
         # Compare output to first difference logic
         expected = frac_diff_ffd(explosive_series, d=1.0)
         np.testing.assert_array_almost_equal(result.values, expected.values)
+
+    def test_adf_test_stat_rank_deficient_singular(self):
+        """Test that rank-deficient design matrix X immediately returns NaN."""
+        constant_series = pd.Series([5.0, 5.0, 5.0, 5.0, 5.0, 5.0])
+        t_stat = _adf_test_stat(constant_series, lags=1)
+        self.assertTrue(np.isnan(t_stat))
+
+    def test_adf_screened_ffd_default_d_grid(self):
+        """Test adf_screened_ffd operates correctly with default d_grid=None."""
+        series = self.ohlc_data["Close"]
+        result, d_star = adf_screened_ffd(series)
+        self.assertIsInstance(result, pd.Series)
+        self.assertGreaterEqual(d_star, 0.25)
 
 
 if __name__ == "__main__":

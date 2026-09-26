@@ -1,18 +1,17 @@
 import logging
+from collections.abc import Callable
+from typing import Any
 
-import pandas as pd
 import numpy as np
-
-from sklearn.model_selection import GridSearchCV
-
-from skfolio import Population, RatioMeasure, RiskMeasure, PerfMeasure
-from typing import Any, Callable, Dict, Optional, Union
+import pandas as pd
+from skfolio import PerfMeasure, Population, RatioMeasure, RiskMeasure
 from skfolio.model_selection import (
-    cross_val_predict,
-    WalkForward,
     CombinatorialPurgedCV,
     MultipleRandomizedCV,
+    WalkForward,
+    cross_val_predict,
 )
+from sklearn.model_selection import GridSearchCV
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +24,7 @@ class StrategyLab:
     hyperparameter search, cross-validation, and robustness testing.
     """
 
-    def __init__(self, returns: pd.DataFrame, strategy_dict: Dict[str, Dict[str, Any]]):
+    def __init__(self, returns: pd.DataFrame, strategy_dict: dict[str, dict[str, Any]]):
         """
         Initialize the StrategyLab.
 
@@ -36,11 +35,11 @@ class StrategyLab:
         """
         self.returns = returns
         self.strategy_dict = strategy_dict
-        self.best_estimators: Dict[str, Any] = {}
+        self.best_estimators: dict[str, Any] = {}
         self.cv = WalkForward(train_size=126, test_size=63)
 
     def search_strategy_hyperparameters(
-        self, scoring: Union[str, Callable], cv: Optional[Any] = None
+        self, scoring: str | Callable, cv: Any | None = None
     ) -> None:
         """
         Perform grid search to find the best hyperparameters for each strategy.
@@ -69,7 +68,7 @@ class StrategyLab:
             grid_search.fit(self.returns)
             self.best_estimators[name] = grid_search.best_estimator_
 
-    def simulate_journey(self, cv: Optional[Any] = None) -> Population:
+    def simulate_journey(self, cv: Any | None = None) -> Population:
         """
         Simulate the portfolio journey using WalkForward cross-validation.
 
@@ -95,7 +94,7 @@ class StrategyLab:
         return Population(final_portfolios)
 
     def get_journey_with_frontier(
-        self, strategy_name: str, cv: Optional[Any] = None
+        self, strategy_name: str, cv: Any | None = None
     ) -> None:
         """
         Manually runs WalkForward to capture the 'Moving Frontier'
@@ -186,10 +185,10 @@ class StrategyLab:
 
     def evaluate_robustness_randomised(
         self,
-        cv: Optional[WalkForward] = None,
+        cv: WalkForward | None = None,
         n_subsamples: int = 100,
         asset_subset_size: int = 10,
-        window_size: Optional[int] = None,
+        window_size: int | None = None,
     ) -> Population:
         """
         Evaluate strategy robustness using Multiple Randomised Cross-Validation.

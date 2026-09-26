@@ -1,19 +1,20 @@
 import unittest
 from unittest.mock import patch
-import pandas as pd
+
 import numpy as np
+import pandas as pd
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score, brier_score_loss, f1_score, log_loss
 from sklearn.model_selection import KFold
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.tree import DecisionTreeClassifier
-from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import log_loss, brier_score_loss, f1_score, accuracy_score
 
 from pyquantflow.model.feature_evaluation import (
-    _adf_test_stat,
-    _adf_p_value,
-    StationaryTransformer,
     FeatureEvaluator,
+    StationaryTransformer,
+    _adf_p_value,
+    _adf_test_stat,
 )
 
 

@@ -1,5 +1,6 @@
 import unittest
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, PropertyMock, patch
+
 from pyquantflow.strategies.example_strategy import SmaCross
 
 

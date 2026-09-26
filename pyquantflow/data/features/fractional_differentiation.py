@@ -1,6 +1,5 @@
-import pandas as pd
 import numpy as np
-from typing import Optional, Tuple, Union
+import pandas as pd
 
 
 def _adf_test_stat(series: pd.Series, lags: int = 1) -> float:
@@ -22,6 +21,9 @@ def _adf_test_stat(series: pd.Series, lags: int = 1) -> float:
     X[:, 1] = 1.0  # constant
     for i in range(lags):
         X[:, 2 + i] = dy[lags - 1 - i : -1 - i]  # lagged differences
+
+    if np.linalg.matrix_rank(X) < X.shape[1]:
+        return np.nan
 
     try:
         # Solve OLS: X * beta = Y
@@ -75,12 +77,12 @@ def _adf_p_value(t_stat: float) -> float:
 
 
 def adf_screened_ffd(
-    series: Union[np.ndarray, pd.Series],
-    d: Optional[float] = None,
+    series: np.ndarray | pd.Series,
+    d: float | None = None,
     thres: float = 1e-4,
     significance_level: float = 0.05,
-    d_grid: np.ndarray = np.arange(0.25, 1.05, 0.05),
-) -> Tuple[pd.Series, float]:
+    d_grid: np.ndarray | None = None,
+) -> tuple[pd.Series, float]:
     """
     ADF-screened Fixed-Width Window Fractional Differentiation.
 
@@ -103,8 +105,9 @@ def adf_screened_ffd(
         Weight cutoff threshold for FFD kernel truncation.
     significance_level : float, default 0.05
         Maximum ADF p-value to accept stationarity during screening.
-    d_grid : np.ndarray, default np.arange(0.0, 1.05, 0.05)
+    d_grid : Optional[np.ndarray], default None
         Grid of candidate differencing orders to evaluate during screening.
+        Defaults to np.arange(0.25, 1.05, 0.05) if None.
 
     Returns
     -------
@@ -112,6 +115,8 @@ def adf_screened_ffd(
         A tuple of (differenced_series, d_used) where d_used is the
         differencing order that was applied.
     """
+    if d_grid is None:
+        d_grid = np.arange(0.25, 1.05, 0.05)
     # Coerce raw arrays to pd.Series
     if isinstance(series, np.ndarray):
         series = pd.Series(series)

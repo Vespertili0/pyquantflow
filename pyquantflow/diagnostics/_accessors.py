@@ -5,6 +5,7 @@ Side-effect module that binds diagnostic plotting wrapper methods directly onto 
 """
 
 import pandas as pd
+
 from pyquantflow.data.assetorganiser import AssetOrganiser
 from pyquantflow.data.sk_transformers import GSADFTransformer
 from pyquantflow.model.classifier import PrimarySecondaryClassifier
@@ -16,6 +17,7 @@ from pyquantflow.model.feature_evaluation import (
     FeatureEvaluator,
     StationaryTransformer,
 )
+
 from ._renderer import DiagnosticResult
 from .events import plot_multi_asset_events
 from .uniqueness import plot_sample_concurrency
@@ -96,8 +98,9 @@ AssetOrganiser.plot_sample_concurrency = _ao_plot_sample_concurrency
 
 # --- StationaryTransformer ---
 def _st_plot_stationarity_profile(self, raw_series, col, max_lags=40):
-    from .features import plot_stationarity_profile
     from pyquantflow.data.features.fractional_differentiation import adf_screened_ffd
+
+    from .features import plot_stationarity_profile
 
     d_star = self.optimal_d_.get(col, 1.0)
     ffd_series, _ = adf_screened_ffd(raw_series, d=d_star, thres=self.ffd_thres)

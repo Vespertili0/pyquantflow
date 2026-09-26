@@ -6,11 +6,13 @@ sampled price trajectories, exit type distributions, and holding period histogra
 """
 
 import warnings
-import pandas as pd
+
 import numpy as np
-import plotly.subplots
+import pandas as pd
 import plotly.graph_objects as go
-from ._renderer import DiagnosticResult, DiagnosticWarning, PALETTE
+import plotly.subplots
+
+from ._renderer import PALETTE, DiagnosticResult, DiagnosticWarning
 
 
 def plot_barrier_trajectories(

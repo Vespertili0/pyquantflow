@@ -21,14 +21,12 @@ spreads from daily high and low prices*. The Journal of Finance, 67(2),
 719–760.
 """
 
-from typing import Union
-
 import numpy as np
 import pandas as pd
 
 
 def ROLL_MEASURE(
-    close: Union[np.ndarray, pd.Series],
+    close: np.ndarray | pd.Series,
     window: int = 20,
 ) -> np.ndarray:
     """
@@ -109,8 +107,8 @@ def ROLL_MEASURE(
 
 
 def CORWIN_SCHULTZ(
-    high: Union[np.ndarray, pd.Series],
-    low: Union[np.ndarray, pd.Series],
+    high: np.ndarray | pd.Series,
+    low: np.ndarray | pd.Series,
     window: int = 20,
 ) -> np.ndarray:
     """

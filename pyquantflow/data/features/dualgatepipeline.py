@@ -1,5 +1,3 @@
-from typing import List, Tuple, Dict, Optional, Union
-
 import numpy as np
 from sklearn.base import BaseEstimator
 from sklearn.ensemble import HistGradientBoostingClassifier
@@ -19,7 +17,7 @@ class DualGatePipelineFactory:
         self,
         price_col: str = "Close",
         filter_col: str = "Close",
-        vol_col: Optional[str] = None,
+        vol_col: str | None = None,
     ):
         """
         Initialises the DualGatePipelineFactory.
@@ -41,19 +39,19 @@ class DualGatePipelineFactory:
         self,
         organiser: AssetOrganiser,
         evaluator: FeatureEvaluator,
-        target_events_train: Optional[Union[int, Dict[str, int]]] = None,
-        target_labels: List[str] = ["label", "t1", "weight"],
+        target_events_train: int | dict[str, int] | None = None,
+        target_labels: list[str] | None = None,
         span: int = 50,
-        estimator: Optional[BaseEstimator] = None,
+        estimator: BaseEstimator | None = None,
         balance_classes: bool = True,
         greater_is_better: bool = False,
         needs_proba: bool = True,
         objective: str = "budget",
-        t1_col: Optional[str] = None,
+        t1_col: str | None = None,
         alpha_min: float = 0.5,
         alpha_max: float = 3.0,
         alpha_step: float = 0.1,
-    ) -> Tuple[AssetOrganiser, List[str]]:
+    ) -> tuple[AssetOrganiser, list[str]]:
         """
         Executes the Two-Track pipeline: continuous transformations, discrete event
         downsampling, alignment merge, and Gate 1 memory validation.
@@ -64,8 +62,9 @@ class DualGatePipelineFactory:
             The organiser holding the multi-asset DataFrame to be processed.
         evaluator : FeatureEvaluator
             The feature evaluator that handles stationarity checks and pruning.
-        target_labels : List[str], default ["label", "t1", "weight"]
+        target_labels : Optional[List[str]], default None
             The column names for target metadata labels to isolate and synchronise.
+            Defaults to ["label", "t1", "weight"] if None.
         target_events_train : Optional[Union[int, Dict[str, int]]], default None
             Target event budget for CUSUM downsampling on the training set.
             Required when ``objective="budget"``; ignored when ``objective="uniqueness"``.
@@ -97,6 +96,8 @@ class DualGatePipelineFactory:
             - The updated AssetOrganiser containing the downsampled and stationarised dataset.
             - A list of feature names that survived the Gate 1 memory check.
         """
+        if target_labels is None:
+            target_labels = ["label", "t1", "weight"]
         if organiser.multi_asset is None:
             organiser.prepare_multi_asset_frame()
 

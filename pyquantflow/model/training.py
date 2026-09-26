@@ -1,9 +1,11 @@
+from collections.abc import Callable
+from typing import Any
+
+import numpy as np
 import optuna
 import pandas as pd
-import numpy as np
-from typing import Callable, Any, Optional, Union
-from sklearn.model_selection import BaseCrossValidator
 from sklearn.metrics import f1_score
+from sklearn.model_selection import BaseCrossValidator
 
 
 class HyperparameterOptimiser:
@@ -17,7 +19,7 @@ class HyperparameterOptimiser:
         study_name: str,
         storage_uri: str = None,
         direction: str = "maximize",
-        sampler: Optional[optuna.samplers.BaseSampler] = None,
+        sampler: optuna.samplers.BaseSampler | None = None,
     ):
         """
         Args:
@@ -42,16 +44,16 @@ class HyperparameterOptimiser:
     def run(
         self,
         X: pd.DataFrame,
-        y: Union[pd.Series, np.ndarray, pd.DataFrame],
+        y: pd.Series | np.ndarray | pd.DataFrame,
         features: list[str],
         model_factory: Callable[[optuna.Trial], Any],
         cv: BaseCrossValidator,
-        weight_col: Optional[str] = None,
-        t1_col: Optional[str] = None,
+        weight_col: str | None = None,
+        t1_col: str | None = None,
         metric: Callable = f1_score,
         n_trials: int = 50,
-        timeout: Optional[int] = None,
-        metric_kwargs: Optional[dict] = None,
+        timeout: int | None = None,
+        metric_kwargs: dict | None = None,
         balance_classes: bool = True,
     ) -> optuna.Study:
         """
