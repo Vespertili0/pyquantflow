@@ -2406,7 +2406,7 @@ wheels = [
 
 [[package]]
 name = "pyquantflow"
-version = "0.4.2"
+version = "0.4.3"
 source = { editable = "." }
 dependencies = [
     { name = "backtesting", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },

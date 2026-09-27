@@ -1,13 +1,14 @@
+import json
 import logging
-
-import unittest
 import os
 import sqlite3
-import json
+import unittest
+
 import pandas as pd
+
 from pyquantflow.backtesting.batchbacktest import BatchBacktester
-from pyquantflow.strategies.example_strategy import SmaCross
 from pyquantflow.data.database import DatabaseManager
+from pyquantflow.strategies.example_strategy import SmaCross
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +82,7 @@ class TestBacktesting(unittest.TestCase):
         self.assertIn("average_metrics", self.backtester.results)
 
         # Verify individual results
-        for ticker in data_map.keys():
+        for ticker in data_map:
             self.assertIn(ticker, self.backtester.results["individual_results"])
             stats = self.backtester.results["individual_results"][ticker]
 
@@ -121,7 +122,7 @@ class TestBacktesting(unittest.TestCase):
         self.assertTrue(batch_name.endswith(SmaCross.__name__))
 
         # 6. Verify Database Storage after saving
-        for ticker in data_map.keys():
+        for ticker in data_map:
             cursor.execute("SELECT * FROM backtest_results WHERE ticker = ?", (ticker,))
             row = cursor.fetchone()
             self.assertIsNotNone(row, f"No results found in database for {ticker}")

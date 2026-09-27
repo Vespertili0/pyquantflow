@@ -1,6 +1,5 @@
 import numpy as np
 import pandas as pd
-from typing import Optional, Union
 
 
 def ICHIMOKU(
@@ -241,8 +240,8 @@ def EMA_RIBBON(
 
 
 def FRACTIONAL_DIFF(
-    close: Union[np.ndarray, pd.Series],
-    d: Optional[float] = None,
+    close: np.ndarray | pd.Series,
+    d: float | None = None,
     thres: float = 1e-4,
     significance_level: float = 0.05,
 ) -> np.ndarray:
@@ -274,6 +273,7 @@ def FRACTIONAL_DIFF(
         padded with np.nan. Same length as input.
     """
     from pyquantflow.data.features.fractional_differentiation import adf_screened_ffd
+    from pyquantflow.data.utils import safe_stack
 
     return_array = isinstance(close, np.ndarray)
     # Coerce to pd.Series if raw array
@@ -293,7 +293,7 @@ def FRACTIONAL_DIFF(
             )[0]
         )
         # Stack back to multi-index
-        result_series = transformed_df.stack(level="ticker", dropna=False)
+        result_series = safe_stack(transformed_df, level="ticker")
 
         # Ensure the index levels are in the same order as the input
         if result_series.index.names != series.index.names:
@@ -314,7 +314,7 @@ def FRACTIONAL_DIFF(
 
 
 def SADF_JAX(
-    close: Union[np.ndarray, pd.Series],
+    close: np.ndarray | pd.Series,
     model: str = "linear",
     lags: int = 1,
     min_length: int = 20,
@@ -345,6 +345,7 @@ def SADF_JAX(
         indices padded with np.nan.
     """
     from pyquantflow.data.features.sadf import get_sadf_jax
+    from pyquantflow.data.utils import safe_stack
 
     return_array = isinstance(close, np.ndarray)
     # Coerce to pd.Series if raw array
@@ -363,7 +364,7 @@ def SADF_JAX(
             )
         )
         # Stack back to multi-index
-        result_series = transformed_df.stack(level="ticker", dropna=False)
+        result_series = safe_stack(transformed_df, level="ticker")
 
         # Ensure the index levels are in the same order as the input
         if result_series.index.names != series.index.names:

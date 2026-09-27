@@ -1,16 +1,16 @@
 import logging
 import os
-
 import unittest
-from unittest.mock import patch, MagicMock
-import pandas as pd
+from unittest.mock import MagicMock, patch
+
 import numpy as np
-from skfolio.optimization import EqualWeighted, MeanRisk
+import pandas as pd
 from skfolio import Population, RatioMeasure
 from skfolio.model_selection import WalkForward
+from skfolio.optimization import EqualWeighted, MeanRisk
 
-from pyquantflow.portfolio.strategylab import StrategyLab
 from pyquantflow.data.database import DatabaseManager
+from pyquantflow.portfolio.strategylab import StrategyLab
 
 logger = logging.getLogger(__name__)
 

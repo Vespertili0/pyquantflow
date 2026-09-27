@@ -1,12 +1,13 @@
 import unittest
-import pandas as pd
+
 import numpy as np
+import pandas as pd
 from sklearn.model_selection import StratifiedKFold
 
 from pyquantflow.data.assetorganiser import AssetOrganiser
-from pyquantflow.model.feature_evaluation import FeatureEvaluator
 from pyquantflow.data.features.dualgatepipeline import DualGatePipelineFactory
 from pyquantflow.data.labels.factory import TrendScanningLabelFactory
+from pyquantflow.model.feature_evaluation import FeatureEvaluator
 
 
 class TestDualGatePipeline(unittest.TestCase):
@@ -14,6 +15,7 @@ class TestDualGatePipeline(unittest.TestCase):
 
     def setUp(self):
         import os
+
         from pyquantflow.data.database import DatabaseManager
 
         self.clean_daily_map = {}
@@ -200,6 +202,14 @@ class TestDualGatePipeline(unittest.TestCase):
         # The pre-computed columns should exist in the multi_asset DataFrame
         self.assertIn("ffd_close", ao.multi_asset.columns)
         self.assertIn("sadf_close", ao.multi_asset.columns)
+
+    def test_dualgatepipeline_default_target_labels(self):
+        """Test DualGatePipelineFactory.execute default target_labels parameter."""
+        import inspect
+
+        factory = DualGatePipelineFactory()
+        sig = inspect.signature(factory.execute)
+        self.assertIsNone(sig.parameters["target_labels"].default)
 
 
 if __name__ == "__main__":

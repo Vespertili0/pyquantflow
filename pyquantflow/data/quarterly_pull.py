@@ -1,36 +1,9 @@
 import logging
 
-import yfinance as yf
 import pandas as pd
+import yfinance as yf
 
 logger = logging.getLogger(__name__)
-
-
-def merge_last_hour(df) -> pd.DataFrame:
-    """
-    Merges the last trading hour of each day into the previous hour.
-    """
-    df = df.sort_index()
-    df = df.copy()
-
-    # Group by date to handle each day separately
-    for date, group in df.groupby(df.index.date):
-        if len(group) < 2:
-            continue  # Skip if there's no previous hour to merge with
-
-        last_idx = group.index[-1]
-        prev_idx = group.index[-2]
-
-        # Merge logic
-        df.at[prev_idx, "High"] = max(df.at[prev_idx, "High"], df.at[last_idx, "High"])
-        df.at[prev_idx, "Low"] = min(df.at[prev_idx, "Low"], df.at[last_idx, "Low"])
-        df.at[prev_idx, "Close"] = df.at[last_idx, "Close"]
-        df.at[prev_idx, "Volume"] += df.at[last_idx, "Volume"]
-
-        # Drop the last row
-        df = df.drop(last_idx)
-
-    return df
 
 
 def fetch_quarterly_data(ticker, time_dict, period="quarterly") -> pd.DataFrame:

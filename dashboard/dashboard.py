@@ -1,10 +1,11 @@
-import streamlit as st
-import pandas as pd
-import sqlite3
-import altair as alt
-import os
 import json
+import os
+import sqlite3
 from pathlib import Path
+
+import altair as alt
+import pandas as pd
+import streamlit as st
 
 # Set page configuration
 st.set_page_config(page_title="Stock & Backtest Dashboard", layout="wide")

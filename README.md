@@ -99,7 +99,7 @@ data_indicator = data.pipe(
     indicator=talib.EMA,
     input_map={"real": "Close"},
     output_names=["EMA_120"],
-    **{"timeperiod": 120}
+    **{"timeperiod": 120},
 )
 ```
 

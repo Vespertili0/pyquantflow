@@ -6,16 +6,17 @@ evaluation windows, and exposes fold-to-fold feature distribution drift.
 """
 
 import warnings
+
 import pandas as pd
 import plotly.graph_objects as go
-from typing import Union
 
-from ._renderer import DiagnosticResult, FigureFactory, DiagnosticWarning, PALETTE
-from pyquantflow.model.cross_validation import PurgedKFoldCV, CombinatorialPurgedKFold
+from pyquantflow.model.cross_validation import CombinatorialPurgedKFold, PurgedKFoldCV
+
+from ._renderer import PALETTE, DiagnosticResult, DiagnosticWarning, FigureFactory
 
 
 def plot_cv_splits(
-    cv_splitter: Union[PurgedKFoldCV, CombinatorialPurgedKFold],
+    cv_splitter: PurgedKFoldCV | CombinatorialPurgedKFold,
     X: pd.DataFrame,
     y: pd.Series,
 ) -> DiagnosticResult:
@@ -215,7 +216,7 @@ def plot_cv_splits(
 
 def plot_fold_feature_drift(
     X: pd.DataFrame,
-    cv_splitter: Union[PurgedKFoldCV, CombinatorialPurgedKFold],
+    cv_splitter: PurgedKFoldCV | CombinatorialPurgedKFold,
     feature_col: str,
 ) -> DiagnosticResult:
     """

@@ -1,12 +1,13 @@
 import logging
-
-import pandas as pd
-import numpy as np
-from typing import Optional, Dict, List, Any, Tuple, Union
 import warnings
+from typing import Any
+
+import numpy as np
+import pandas as pd
 from backtesting import Backtest
-from .backtest_database import BacktestDatabaseManager
+
 from ..data.assetorganiser import AssetOrganiser
+from .backtest_database import BacktestDatabaseManager
 
 logger = logging.getLogger(__name__)
 
@@ -29,8 +30,8 @@ class BatchBacktester:
                                    batch results will be stored.
         """
         self.results_db = BacktestDatabaseManager(results_db_path)
-        self.results: Optional[Dict[str, Any]] = None
-        self.strategy_class: Optional[type] = None
+        self.results: dict[str, Any] | None = None
+        self.strategy_class: type | None = None
 
     def _validate_data(self, df: pd.DataFrame) -> pd.DataFrame:
         required_cols = ["Open", "High", "Low", "Close", "Volume"]
@@ -43,11 +44,11 @@ class BatchBacktester:
         df: pd.DataFrame,
         strategy_class: type,
         cash: float,
-        commission: float | Tuple[float, float],
+        commission: float | tuple[float, float],
         trade_on_close: bool,
         finalize_trades: bool,
         **strategy_params,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Validates Data and executes a single backtest."""
         df = self._validate_data(df)
         if not isinstance(df.index, pd.DatetimeIndex):
@@ -79,15 +80,15 @@ class BatchBacktester:
     def run_batch_backtest(
         self,
         strategy_class: type,
-        data: Optional[Union[pd.DataFrame, Dict[str, pd.DataFrame]]] = None,
-        asset_organiser: Optional[AssetOrganiser] = None,
-        symbols: Optional[Union[str, List[str]]] = "all",
+        data: pd.DataFrame | dict[str, pd.DataFrame] | None = None,
+        asset_organiser: AssetOrganiser | None = None,
+        symbols: str | list[str] | None = "all",
         cash: float = 10000,
-        commission: Union[float, Tuple[float, float]] = (3.0, 0.0),
+        commission: float | tuple[float, float] = (3.0, 0.0),
         trade_on_close: bool = False,
         finalize_trades: bool = True,
         **strategy_params: Any,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Runs backtests for a list of tickers and aggregates the results.
 
@@ -120,7 +121,7 @@ class BatchBacktester:
         """
         self.strategy_class = strategy_class
         individual_results = {}
-        data_map: Dict[str, pd.DataFrame] = {}
+        data_map: dict[str, pd.DataFrame] = {}
 
         if asset_organiser is not None:
             if data is not None:
@@ -133,7 +134,7 @@ class BatchBacktester:
             available_symbols = getattr(
                 multiasset_test_data.index.get_level_values("ticker"),
                 "unique",
-                lambda: [],
+                list,
             )()
             if callable(available_symbols):
                 available_symbols = available_symbols()

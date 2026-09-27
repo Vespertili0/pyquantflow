@@ -1,10 +1,12 @@
-import unittest
-import pandas as pd
-import numpy as np
 import os
+import unittest
+
+import numpy as np
+import pandas as pd
+from sklearn.tree import DecisionTreeClassifier
+
 from pyquantflow.data.assetorganiser import AssetOrganiser
 from pyquantflow.data.database import DatabaseManager
-from sklearn.tree import DecisionTreeClassifier
 
 
 class MockLabelFactory:

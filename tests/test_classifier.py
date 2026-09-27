@@ -1,15 +1,16 @@
+import os
 import unittest
+
 import numpy as np
 import pandas as pd
-import os
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import KFold
 
 from pyquantflow.data.database import DatabaseManager
 from pyquantflow.model.classifier import (
-    PrimarySecondaryClassifier,
     IchimokuBaselineClassifier,
+    PrimarySecondaryClassifier,
 )
 
 

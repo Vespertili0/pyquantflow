@@ -21,14 +21,12 @@ spreads from daily high and low prices*. The Journal of Finance, 67(2),
 719–760.
 """
 
-from typing import Union
-
 import numpy as np
 import pandas as pd
 
 
 def ROLL_MEASURE(
-    close: Union[np.ndarray, pd.Series],
+    close: np.ndarray | pd.Series,
     window: int = 20,
 ) -> np.ndarray:
     """
@@ -100,7 +98,7 @@ def ROLL_MEASURE(
     # Roll's formula: spread = 2 * sqrt(max(-cov, 0))
     spread = 2.0 * np.sqrt(np.maximum(-cov, 0.0))
 
-    result = spread.to_numpy(dtype=np.float64)
+    result = spread.to_numpy(dtype=np.float64, copy=True)
 
     # Enforce NaN for the cold-start window (window + 1 extra for diff lag)
     result[: window + 1] = np.nan
@@ -109,8 +107,8 @@ def ROLL_MEASURE(
 
 
 def CORWIN_SCHULTZ(
-    high: Union[np.ndarray, pd.Series],
-    low: Union[np.ndarray, pd.Series],
+    high: np.ndarray | pd.Series,
+    low: np.ndarray | pd.Series,
     window: int = 20,
 ) -> np.ndarray:
     """
@@ -210,7 +208,7 @@ def CORWIN_SCHULTZ(
     exp_alpha = np.exp(alpha_clamped)
     spread = 2.0 * (exp_alpha - 1.0) / (1.0 + exp_alpha)
 
-    result = spread.to_numpy(dtype=np.float64)
+    result = spread.to_numpy(dtype=np.float64, copy=True)
 
     # Enforce NaN for the cold-start window
     result[: window + 1] = np.nan

@@ -1,6 +1,6 @@
-import unittest
-import sys
 import importlib
+import sys
+import unittest
 
 from pyquantflow.model.manager import BaseModelEngine
 

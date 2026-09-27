@@ -1,8 +1,9 @@
+from functools import partial
+
 import jax
 import jax.numpy as jnp
-import pandas as pd
 import numpy as np
-from functools import partial
+import pandas as pd
 
 # Enable 64-bit precision
 jax.config.update("jax_enable_x64", True)

@@ -8,16 +8,16 @@ and sample weight calculation while strictly preventing sequential data hazards.
 """
 
 import pandas as pd
-from typing import Dict, List, Optional, Union
 from scipy.stats import entropy
 from sklearn.base import BaseEstimator
+
+from .features.indicator import ICHIMOKU
+from .labels import BaseLabelFactory, calibrate_cusum_alpha, get_cusum_events
 from .utils import (
     align_and_ffill_multiasset,
-    restructure_map_2_multiasset_df,
     pipe_indicator,
+    restructure_map_2_multiasset_df,
 )
-from .labels import get_cusum_events, calibrate_cusum_alpha, BaseLabelFactory
-from .features.indicator import ICHIMOKU
 
 
 class AssetOrganiser:
@@ -31,12 +31,12 @@ class AssetOrganiser:
 
     def __init__(
         self,
-        data_map: Optional[Dict[str, pd.DataFrame]] = None,
-        cutoff_date: Optional[str] = None,
-        target_features: Optional[List[str]] = None,
-        weight_col: Optional[str] = None,
-        multi_asset: Optional[pd.DataFrame] = None,
-        label_factory: Optional[BaseLabelFactory] = None,
+        data_map: dict[str, pd.DataFrame] | None = None,
+        cutoff_date: str | None = None,
+        target_features: list[str] | None = None,
+        weight_col: str | None = None,
+        multi_asset: pd.DataFrame | None = None,
+        label_factory: BaseLabelFactory | None = None,
     ) -> None:
         """
         Initialises the AssetOrganiser.
@@ -61,16 +61,16 @@ class AssetOrganiser:
         if target_features is None:
             raise ValueError("'target_features' is required.")
 
-        self.data_map: Optional[Dict[str, pd.DataFrame]] = data_map
+        self.data_map: dict[str, pd.DataFrame] | None = data_map
         self.cutoff_date: str = cutoff_date
-        self.target_features: List[str] = target_features
-        self.weight_col: Optional[str] = weight_col
-        self.label_factory: Optional[BaseLabelFactory] = label_factory
-        self.cusum_events_map: Optional[Dict[str, pd.DatetimeIndex]] = None
+        self.target_features: list[str] = target_features
+        self.weight_col: str | None = weight_col
+        self.label_factory: BaseLabelFactory | None = label_factory
+        self.cusum_events_map: dict[str, pd.DatetimeIndex] | None = None
 
-        self.multi_asset: Optional[pd.DataFrame] = multi_asset
-        self.multi_asset_train: Optional[pd.DataFrame] = None
-        self.multi_asset_test: Optional[pd.DataFrame] = None
+        self.multi_asset: pd.DataFrame | None = multi_asset
+        self.multi_asset_train: pd.DataFrame | None = None
+        self.multi_asset_test: pd.DataFrame | None = None
 
         if self.multi_asset is not None:
             self._split_train_test()
@@ -98,11 +98,9 @@ class AssetOrganiser:
             )
         self._split_train_test()
 
-        return None
-
     def downsample_to_events(
         self,
-        events: Union[pd.DatetimeIndex, list, set, Dict[str, pd.DatetimeIndex]],
+        events: pd.DatetimeIndex | list | set | dict[str, pd.DatetimeIndex],
     ) -> None:
         """
         Down-samples the multi-asset DataFrame to keep only the dates matching
@@ -139,20 +137,18 @@ class AssetOrganiser:
         self.multi_asset = self.multi_asset[mask]
         self._split_train_test()
 
-        return None
-
     def downsample_to_cusum_events(
         self,
-        target_events_train: Union[int, Dict[str, int]],
+        target_events_train: int | dict[str, int],
         filter_col: str,
-        vol_col: Optional[str] = None,
+        vol_col: str | None = None,
         span: int = 100,
         alpha_min: float = 0.5,
         alpha_max: float = 3.0,
         alpha_step: float = 0.1,
         objective: str = "budget",
-        t1_col: Optional[str] = None,
-    ) -> Dict[str, float]:
+        t1_col: str | None = None,
+    ) -> dict[str, float]:
         """
         Calibrates optimal alpha scalars on the training set and down-samples the
         multi-asset DataFrame using causal dynamic thresholds.
@@ -406,17 +402,17 @@ class AssetOrganiser:
 
     def build_learning_pipeline(
         self,
-        target_events_train: Union[int, Dict[str, int]],
+        target_events_train: int | dict[str, int],
         filter_col: str,
         price_col: str = "Close",
-        vol_col: Optional[str] = None,
+        vol_col: str | None = None,
         span: int = 100,
         alpha_min: float = 0.5,
         alpha_max: float = 3.0,
         alpha_step: float = 0.1,
         objective: str = "budget",
-        t1_col: Optional[str] = None,
-    ) -> Dict[str, float]:
+        t1_col: str | None = None,
+    ) -> dict[str, float]:
         """
         Orchestrates the preparation pipeline to strictly prevent sequential data hazards:
         1. Computes continuous labels (avoiding look-ahead scaling errors).
@@ -459,9 +455,9 @@ class AssetOrganiser:
     def add_model_predictions(
         self,
         model: BaseEstimator,
-        features: List[str],
+        features: list[str],
         prefix: str = "primary",
-        filter_prediction: Optional[int] = None,
+        filter_prediction: int | None = None,
     ) -> None:
         """
         Fits the model on the multiasset data.
@@ -511,9 +507,9 @@ class AssetOrganiser:
 
     def get_classifierengine_payload(
         self,
-        features: List[str],
-        tickers: Optional[List[str]] = None,
-    ) -> Dict[str, Union[pd.DataFrame, List[str], str, None]]:
+        features: list[str],
+        tickers: list[str] | None = None,
+    ) -> dict[str, pd.DataFrame | list[str] | str | None]:
         """
         Extracts the prepared data and metadata into a dictionary suitable for
         unpacking (**kwargs) directly into `ClassifierEngine.run_pipeline`.
@@ -738,7 +734,7 @@ class AssetOrganiser:
         self._split_train_test()
 
     def replace_features(
-        self, transformed_df: pd.DataFrame, original_features: List[str]
+        self, transformed_df: pd.DataFrame, original_features: list[str]
     ) -> None:
         """
         Replaces the original features in the multi_asset panel dataset with

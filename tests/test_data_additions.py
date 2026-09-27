@@ -1,25 +1,26 @@
+import os
 import unittest
+from unittest.mock import patch
+
 import numpy as np
 import pandas as pd
-from unittest.mock import patch
+
+from pyquantflow.data.database import DatabaseManager
 from pyquantflow.data.features.fractional_differentiation import frac_diff_ffd
+from pyquantflow.data.features.indicator import ICHIMOKU
+from pyquantflow.data.features.sadf import get_sadf_jax as gsadf_values
 from pyquantflow.data.labels.trend_scanning import trend_scanning
 from pyquantflow.data.labels.triple_barrier import (
     apply_triple_barrier as triple_barrier_labels,
 )
-from pyquantflow.data.features.sadf import get_sadf_jax as gsadf_values
-from pyquantflow.data.features.indicator import ICHIMOKU
-from pyquantflow.data.utils import pipe_indicator
-from pyquantflow.data.quarterly_pull import fetch_quarterly_data, merge_last_hour
+from pyquantflow.data.quarterly_pull import fetch_quarterly_data
 from pyquantflow.data.sk_transformers import (
     FractionalDiffTransformer,
-    TrendScanningTransformer,
     GSADFTransformer,
+    TrendScanningTransformer,
     TripleBarrierLabeler,
 )
-
-import os
-from pyquantflow.data.database import DatabaseManager
+from pyquantflow.data.utils import pipe_indicator
 
 
 class TestDataAdditions(unittest.TestCase):
@@ -259,55 +260,6 @@ class TestDataAdditions(unittest.TestCase):
         result = fetch_quarterly_data(ticker, time_dict, period="quarterly")
         self.assertIsInstance(result, pd.DataFrame)
         self.assertTrue(result.empty)
-
-    def test_merge_last_hour(self):
-        """Test merge_last_hour logic."""
-        # Create a DF with hourly data for a single day
-        # 10:00, 11:00 ... 15:00, 16:00 (last hour)
-        # We need at least 2 rows
-        dates = pd.date_range("2023-01-01 15:00", periods=2, freq="h")
-        df = pd.DataFrame(
-            {
-                "High": [100, 102],
-                "Low": [90, 95],
-                "Close": [95, 98],
-                "Volume": [1000, 500],
-            },
-            index=dates,
-        )
-
-        merged = merge_last_hour(df)
-
-        # Should have 1 row now
-        self.assertEqual(len(merged), 1)
-        # Check merged values
-        # High = max(100, 102) = 102
-        self.assertEqual(merged.iloc[0]["High"], 102)
-        # Low = min(90, 95) = 90
-        self.assertEqual(merged.iloc[0]["Low"], 90)
-        # Close = last close = 98
-        self.assertEqual(merged.iloc[0]["Close"], 98)
-        # Volume = sum(1000, 500) = 1500
-        self.assertEqual(merged.iloc[0]["Volume"], 1500)
-
-    def test_merge_last_hour_fewer_than_2_elements(self):
-        """Test merge_last_hour with a day having fewer than 2 elements."""
-        dates = pd.date_range("2023-01-01 15:00", periods=1, freq="h")
-        df = pd.DataFrame(
-            {
-                "High": [100],
-                "Low": [90],
-                "Close": [95],
-                "Volume": [1000],
-            },
-            index=dates,
-        )
-
-        merged = merge_last_hour(df)
-
-        # Should remain unchanged
-        self.assertEqual(len(merged), 1)
-        self.assertEqual(merged.iloc[0]["High"], 100)
 
 
 if __name__ == "__main__":

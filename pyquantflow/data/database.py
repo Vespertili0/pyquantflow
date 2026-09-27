@@ -1,8 +1,10 @@
+import logging
 import sqlite3
+from datetime import datetime
+
 import pandas as pd
 import yfinance as yf
-from datetime import datetime
-import logging
+
 from .quarterly_pull import fetch_quarterly_data
 
 logger = logging.getLogger(__name__)
@@ -24,7 +26,7 @@ class DatabaseManager:
         "SELECT MAX(datetime) FROM price_data WHERE ticker_id = ?"
     )
     _SQL_INSERT_PRICE_DATA = """
-        INSERT INTO price_data (ticker_id, datetime, open, high, low, close, volume)
+        INSERT OR IGNORE INTO price_data (ticker_id, datetime, open, high, low, close, volume)
         VALUES (?, ?, ?, ?, ?, ?, ?)
     """
     _SQL_SELECT_PRICE_DATA = """
@@ -75,10 +77,26 @@ class DatabaseManager:
                 low REAL,
                 close REAL,
                 volume REAL,
-                FOREIGN KEY(ticker_id) REFERENCES tickers(id)
+                FOREIGN KEY(ticker_id) REFERENCES tickers(id),
+                UNIQUE(ticker_id, datetime)
             )
         """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_price_data_ticker_datetime
+            ON price_data (ticker_id, datetime)
+        """)
         self.conn.commit()
+
+    def close(self):
+        """Closes the database connection."""
+        if self.conn:
+            self.conn.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
 
     def add_ticker(
         self,

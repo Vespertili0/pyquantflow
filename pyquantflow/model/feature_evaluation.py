@@ -1,23 +1,24 @@
 import warnings
-from typing import List, Dict, Optional, Callable, Union
+from collections.abc import Callable
 
 import numpy as np
 import pandas as pd
 import scipy.cluster.hierarchy
 import scipy.spatial.distance
 import scipy.stats
+from joblib import Parallel, delayed
 from sklearn.base import BaseEstimator, TransformerMixin, clone
 from sklearn.metrics import silhouette_score
 from tsfeatures import tsfeatures
-from joblib import Parallel, delayed
 
 # Shared FFD + ADF utilities (canonical source: data.features.fractional_differentiation)
 from pyquantflow.data.features.fractional_differentiation import (
-    frac_diff_ffd,
-    adf_screened_ffd,
-    _adf_test_stat,
     _adf_p_value,
+    _adf_test_stat,
+    adf_screened_ffd,
+    frac_diff_ffd,
 )
+from pyquantflow.data.utils import safe_stack
 
 
 class StationaryTransformer(BaseEstimator, TransformerMixin):
@@ -106,7 +107,7 @@ class StationaryTransformer(BaseEstimator, TransformerMixin):
                             s, d=optimal_d, thres=self.ffd_thres
                         )[0]
                     )
-                    diff_series = diff_unstacked.stack(level="ticker", dropna=False)
+                    diff_series = safe_stack(diff_unstacked, level="ticker")
                     if diff_series.index.names != index_names:
                         diff_series = diff_series.reorder_levels(index_names)
                     diff_series = diff_series.reindex(col_data.index)
@@ -167,7 +168,7 @@ class StationaryTransformer(BaseEstimator, TransformerMixin):
                 diff_unstacked = unstacked.apply(
                     lambda s: adf_screened_ffd(s, d=d, thres=self.ffd_thres)[0]
                 )
-                diff_series = diff_unstacked.stack(level="ticker", dropna=False)
+                diff_series = safe_stack(diff_unstacked, level="ticker")
 
                 if diff_series.index.names != index_names:
                     diff_series = diff_series.reorder_levels(index_names)
@@ -258,15 +259,15 @@ class FeatureEvaluator:
 
     def __init__(
         self,
-        features: List[str],
-        target_col: Optional[str] = None,
-        weight_col: Optional[str] = None,
-        t1_col: Optional[str] = None,
-        cv: Optional[BaseEstimator] = None,
+        features: list[str],
+        target_col: str | None = None,
+        weight_col: str | None = None,
+        t1_col: str | None = None,
+        cv: BaseEstimator | None = None,
         significance_level: float = 0.05,
         freq: int = 1,
         memory_threshold: float = 0.10,
-        raw_features: Optional[List[str]] = None,
+        raw_features: list[str] | None = None,
     ):
         """
         Parameters
@@ -281,7 +282,7 @@ class FeatureEvaluator:
             such as microstructure spreads, volume, or categorical metadata.
         """
         self.features = list(features)
-        self.raw_features: List[str] = list(raw_features) if raw_features else []
+        self.raw_features: list[str] = list(raw_features) if raw_features else []
         self.target_col = target_col
         self.weight_col = weight_col
         self.t1_col = t1_col
@@ -383,8 +384,8 @@ class FeatureEvaluator:
     def compute_time_series_profiles(
         self,
         df: pd.DataFrame,
-        columns: List[str],
-        groupby_level: Optional[str] = "ticker",
+        columns: list[str],
+        groupby_level: str | None = "ticker",
     ) -> pd.DataFrame:
         """
         Uses Nixtla's tsfeatures to compute statistical metrics.
@@ -482,8 +483,8 @@ class FeatureEvaluator:
         self,
         data: pd.DataFrame,
         method: str = "correlation",
-        n_clusters: Optional[int] = None,
-    ) -> Dict[int, List[Union[str, int]]]:
+        n_clusters: int | None = None,
+    ) -> dict[int, list[str | int]]:
         """
         Groups entities hierarchically.
         If method == 'correlation', clusters the columns of data (features).
@@ -562,11 +563,11 @@ class FeatureEvaluator:
         df: pd.DataFrame,
         estimator: BaseEstimator,
         metric: Callable,
-        metric_kwargs: Optional[dict] = None,
+        metric_kwargs: dict | None = None,
         balance_classes: bool = True,
         greater_is_better: bool = True,
         needs_proba: bool = True,
-    ) -> Dict[int, Dict[str, pd.DataFrame]]:
+    ) -> dict[int, dict[str, pd.DataFrame]]:
         """
         Runs the Macro-Regime Loop.
         1. Clusters assets into regimes based on their statistical profiles.
@@ -774,7 +775,7 @@ class FeatureEvaluator:
 
     @staticmethod
     def _convert_results_to_table(
-        results: Dict[int, Dict[str, pd.DataFrame]],
+        results: dict[int, dict[str, pd.DataFrame]],
     ) -> pd.DataFrame:
         """
         Converts the nested dictionary of regime results into a single consolidated DataFrame.

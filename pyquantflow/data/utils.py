@@ -157,3 +157,17 @@ def generate_ema_ribbon_names(prefix="EMAR", M=10):
     names.extend([f"{prefix}_VELOCITY_{i}v{i + 1}" for i in range(1, M)])
 
     return names
+
+
+def safe_stack(df: pd.DataFrame, level: str = "ticker") -> pd.Series | pd.DataFrame:
+    """
+    Safely stack a DataFrame level across pandas versions.
+
+    Maintains compatibility between legacy pandas implementations (which require
+    `dropna=False` to retain missing cold-start values) and modern pandas
+    (where `dropna` must remain unspecified).
+    """
+    try:
+        return df.stack(level=level, dropna=False)
+    except (ValueError, TypeError):
+        return df.stack(level=level)

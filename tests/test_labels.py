@@ -1,14 +1,17 @@
 import unittest
-import pandas as pd
+
 import numpy as np
-from pyquantflow.data.labels.triple_barrier import apply_triple_barrier
-from pyquantflow.data.labels.sample_weights import get_sample_weights
+import pandas as pd
+
 from pyquantflow.data.labels import TrendScanningLabelFactory
+from pyquantflow.data.labels.sample_weights import get_sample_weights
+from pyquantflow.data.labels.triple_barrier import apply_triple_barrier
 
 
 class TestLabelsAndWeights(unittest.TestCase):
     def setUp(self):
         import os
+
         from pyquantflow.data.database import DatabaseManager
 
         source_db_path = os.path.join(os.path.dirname(__file__), "stocks.db")
@@ -85,6 +88,17 @@ class TestLabelsAndWeights(unittest.TestCase):
         labels_custom = factory_custom.generate_labels(ticker_df, price_col="Close")
         valid_custom = labels_custom["label"].dropna()
         self.assertTrue(set(valid_custom.unique()).issubset({0.0, 1.0}))
+
+    def test_trend_scanning_label_factory_defaults(self):
+        """Test default arguments and mutable default isolation."""
+        factory1 = TrendScanningLabelFactory()
+        self.assertEqual(factory1.windows, [5, 10, 20, 40, 80, 120])
+        self.assertEqual(factory1.bins, [-10.0, 12.0])
+
+        # Mutate instance attribute and verify new instance is unaffected
+        factory1.windows.append(999)
+        factory2 = TrendScanningLabelFactory()
+        self.assertEqual(factory2.windows, [5, 10, 20, 40, 80, 120])
 
     def test_asset_organiser_label_dropping(self):
         # Verify that AssetOrganiser drops rows with NaN/NaT values in label-related columns
@@ -191,7 +205,7 @@ class TestLabelsAndWeights(unittest.TestCase):
             weights.index.tz,
             msg="weights.index must be timezone-aware (UTC).",
         )
-        utc_tz = datetime.timezone.utc
+        utc_tz = datetime.UTC
         # Accept both pytz.UTC and datetime.timezone.utc representations
         self.assertTrue(
             str(weights.index.tz) in ("UTC", "utc")

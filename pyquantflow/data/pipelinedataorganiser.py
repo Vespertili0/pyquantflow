@@ -1,5 +1,4 @@
 import pandas as pd
-from typing import Dict, List, Optional
 
 from .assetorganiser import AssetOrganiser
 from .labels import BaseLabelFactory
@@ -39,12 +38,12 @@ class PipelineDataOrganiser:
 
     def __init__(
         self,
-        data_map: Optional[Dict[str, pd.DataFrame]] = None,
-        cutoff_date: Optional[str] = None,
-        target_features: Optional[List[str]] = None,
-        weight_col: Optional[str] = None,
-        multi_asset: Optional[pd.DataFrame] = None,
-        label_factory: Optional[BaseLabelFactory] = None,
+        data_map: dict[str, pd.DataFrame] | None = None,
+        cutoff_date: str | None = None,
+        target_features: list[str] | None = None,
+        weight_col: str | None = None,
+        multi_asset: pd.DataFrame | None = None,
+        label_factory: BaseLabelFactory | None = None,
     ) -> None:
         self._organiser = AssetOrganiser(
             data_map=data_map,
@@ -60,27 +59,27 @@ class PipelineDataOrganiser:
     # ------------------------------------------------------------------
 
     @property
-    def multi_asset(self) -> Optional[pd.DataFrame]:
+    def multi_asset(self) -> pd.DataFrame | None:
         """The full multi-asset panel DataFrame (read-only)."""
         return self._organiser.multi_asset
 
     @property
-    def multi_asset_train(self) -> Optional[pd.DataFrame]:
+    def multi_asset_train(self) -> pd.DataFrame | None:
         """Training partition of the multi-asset panel (read-only)."""
         return self._organiser.multi_asset_train
 
     @property
-    def multi_asset_test(self) -> Optional[pd.DataFrame]:
+    def multi_asset_test(self) -> pd.DataFrame | None:
         """Test partition of the multi-asset panel (read-only)."""
         return self._organiser.multi_asset_test
 
     @property
-    def weight_col(self) -> Optional[str]:
+    def weight_col(self) -> str | None:
         """The sample-weight column name (read-only)."""
         return self._organiser.weight_col
 
     @property
-    def target_features(self) -> List[str]:
+    def target_features(self) -> list[str]:
         """The target column names (read-only)."""
         return self._organiser.target_features
 
@@ -94,21 +93,21 @@ class PipelineDataOrganiser:
 
     def downsample_to_events(
         self,
-        events: "pd.DatetimeIndex | list | set | Dict[str, pd.DatetimeIndex]",
+        events: "pd.DatetimeIndex | list | set | dict[str, pd.DatetimeIndex]",
     ) -> None:
         """Delegates to ``AssetOrganiser.downsample_to_events``."""
         self._organiser.downsample_to_events(events)
 
     def downsample_to_cusum_events(
         self,
-        target_events_train: "int | Dict[str, int]",
+        target_events_train: "int | dict[str, int]",
         filter_col: str,
-        vol_col: Optional[str] = None,
+        vol_col: str | None = None,
         span: int = 100,
         alpha_min: float = 0.5,
         alpha_max: float = 3.0,
         alpha_step: float = 0.1,
-    ) -> Dict[str, float]:
+    ) -> dict[str, float]:
         """Delegates to ``AssetOrganiser.downsample_to_cusum_events``."""
         return self._organiser.downsample_to_cusum_events(
             target_events_train=target_events_train,
@@ -130,15 +129,15 @@ class PipelineDataOrganiser:
 
     def build_learning_pipeline(
         self,
-        target_events_train: "int | Dict[str, int]",
+        target_events_train: "int | dict[str, int]",
         filter_col: str,
         price_col: str = "Close",
-        vol_col: Optional[str] = None,
+        vol_col: str | None = None,
         span: int = 100,
         alpha_min: float = 0.5,
         alpha_max: float = 3.0,
         alpha_step: float = 0.1,
-    ) -> Dict[str, float]:
+    ) -> dict[str, float]:
         """Delegates to ``AssetOrganiser.build_learning_pipeline``."""
         return self._organiser.build_learning_pipeline(
             target_events_train=target_events_train,
@@ -157,9 +156,9 @@ class PipelineDataOrganiser:
 
     def get_classifierengine_payload(
         self,
-        features: List[str],
-        tickers: Optional[List[str]] = None,
-    ) -> Dict[str, "pd.DataFrame | List[str] | str | None"]:
+        features: list[str],
+        tickers: list[str] | None = None,
+    ) -> dict[str, "pd.DataFrame | list[str] | str | None"]:
         """
         Extracts the prepared data and metadata into a dictionary suitable
         for unpacking (``**kwargs``) directly into

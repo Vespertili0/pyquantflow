@@ -6,17 +6,18 @@ and multi-asset panels.
 """
 
 import warnings
+
 import pandas as pd
-import plotly.subplots
 import plotly.graph_objects as go
-from typing import Dict, List, Optional
-from ._renderer import DiagnosticResult, FigureFactory, DiagnosticWarning, PALETTE
+import plotly.subplots
+
+from ._renderer import PALETTE, DiagnosticResult, DiagnosticWarning, FigureFactory
 
 
 def plot_cusum_events(
     df: pd.DataFrame,
     price_col: str = "Close",
-    events: Optional[pd.Series] = None,
+    events: pd.Series | None = None,
     ticker: str = "unknown",
 ) -> DiagnosticResult:
     """
@@ -117,9 +118,9 @@ def plot_cusum_events(
 
 def plot_multi_asset_events(
     multi_asset_df: pd.DataFrame,
-    tickers: List[str],
+    tickers: list[str],
     max_tickers: int = 5,
-    events_map: Optional[Dict[str, pd.DatetimeIndex]] = None,
+    events_map: dict[str, pd.DatetimeIndex] | None = None,
 ) -> DiagnosticResult:
     """
     Renders stacked, synchronised price subplots across multiple tickers with CUSUM event overlays.
@@ -226,19 +227,19 @@ def plot_multi_asset_events(
 
                 y_vals = df_tk[price_col].reindex(events_idx, method="nearest")
 
-            fig.add_trace(
-                go.Scatter(
-                    x=events_idx,
-                    y=y_vals.values,
-                    mode="markers",
-                    marker_color=PALETTE["accent_1"],
-                    marker_symbol="line-ns-open",
-                    marker_size=12,
-                    name=f"{ticker} Events",
-                ),
-                row=row,
-                col=1,
-            )
+                fig.add_trace(
+                    go.Scatter(
+                        x=events_idx,
+                        y=y_vals.values,
+                        mode="markers",
+                        marker_color=PALETTE["accent_1"],
+                        marker_symbol="line-ns-open",
+                        marker_size=12,
+                        name=f"{ticker} Events",
+                    ),
+                    row=row,
+                    col=1,
+                )
 
     fig.update_layout(
         template="plotly_dark",

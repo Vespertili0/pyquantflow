@@ -1,8 +1,9 @@
-from typing import Optional, Union, Generator, Tuple
+from collections.abc import Generator
+from itertools import combinations
+
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import BaseCrossValidator
-from itertools import combinations
 
 
 class PurgedKFoldCV(BaseCrossValidator):
@@ -38,9 +39,9 @@ class PurgedKFoldCV(BaseCrossValidator):
     def __init__(
         self,
         n_splits: int = 5,
-        t1: Optional[Union[pd.Series, str]] = None,
+        t1: pd.Series | str | None = None,
         embargo_pct: float = 0.01,
-        datetime_level: Union[str, int] = "datetime",
+        datetime_level: str | int = "datetime",
     ) -> None:
         self.n_splits = n_splits
         self.t1 = t1
@@ -49,9 +50,9 @@ class PurgedKFoldCV(BaseCrossValidator):
 
     def get_n_splits(
         self,
-        X: Optional[Union[pd.DataFrame, pd.Series, np.ndarray]] = None,
-        y: Optional[Union[pd.Series, np.ndarray]] = None,
-        groups: Optional[np.ndarray] = None,
+        X: pd.DataFrame | pd.Series | np.ndarray | None = None,
+        y: pd.Series | np.ndarray | None = None,
+        groups: np.ndarray | None = None,
     ) -> int:
         """
         Returns the number of splitting iterations in the cross-validator.
@@ -96,9 +97,9 @@ class PurgedKFoldCV(BaseCrossValidator):
     def split(
         self,
         X: pd.DataFrame,
-        y: Optional[Union[pd.Series, np.ndarray]] = None,
-        groups: Optional[np.ndarray] = None,
-    ) -> Generator[Tuple[np.ndarray, np.ndarray], None, None]:
+        y: pd.Series | np.ndarray | None = None,
+        groups: np.ndarray | None = None,
+    ) -> Generator[tuple[np.ndarray, np.ndarray], None, None]:
         """
         Generate indices to split data into training and test sets.
 
@@ -249,7 +250,6 @@ class CombinatorialPurgedKFold(BaseCrossValidator):
 
         for test_blocks in combinations(all_block_indices, self.n_test_splits):
             test_blocks = sorted(test_blocks)
-            [i for i in all_block_indices if i not in test_blocks]
 
             # Collect test datetimes
             test_dt_set = set()

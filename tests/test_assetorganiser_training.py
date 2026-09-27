@@ -1,12 +1,14 @@
 import unittest
-import pandas as pd
+
 import numpy as np
-from pyquantflow.data.assetorganiser import AssetOrganiser
-from pyquantflow.model.manager import ClassifierEngine
-from pyquantflow.model.training import HyperparameterOptimiser
+import pandas as pd
 from sklearn.model_selection import KFold
 from sklearn.pipeline import Pipeline
 from sklearn.tree import DecisionTreeClassifier
+
+from pyquantflow.data.assetorganiser import AssetOrganiser
+from pyquantflow.model.manager import ClassifierEngine
+from pyquantflow.model.training import HyperparameterOptimiser
 
 
 class MockEstimator:
@@ -31,6 +33,7 @@ class MockEstimator:
 class TestDataHierarchyIntegration(unittest.TestCase):
     def setUp(self):
         import os
+
         from pyquantflow.data.database import DatabaseManager
 
         self.data_map = {}
@@ -132,6 +135,7 @@ class TestDataHierarchyIntegration(unittest.TestCase):
 class TestAssetOrganiserFlexibility(unittest.TestCase):
     def setUp(self):
         import os
+
         from pyquantflow.data.database import DatabaseManager
 
         self.data_map = {}

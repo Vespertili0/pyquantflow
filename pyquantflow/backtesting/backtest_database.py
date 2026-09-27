@@ -1,7 +1,6 @@
-import logging
-
-import sqlite3
 import json
+import logging
+import sqlite3
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +21,17 @@ class BacktestDatabaseManager:
             )
         """)
         self.conn.commit()
+
+    def close(self):
+        """Closes the database connection."""
+        if self.conn:
+            self.conn.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
 
     def save_result(self, ticker, result_dict, batch_run_name):
         """

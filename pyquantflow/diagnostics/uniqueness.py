@@ -5,17 +5,17 @@ Provides diagnostics for evaluating trade concurrency (c_t) and return-weighted 
 to detect hidden label redundancy and sample size collapse.
 """
 
-import pandas as pd
 import numpy as np
-import plotly.subplots
+import pandas as pd
 import plotly.graph_objects as go
-from typing import Optional
-from ._renderer import DiagnosticResult, PALETTE
+import plotly.subplots
+
+from ._renderer import PALETTE, DiagnosticResult
 
 
 def plot_sample_concurrency(
     t1_series: pd.Series,
-    weight_series: Optional[pd.Series] = None,
+    weight_series: pd.Series | None = None,
     concurrency_threshold_pct: float = 0.75,
 ) -> DiagnosticResult:
     """
