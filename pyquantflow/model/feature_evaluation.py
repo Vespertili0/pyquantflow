@@ -18,6 +18,7 @@ from pyquantflow.data.features.fractional_differentiation import (
     adf_screened_ffd,
     frac_diff_ffd,
 )
+from pyquantflow.data.utils import safe_stack
 
 
 class StationaryTransformer(BaseEstimator, TransformerMixin):
@@ -106,7 +107,7 @@ class StationaryTransformer(BaseEstimator, TransformerMixin):
                             s, d=optimal_d, thres=self.ffd_thres
                         )[0]
                     )
-                    diff_series = diff_unstacked.stack(level="ticker", dropna=False)
+                    diff_series = safe_stack(diff_unstacked, level="ticker")
                     if diff_series.index.names != index_names:
                         diff_series = diff_series.reorder_levels(index_names)
                     diff_series = diff_series.reindex(col_data.index)
@@ -167,7 +168,7 @@ class StationaryTransformer(BaseEstimator, TransformerMixin):
                 diff_unstacked = unstacked.apply(
                     lambda s: adf_screened_ffd(s, d=d, thres=self.ffd_thres)[0]
                 )
-                diff_series = diff_unstacked.stack(level="ticker", dropna=False)
+                diff_series = safe_stack(diff_unstacked, level="ticker")
 
                 if diff_series.index.names != index_names:
                     diff_series = diff_series.reorder_levels(index_names)

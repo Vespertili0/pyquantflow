@@ -106,6 +106,7 @@ class ClassifierEngine(BaseModelEngine):
         experiment_name: str | None = None,
         run_name: str | None = None,
         evaluator_config: dict | None = None,
+        skops_trusted_types: list[str] | None = None,
     ) -> None:
         """
         Registers to MLflow if available.
@@ -135,6 +136,16 @@ class ClassifierEngine(BaseModelEngine):
         if experiment_name:
             mlflow.set_experiment(experiment_name)
 
+        trusted_types = [
+            "xgboost.core.Booster",
+            "xgboost.sklearn.XGBClassifier",
+            "sklearn.tree._tree.Tree",
+        ]
+        if skops_trusted_types:
+            for item in skops_trusted_types:
+                if item not in trusted_types:
+                    trusted_types.append(item)
+
         with mlflow.start_run(run_name=run_name):
             # Log model
             signature = infer_signature(X, model.predict(X))
@@ -143,10 +154,7 @@ class ClassifierEngine(BaseModelEngine):
                 name="model",
                 signature=signature,
                 serialization_format="skops",
-                skops_trusted_types=[
-                    "xgboost.core.Booster",
-                    "xgboost.sklearn.XGBClassifier",
-                ],
+                skops_trusted_types=trusted_types,
             )
             logger.info(f"Model saved to {model_info.model_uri}")
 
@@ -187,6 +195,7 @@ class ClassifierEngine(BaseModelEngine):
         run_name: str | None = None,
         tags: dict[str, str] | None = None,
         balance_classes: bool = True,
+        skops_trusted_types: list[str] | None = None,
     ) -> None:
         """
         Executes the full pipeline.
@@ -260,4 +269,5 @@ class ClassifierEngine(BaseModelEngine):
             #            metrics=validation_metrics,
             experiment_name=experiment_name,
             run_name=run_name,
+            skops_trusted_types=skops_trusted_types,
         )

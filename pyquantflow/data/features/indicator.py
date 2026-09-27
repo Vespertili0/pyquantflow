@@ -273,6 +273,7 @@ def FRACTIONAL_DIFF(
         padded with np.nan. Same length as input.
     """
     from pyquantflow.data.features.fractional_differentiation import adf_screened_ffd
+    from pyquantflow.data.utils import safe_stack
 
     return_array = isinstance(close, np.ndarray)
     # Coerce to pd.Series if raw array
@@ -292,7 +293,7 @@ def FRACTIONAL_DIFF(
             )[0]
         )
         # Stack back to multi-index
-        result_series = transformed_df.stack(level="ticker", dropna=False)
+        result_series = safe_stack(transformed_df, level="ticker")
 
         # Ensure the index levels are in the same order as the input
         if result_series.index.names != series.index.names:
@@ -344,6 +345,7 @@ def SADF_JAX(
         indices padded with np.nan.
     """
     from pyquantflow.data.features.sadf import get_sadf_jax
+    from pyquantflow.data.utils import safe_stack
 
     return_array = isinstance(close, np.ndarray)
     # Coerce to pd.Series if raw array
@@ -362,7 +364,7 @@ def SADF_JAX(
             )
         )
         # Stack back to multi-index
-        result_series = transformed_df.stack(level="ticker", dropna=False)
+        result_series = safe_stack(transformed_df, level="ticker")
 
         # Ensure the index levels are in the same order as the input
         if result_series.index.names != series.index.names:
