@@ -312,6 +312,59 @@ class TestDatabaseManager(unittest.TestCase):
         count = cursor.fetchone()[0]
         self.assertEqual(count, 1)
 
+    @patch("pyquantflow.data.database.yf.download")
+    def test_update_ticker_internal_passes_raw_tz_to_insert(self, mock_yf):
+        """BUG-06: _update_ticker_internal must not convert to Sydney before
+        calling _insert_price_data. Rows in price_data must carry UTC offsets."""
+        # Seed a ticker with one existing UTC row so update path is exercised
+        cursor = self.db.conn.cursor()
+        cursor.execute(
+            "INSERT INTO tickers (ticker, interval, last_updated) VALUES (?, ?, ?)",
+            ("TZ_UPDATE.AX", "1d", "2023-01-01"),
+        )
+        ticker_id = cursor.lastrowid
+        seed = pd.DataFrame(
+            {"Open": [1.0], "High": [1.0], "Low": [1.0], "Close": [1.0], "Volume": [1]},
+            index=pd.DatetimeIndex(["2023-01-03 00:00:00+00:00"]),
+        )
+        seed.index.name = "Datetime"
+        self.db._insert_price_data(ticker_id, seed)
+        self.db.conn.commit()
+
+        # Simulate yf.download returning UTC-indexed new data (one day later)
+        new_rows = pd.DataFrame(
+            {"Open": [5.0], "High": [6.0], "Low": [4.0], "Close": [5.5], "Volume": [10]},
+            index=pd.DatetimeIndex(["2023-01-04 00:00:00+00:00"]),
+        )
+        new_rows.index.name = "Datetime"
+        mock_yf.return_value = new_rows
+
+        self.db._update_ticker_internal(
+            "TZ_UPDATE.AX", ticker_id, "1d", commit=True
+        )
+
+        cursor.execute(
+            "SELECT datetime FROM price_data WHERE ticker_id = ? ORDER BY datetime",
+            (ticker_id,),
+        )
+        rows = [r[0] for r in cursor.fetchall()]
+        self.assertEqual(len(rows), 2, f"Expected 2 rows, got: {rows}")
+        for dt_str in rows:
+            self.assertIn(
+                "+00:00",
+                dt_str,
+                msg=f"Expected UTC offset in '{dt_str}'; intermediate Sydney "
+                f"conversion may have been re-introduced.",
+            )
+
+    @patch("pyquantflow.data.database.yf.download")
+    def test_update_ticker_internal_no_sydney_attribute(self, _mock_yf):
+        """BUG-06: DatabaseManager must not expose _TZ_DEFAULT after the fix."""
+        self.assertFalse(
+            hasattr(self.db, "_TZ_DEFAULT"),
+            "_TZ_DEFAULT attribute must be removed from DatabaseManager.",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

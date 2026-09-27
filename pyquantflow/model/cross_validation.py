@@ -124,7 +124,7 @@ class PurgedKFoldCV(BaseCrossValidator):
         # 1. Extract times as a Series to safely execute vectorized logic
         times = pd.to_datetime(pd.Series(self._extract_times(X)))
         if times.dt.tz is not None:
-            times = times.dt.tz_localize(None)
+            times = times.dt.tz_convert(None)
 
         # 2. Get chronological boundaries (No need to sort X itself!)
         unique_times = np.sort(times.unique())
@@ -144,7 +144,7 @@ class PurgedKFoldCV(BaseCrossValidator):
             t1_times = pd.Series(t1_series).reindex(X.index).values
             t1_times = pd.to_datetime(t1_times)
             if t1_times.tz is not None:
-                t1_times = t1_times.tz_localize(None)
+                t1_times = t1_times.tz_convert(None)
         else:
             t1_times = pd.Series([pd.NaT] * len(X)).values
 
@@ -232,7 +232,7 @@ class CombinatorialPurgedKFold(BaseCrossValidator):
         # 1. Extract and normalise datetimes
         times = pd.to_datetime(pd.Series(self._extract_times(X)))
         if times.dt.tz is not None:
-            times = times.dt.tz_localize(None)
+            times = times.dt.tz_convert(None)
 
         unique_times = np.sort(times.unique())
         n_unique = len(unique_times)
