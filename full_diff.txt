@@ -1,0 +1,2829 @@
+diff --git a/README.md b/README.md
+index a6ed1bc..ec80d38 100644
+--- a/README.md
++++ b/README.md
+@@ -99,7 +99,7 @@ data_indicator = data.pipe(
+     indicator=talib.EMA,
+     input_map={"real": "Close"},
+     output_names=["EMA_120"],
+-    **{"timeperiod": 120}
++    **{"timeperiod": 120},
+ )
+ ```
+
+diff --git a/dashboard/dashboard.py b/dashboard/dashboard.py
+index 9cc1389..c0d9b57 100644
+--- a/dashboard/dashboard.py
++++ b/dashboard/dashboard.py
+@@ -1,11 +1,12 @@
+-import streamlit as st
+-import pandas as pd
+-import sqlite3
+-import altair as alt
+-import os
+ import json
++import os
++import sqlite3
+ from pathlib import Path
+
++import altair as alt
++import pandas as pd
++import streamlit as st
++
+ # Set page configuration
+ st.set_page_config(page_title="Stock & Backtest Dashboard", layout="wide")
+
+diff --git a/pyquantflow/backtesting/backtest_database.py b/pyquantflow/backtesting/backtest_database.py
+index 5035cef..5c6f64f 100644
+--- a/pyquantflow/backtesting/backtest_database.py
++++ b/pyquantflow/backtesting/backtest_database.py
+@@ -1,7 +1,6 @@
++import json
+ import logging
+-
+ import sqlite3
+-import json
+
+ logger = logging.getLogger(__name__)
+
+@@ -23,6 +22,17 @@ def create_tables(self):
+         """)
+         self.conn.commit()
+
++    def close(self):
++        """Closes the database connection."""
++        if self.conn:
++            self.conn.close()
++
++    def __enter__(self):
++        return self
++
++    def __exit__(self, exc_type, exc_val, exc_tb):
++        self.close()
++
+     def save_result(self, ticker, result_dict, batch_run_name):
+         """
+         Saves a single backtest result to the database.
+diff --git a/pyquantflow/backtesting/batchbacktest.py b/pyquantflow/backtesting/batchbacktest.py
+index 39194db..0dcb65b 100644
+--- a/pyquantflow/backtesting/batchbacktest.py
++++ b/pyquantflow/backtesting/batchbacktest.py
+@@ -1,12 +1,13 @@
+ import logging
++import warnings
++from typing import Any
+
+-import pandas as pd
+ import numpy as np
+-from typing import Optional, Dict, List, Any, Tuple, Union
+-import warnings
++import pandas as pd
+ from backtesting import Backtest
+-from .backtest_database import BacktestDatabaseManager
++
+ from ..data.assetorganiser import AssetOrganiser
++from .backtest_database import BacktestDatabaseManager
+
+ logger = logging.getLogger(__name__)
+
+@@ -29,8 +30,8 @@ def __init__(self, results_db_path: str = "backtest_results.db") -> None:
+                                    batch results will be stored.
+         """
+         self.results_db = BacktestDatabaseManager(results_db_path)
+-        self.results: Optional[Dict[str, Any]] = None
+-        self.strategy_class: Optional[type] = None
++        self.results: dict[str, Any] | None = None
++        self.strategy_class: type | None = None
+
+     def _validate_data(self, df: pd.DataFrame) -> pd.DataFrame:
+         required_cols = ["Open", "High", "Low", "Close", "Volume"]
+@@ -43,11 +44,11 @@ def run_single_backtest(
+         df: pd.DataFrame,
+         strategy_class: type,
+         cash: float,
+-        commission: float | Tuple[float, float],
++        commission: float | tuple[float, float],
+         trade_on_close: bool,
+         finalize_trades: bool,
+         **strategy_params,
+-    ) -> Dict[str, Any]:
++    ) -> dict[str, Any]:
+         """Validates Data and executes a single backtest."""
+         df = self._validate_data(df)
+         if not isinstance(df.index, pd.DatetimeIndex):
+@@ -79,15 +80,15 @@ def run_single_backtest(
+     def run_batch_backtest(
+         self,
+         strategy_class: type,
+-        data: Optional[Union[pd.DataFrame, Dict[str, pd.DataFrame]]] = None,
+-        asset_organiser: Optional[AssetOrganiser] = None,
+-        symbols: Optional[Union[str, List[str]]] = "all",
++        data: pd.DataFrame | dict[str, pd.DataFrame] | None = None,
++        asset_organiser: AssetOrganiser | None = None,
++        symbols: str | list[str] | None = "all",
+         cash: float = 10000,
+-        commission: Union[float, Tuple[float, float]] = (3.0, 0.0),
++        commission: float | tuple[float, float] = (3.0, 0.0),
+         trade_on_close: bool = False,
+         finalize_trades: bool = True,
+         **strategy_params: Any,
+-    ) -> Dict[str, Any]:
++    ) -> dict[str, Any]:
+         """
+         Runs backtests for a list of tickers and aggregates the results.
+
+@@ -120,7 +121,7 @@ def run_batch_backtest(
+         """
+         self.strategy_class = strategy_class
+         individual_results = {}
+-        data_map: Dict[str, pd.DataFrame] = {}
++        data_map: dict[str, pd.DataFrame] = {}
+
+         if asset_organiser is not None:
+             if data is not None:
+@@ -133,7 +134,7 @@ def run_batch_backtest(
+             available_symbols = getattr(
+                 multiasset_test_data.index.get_level_values("ticker"),
+                 "unique",
+-                lambda: [],
++                list,
+             )()
+             if callable(available_symbols):
+                 available_symbols = available_symbols()
+diff --git a/pyquantflow/data/assetorganiser.py b/pyquantflow/data/assetorganiser.py
+index ec03225..c5539bc 100644
+--- a/pyquantflow/data/assetorganiser.py
++++ b/pyquantflow/data/assetorganiser.py
+@@ -8,16 +8,16 @@
+ """
+
+ import pandas as pd
+-from typing import Dict, List, Optional, Union
+ from scipy.stats import entropy
+ from sklearn.base import BaseEstimator
++
++from .features.indicator import ICHIMOKU
++from .labels import BaseLabelFactory, calibrate_cusum_alpha, get_cusum_events
+ from .utils import (
+     align_and_ffill_multiasset,
+-    restructure_map_2_multiasset_df,
+     pipe_indicator,
++    restructure_map_2_multiasset_df,
+ )
+-from .labels import get_cusum_events, calibrate_cusum_alpha, BaseLabelFactory
+-from .features.indicator import ICHIMOKU
+
+
+ class AssetOrganiser:
+@@ -31,12 +31,12 @@ class AssetOrganiser:
+
+     def __init__(
+         self,
+-        data_map: Optional[Dict[str, pd.DataFrame]] = None,
+-        cutoff_date: Optional[str] = None,
+-        target_features: Optional[List[str]] = None,
+-        weight_col: Optional[str] = None,
+-        multi_asset: Optional[pd.DataFrame] = None,
+-        label_factory: Optional[BaseLabelFactory] = None,
++        data_map: dict[str, pd.DataFrame] | None = None,
++        cutoff_date: str | None = None,
++        target_features: list[str] | None = None,
++        weight_col: str | None = None,
++        multi_asset: pd.DataFrame | None = None,
++        label_factory: BaseLabelFactory | None = None,
+     ) -> None:
+         """
+         Initialises the AssetOrganiser.
+@@ -61,16 +61,16 @@ def __init__(
+         if target_features is None:
+             raise ValueError("'target_features' is required.")
+
+-        self.data_map: Optional[Dict[str, pd.DataFrame]] = data_map
++        self.data_map: dict[str, pd.DataFrame] | None = data_map
+         self.cutoff_date: str = cutoff_date
+-        self.target_features: List[str] = target_features
+-        self.weight_col: Optional[str] = weight_col
+-        self.label_factory: Optional[BaseLabelFactory] = label_factory
+-        self.cusum_events_map: Optional[Dict[str, pd.DatetimeIndex]] = None
++        self.target_features: list[str] = target_features
++        self.weight_col: str | None = weight_col
++        self.label_factory: BaseLabelFactory | None = label_factory
++        self.cusum_events_map: dict[str, pd.DatetimeIndex] | None = None
+
+-        self.multi_asset: Optional[pd.DataFrame] = multi_asset
+-        self.multi_asset_train: Optional[pd.DataFrame] = None
+-        self.multi_asset_test: Optional[pd.DataFrame] = None
++        self.multi_asset: pd.DataFrame | None = multi_asset
++        self.multi_asset_train: pd.DataFrame | None = None
++        self.multi_asset_test: pd.DataFrame | None = None
+
+         if self.multi_asset is not None:
+             self._split_train_test()
+@@ -98,11 +98,9 @@ def prepare_multi_asset_frame(self) -> None:
+             )
+         self._split_train_test()
+
+-        return None
+-
+     def downsample_to_events(
+         self,
+-        events: Union[pd.DatetimeIndex, list, set, Dict[str, pd.DatetimeIndex]],
++        events: pd.DatetimeIndex | list | set | dict[str, pd.DatetimeIndex],
+     ) -> None:
+         """
+         Down-samples the multi-asset DataFrame to keep only the dates matching
+@@ -139,20 +137,18 @@ def downsample_to_events(
+         self.multi_asset = self.multi_asset[mask]
+         self._split_train_test()
+
+-        return None
+-
+     def downsample_to_cusum_events(
+         self,
+-        target_events_train: Union[int, Dict[str, int]],
++        target_events_train: int | dict[str, int],
+         filter_col: str,
+-        vol_col: Optional[str] = None,
++        vol_col: str | None = None,
+         span: int = 100,
+         alpha_min: float = 0.5,
+         alpha_max: float = 3.0,
+         alpha_step: float = 0.1,
+         objective: str = "budget",
+-        t1_col: Optional[str] = None,
+-    ) -> Dict[str, float]:
++        t1_col: str | None = None,
++    ) -> dict[str, float]:
+         """
+         Calibrates optimal alpha scalars on the training set and down-samples the
+         multi-asset DataFrame using causal dynamic thresholds.
+@@ -406,17 +402,17 @@ def apply_sample_weights(self, price_col: str = "Close") -> None:
+
+     def build_learning_pipeline(
+         self,
+-        target_events_train: Union[int, Dict[str, int]],
++        target_events_train: int | dict[str, int],
+         filter_col: str,
+         price_col: str = "Close",
+-        vol_col: Optional[str] = None,
++        vol_col: str | None = None,
+         span: int = 100,
+         alpha_min: float = 0.5,
+         alpha_max: float = 3.0,
+         alpha_step: float = 0.1,
+         objective: str = "budget",
+-        t1_col: Optional[str] = None,
+-    ) -> Dict[str, float]:
++        t1_col: str | None = None,
++    ) -> dict[str, float]:
+         """
+         Orchestrates the preparation pipeline to strictly prevent sequential data hazards:
+         1. Computes continuous labels (avoiding look-ahead scaling errors).
+@@ -459,9 +455,9 @@ def build_learning_pipeline(
+     def add_model_predictions(
+         self,
+         model: BaseEstimator,
+-        features: List[str],
++        features: list[str],
+         prefix: str = "primary",
+-        filter_prediction: Optional[int] = None,
++        filter_prediction: int | None = None,
+     ) -> None:
+         """
+         Fits the model on the multiasset data.
+@@ -511,9 +507,9 @@ def add_model_predictions(
+
+     def get_classifierengine_payload(
+         self,
+-        features: List[str],
+-        tickers: Optional[List[str]] = None,
+-    ) -> Dict[str, Union[pd.DataFrame, List[str], str, None]]:
++        features: list[str],
++        tickers: list[str] | None = None,
++    ) -> dict[str, pd.DataFrame | list[str] | str | None]:
+         """
+         Extracts the prepared data and metadata into a dictionary suitable for
+         unpacking (**kwargs) directly into `ClassifierEngine.run_pipeline`.
+@@ -738,7 +734,7 @@ def update_multi_asset(self, df: pd.DataFrame) -> None:
+         self._split_train_test()
+
+     def replace_features(
+-        self, transformed_df: pd.DataFrame, original_features: List[str]
++        self, transformed_df: pd.DataFrame, original_features: list[str]
+     ) -> None:
+         """
+         Replaces the original features in the multi_asset panel dataset with
+diff --git a/pyquantflow/data/database.py b/pyquantflow/data/database.py
+index 8b8c1be..5a25b89 100644
+--- a/pyquantflow/data/database.py
++++ b/pyquantflow/data/database.py
+@@ -1,8 +1,10 @@
++import logging
+ import sqlite3
++from datetime import datetime
++
+ import pandas as pd
+ import yfinance as yf
+-from datetime import datetime
+-import logging
++
+ from .quarterly_pull import fetch_quarterly_data
+
+ logger = logging.getLogger(__name__)
+@@ -24,7 +26,7 @@ class DatabaseManager:
+         "SELECT MAX(datetime) FROM price_data WHERE ticker_id = ?"
+     )
+     _SQL_INSERT_PRICE_DATA = """
+-        INSERT INTO price_data (ticker_id, datetime, open, high, low, close, volume)
++        INSERT OR IGNORE INTO price_data (ticker_id, datetime, open, high, low, close, volume)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
+     """
+     _SQL_SELECT_PRICE_DATA = """
+@@ -75,11 +77,27 @@ def create_tables(self):
+                 low REAL,
+                 close REAL,
+                 volume REAL,
+-                FOREIGN KEY(ticker_id) REFERENCES tickers(id)
++                FOREIGN KEY(ticker_id) REFERENCES tickers(id),
++                UNIQUE(ticker_id, datetime)
+             )
+         """)
++        cursor.execute("""
++            CREATE INDEX IF NOT EXISTS idx_price_data_ticker_datetime
++            ON price_data (ticker_id, datetime)
++        """)
+         self.conn.commit()
+
++    def close(self):
++        """Closes the database connection."""
++        if self.conn:
++            self.conn.close()
++
++    def __enter__(self):
++        return self
++
++    def __exit__(self, exc_type, exc_val, exc_tb):
++        self.close()
++
+     def add_ticker(
+         self,
+         ticker,
+diff --git a/pyquantflow/data/features/__init__.py b/pyquantflow/data/features/__init__.py
+index d660dd9..60bb1bd 100644
+--- a/pyquantflow/data/features/__init__.py
++++ b/pyquantflow/data/features/__init__.py
+@@ -1,14 +1,14 @@
+-from .fractional_differentiation import frac_diff_ffd, adf_screened_ffd
+-from .sadf import get_sadf_jax
++from .fractional_differentiation import adf_screened_ffd, frac_diff_ffd
+ from .indicator import FRACTIONAL_DIFF, SADF_JAX
+-from .microstructure import ROLL_MEASURE, CORWIN_SCHULTZ
++from .microstructure import CORWIN_SCHULTZ, ROLL_MEASURE
++from .sadf import get_sadf_jax
+
+ __all__ = [
+-    "frac_diff_ffd",
+-    "adf_screened_ffd",
+-    "get_sadf_jax",
++    "CORWIN_SCHULTZ",
+     "FRACTIONAL_DIFF",
+-    "SADF_JAX",
+     "ROLL_MEASURE",
+-    "CORWIN_SCHULTZ",
++    "SADF_JAX",
++    "adf_screened_ffd",
++    "frac_diff_ffd",
++    "get_sadf_jax",
+ ]
+diff --git a/pyquantflow/data/features/dualgatepipeline.py b/pyquantflow/data/features/dualgatepipeline.py
+index 2c96b12..3bf099c 100644
+--- a/pyquantflow/data/features/dualgatepipeline.py
++++ b/pyquantflow/data/features/dualgatepipeline.py
+@@ -1,5 +1,3 @@
+-from typing import List, Tuple, Dict, Optional, Union
+-
+ import numpy as np
+ from sklearn.base import BaseEstimator
+ from sklearn.ensemble import HistGradientBoostingClassifier
+@@ -19,7 +17,7 @@ def __init__(
+         self,
+         price_col: str = "Close",
+         filter_col: str = "Close",
+-        vol_col: Optional[str] = None,
++        vol_col: str | None = None,
+     ):
+         """
+         Initialises the DualGatePipelineFactory.
+@@ -41,19 +39,19 @@ def execute(
+         self,
+         organiser: AssetOrganiser,
+         evaluator: FeatureEvaluator,
+-        target_events_train: Optional[Union[int, Dict[str, int]]] = None,
+-        target_labels: List[str] = ["label", "t1", "weight"],
++        target_events_train: int | dict[str, int] | None = None,
++        target_labels: list[str] | None = None,
+         span: int = 50,
+-        estimator: Optional[BaseEstimator] = None,
++        estimator: BaseEstimator | None = None,
+         balance_classes: bool = True,
+         greater_is_better: bool = False,
+         needs_proba: bool = True,
+         objective: str = "budget",
+-        t1_col: Optional[str] = None,
++        t1_col: str | None = None,
+         alpha_min: float = 0.5,
+         alpha_max: float = 3.0,
+         alpha_step: float = 0.1,
+-    ) -> Tuple[AssetOrganiser, List[str]]:
++    ) -> tuple[AssetOrganiser, list[str]]:
+         """
+         Executes the Two-Track pipeline: continuous transformations, discrete event
+         downsampling, alignment merge, and Gate 1 memory validation.
+@@ -64,8 +62,9 @@ def execute(
+             The organiser holding the multi-asset DataFrame to be processed.
+         evaluator : FeatureEvaluator
+             The feature evaluator that handles stationarity checks and pruning.
+-        target_labels : List[str], default ["label", "t1", "weight"]
++        target_labels : Optional[List[str]], default None
+             The column names for target metadata labels to isolate and synchronise.
++            Defaults to ["label", "t1", "weight"] if None.
+         target_events_train : Optional[Union[int, Dict[str, int]]], default None
+             Target event budget for CUSUM downsampling on the training set.
+             Required when ``objective="budget"``; ignored when ``objective="uniqueness"``.
+@@ -97,6 +96,8 @@ def execute(
+             - The updated AssetOrganiser containing the downsampled and stationarised dataset.
+             - A list of feature names that survived the Gate 1 memory check.
+         """
++        if target_labels is None:
++            target_labels = ["label", "t1", "weight"]
+         if organiser.multi_asset is None:
+             organiser.prepare_multi_asset_frame()
+
+diff --git a/pyquantflow/data/features/fractional_differentiation.py b/pyquantflow/data/features/fractional_differentiation.py
+index 868f683..121418f 100644
+--- a/pyquantflow/data/features/fractional_differentiation.py
++++ b/pyquantflow/data/features/fractional_differentiation.py
+@@ -1,6 +1,5 @@
+-import pandas as pd
+ import numpy as np
+-from typing import Optional, Tuple, Union
++import pandas as pd
+
+
+ def _adf_test_stat(series: pd.Series, lags: int = 1) -> float:
+@@ -23,6 +22,9 @@ def _adf_test_stat(series: pd.Series, lags: int = 1) -> float:
+     for i in range(lags):
+         X[:, 2 + i] = dy[lags - 1 - i : -1 - i]  # lagged differences
+
++    if np.linalg.matrix_rank(X) < X.shape[1]:
++        return np.nan
++
+     try:
+         # Solve OLS: X * beta = Y
+         beta, residuals, rank, s = np.linalg.lstsq(X, Y, rcond=None)
+@@ -75,12 +77,12 @@ def _adf_p_value(t_stat: float) -> float:
+
+
+ def adf_screened_ffd(
+-    series: Union[np.ndarray, pd.Series],
+-    d: Optional[float] = None,
++    series: np.ndarray | pd.Series,
++    d: float | None = None,
+     thres: float = 1e-4,
+     significance_level: float = 0.05,
+-    d_grid: np.ndarray = np.arange(0.25, 1.05, 0.05),
+-) -> Tuple[pd.Series, float]:
++    d_grid: np.ndarray | None = None,
++) -> tuple[pd.Series, float]:
+     """
+     ADF-screened Fixed-Width Window Fractional Differentiation.
+
+@@ -103,8 +105,9 @@ def adf_screened_ffd(
+         Weight cutoff threshold for FFD kernel truncation.
+     significance_level : float, default 0.05
+         Maximum ADF p-value to accept stationarity during screening.
+-    d_grid : np.ndarray, default np.arange(0.0, 1.05, 0.05)
++    d_grid : Optional[np.ndarray], default None
+         Grid of candidate differencing orders to evaluate during screening.
++        Defaults to np.arange(0.25, 1.05, 0.05) if None.
+
+     Returns
+     -------
+@@ -112,6 +115,8 @@ def adf_screened_ffd(
+         A tuple of (differenced_series, d_used) where d_used is the
+         differencing order that was applied.
+     """
++    if d_grid is None:
++        d_grid = np.arange(0.25, 1.05, 0.05)
+     # Coerce raw arrays to pd.Series
+     if isinstance(series, np.ndarray):
+         series = pd.Series(series)
+diff --git a/pyquantflow/data/features/indicator.py b/pyquantflow/data/features/indicator.py
+index 63d9f54..6368a53 100644
+--- a/pyquantflow/data/features/indicator.py
++++ b/pyquantflow/data/features/indicator.py
+@@ -1,6 +1,5 @@
+ import numpy as np
+ import pandas as pd
+-from typing import Optional, Union
+
+
+ def ICHIMOKU(
+@@ -241,8 +240,8 @@ def EMA_RIBBON(
+
+
+ def FRACTIONAL_DIFF(
+-    close: Union[np.ndarray, pd.Series],
+-    d: Optional[float] = None,
++    close: np.ndarray | pd.Series,
++    d: float | None = None,
+     thres: float = 1e-4,
+     significance_level: float = 0.05,
+ ) -> np.ndarray:
+@@ -274,6 +273,7 @@ def FRACTIONAL_DIFF(
+         padded with np.nan. Same length as input.
+     """
+     from pyquantflow.data.features.fractional_differentiation import adf_screened_ffd
++    from pyquantflow.data.utils import safe_stack
+
+     return_array = isinstance(close, np.ndarray)
+     # Coerce to pd.Series if raw array
+@@ -293,7 +293,7 @@ def FRACTIONAL_DIFF(
+             )[0]
+         )
+         # Stack back to multi-index
+-        result_series = transformed_df.stack(level="ticker", dropna=False)
++        result_series = safe_stack(transformed_df, level="ticker")
+
+         # Ensure the index levels are in the same order as the input
+         if result_series.index.names != series.index.names:
+@@ -314,7 +314,7 @@ def FRACTIONAL_DIFF(
+
+
+ def SADF_JAX(
+-    close: Union[np.ndarray, pd.Series],
++    close: np.ndarray | pd.Series,
+     model: str = "linear",
+     lags: int = 1,
+     min_length: int = 20,
+@@ -345,6 +345,7 @@ def SADF_JAX(
+         indices padded with np.nan.
+     """
+     from pyquantflow.data.features.sadf import get_sadf_jax
++    from pyquantflow.data.utils import safe_stack
+
+     return_array = isinstance(close, np.ndarray)
+     # Coerce to pd.Series if raw array
+@@ -363,7 +364,7 @@ def SADF_JAX(
+             )
+         )
+         # Stack back to multi-index
+-        result_series = transformed_df.stack(level="ticker", dropna=False)
++        result_series = safe_stack(transformed_df, level="ticker")
+
+         # Ensure the index levels are in the same order as the input
+         if result_series.index.names != series.index.names:
+diff --git a/pyquantflow/data/features/microstructure.py b/pyquantflow/data/features/microstructure.py
+index ae20a06..90917c9 100644
+--- a/pyquantflow/data/features/microstructure.py
++++ b/pyquantflow/data/features/microstructure.py
+@@ -21,14 +21,12 @@
+ 719–760.
+ """
+
+-from typing import Union
+-
+ import numpy as np
+ import pandas as pd
+
+
+ def ROLL_MEASURE(
+-    close: Union[np.ndarray, pd.Series],
++    close: np.ndarray | pd.Series,
+     window: int = 20,
+ ) -> np.ndarray:
+     """
+@@ -100,7 +98,7 @@ def ROLL_MEASURE(
+     # Roll's formula: spread = 2 * sqrt(max(-cov, 0))
+     spread = 2.0 * np.sqrt(np.maximum(-cov, 0.0))
+
+-    result = spread.to_numpy(dtype=np.float64)
++    result = spread.to_numpy(dtype=np.float64, copy=True)
+
+     # Enforce NaN for the cold-start window (window + 1 extra for diff lag)
+     result[: window + 1] = np.nan
+@@ -109,8 +107,8 @@ def ROLL_MEASURE(
+
+
+ def CORWIN_SCHULTZ(
+-    high: Union[np.ndarray, pd.Series],
+-    low: Union[np.ndarray, pd.Series],
++    high: np.ndarray | pd.Series,
++    low: np.ndarray | pd.Series,
+     window: int = 20,
+ ) -> np.ndarray:
+     """
+@@ -210,7 +208,7 @@ def CORWIN_SCHULTZ(
+     exp_alpha = np.exp(alpha_clamped)
+     spread = 2.0 * (exp_alpha - 1.0) / (1.0 + exp_alpha)
+
+-    result = spread.to_numpy(dtype=np.float64)
++    result = spread.to_numpy(dtype=np.float64, copy=True)
+
+     # Enforce NaN for the cold-start window
+     result[: window + 1] = np.nan
+diff --git a/pyquantflow/data/features/sadf.py b/pyquantflow/data/features/sadf.py
+index 6fad52e..4b89b0d 100644
+--- a/pyquantflow/data/features/sadf.py
++++ b/pyquantflow/data/features/sadf.py
+@@ -1,5 +1,4 @@
+ import functools
+-from typing import Tuple, Union
+
+ import jax
+ import jax.numpy as jnp
+@@ -11,8 +10,8 @@
+
+
+ def _get_y_x(
+-    series: pd.Series, model: str, lags: Union[int, list], add_const: bool
+-) -> Tuple[pd.DataFrame, pd.DataFrame]:
++    series: pd.Series, model: str, lags: int | list, add_const: bool
++) -> tuple[pd.DataFrame, pd.DataFrame]:
+     """
+     Prepares the X and y datasets for SADF generation.
+     (Kept largely in Pandas as this is a one-time setup step).
+@@ -76,7 +75,7 @@ def _get_y_x(
+     return x, y
+
+
+-def _lag_df(df: pd.DataFrame, lags: Union[int, list[int]]) -> pd.DataFrame:
++def _lag_df(df: pd.DataFrame, lags: int | list[int]) -> pd.DataFrame:
+     """Apply Lags to DataFrame"""
+     if isinstance(lags, int):
+         lags = list(range(1, lags + 1))
+@@ -195,8 +194,6 @@ def scan_body(carry, t):
+         # Length = (t - start + 1) >= min_length  => start <= t + 1 - min_length
+         # So valid starts are 0, 1, ..., t + 1 - min_length - 1
+
+-        t - min_length + 1
+-
+         # We need to map over ALL possible starts up to N to keep shapes static for JIT.
+         # We will mask out invalid results later.
+         all_starts = jnp.arange(n_samples)
+@@ -254,7 +251,7 @@ def scan_body(carry, t):
+ def get_sadf_jax(
+     series: pd.Series,
+     model: str,
+-    lags: Union[int, list],
++    lags: int | list,
+     min_length: int,
+     add_const: bool = False,
+     phi: float = 0,
+diff --git a/pyquantflow/data/labels/__init__.py b/pyquantflow/data/labels/__init__.py
+index 97875a3..4761261 100644
+--- a/pyquantflow/data/labels/__init__.py
++++ b/pyquantflow/data/labels/__init__.py
+@@ -1,20 +1,20 @@
+-from .sample_weights import get_sample_weights
+-from .triple_barrier import apply_triple_barrier
+-from .trend_scanning import trend_scanning
+-from .cusum import get_cusum_events, calibrate_cusum_alpha
++from .cusum import calibrate_cusum_alpha, get_cusum_events
+ from .factory import (
+     BaseLabelFactory,
+-    TripleBarrierLabelFactory,
+     TrendScanningLabelFactory,
++    TripleBarrierLabelFactory,
+ )
++from .sample_weights import get_sample_weights
++from .trend_scanning import trend_scanning
++from .triple_barrier import apply_triple_barrier
+
+ __all__ = [
+-    "get_sample_weights",
+-    "apply_triple_barrier",
+-    "trend_scanning",
+-    "get_cusum_events",
+-    "calibrate_cusum_alpha",
+     "BaseLabelFactory",
+-    "TripleBarrierLabelFactory",
+     "TrendScanningLabelFactory",
++    "TripleBarrierLabelFactory",
++    "apply_triple_barrier",
++    "calibrate_cusum_alpha",
++    "get_cusum_events",
++    "get_sample_weights",
++    "trend_scanning",
+ ]
+diff --git a/pyquantflow/data/labels/cusum.py b/pyquantflow/data/labels/cusum.py
+index c11a8f1..d751bbe 100644
+--- a/pyquantflow/data/labels/cusum.py
++++ b/pyquantflow/data/labels/cusum.py
+@@ -6,17 +6,16 @@
+ and JAX-accelerated functions for calibrating the optimal alpha threshold.
+ """
+
+-import numpy as np
+-import pandas as pd
+ import jax
+ import jax.numpy as jnp
++import numpy as np
++import pandas as pd
+ from jax import lax
+-from typing import Optional, Union
+
+
+ def get_cusum_events(
+     series: pd.Series,
+-    threshold: Union[float, pd.Series],
++    threshold: float | pd.Series,
+ ) -> pd.DatetimeIndex:
+     """
+     Symmetric CUSUM Filter as proposed by Marcos Lopez de Prado in
+@@ -67,11 +66,7 @@ def get_cusum_events(
+         s_pos = max(0.0, s_pos + val)
+         s_neg = min(0.0, s_neg + val)
+
+-        if s_pos >= h:
+-            s_pos = 0.0
+-            s_neg = 0.0
+-            t_events.append(times[i])
+-        elif s_neg <= -h:
++        if s_pos >= h or s_neg <= -h:
+             s_pos = 0.0
+             s_neg = 0.0
+             t_events.append(times[i])
+@@ -178,14 +173,14 @@ def _scan_one_alpha(alpha):
+
+ def calibrate_cusum_alpha(
+     series: pd.Series,
+-    target_events: Optional[int] = None,
+-    volatility: Optional[pd.Series] = None,
++    target_events: int | None = None,
++    volatility: pd.Series | None = None,
+     alpha_min: float = 0.5,
+     alpha_max: float = 3.0,
+     alpha_step: float = 0.1,
+     span: int = 100,
+     objective: str = "budget",
+-    t1: Optional[pd.Series] = None,
++    t1: pd.Series | None = None,
+ ) -> float:
+     """
+     Calibrates the CUSUM scalar multiplier ``alpha`` using one of two objectives.
+diff --git a/pyquantflow/data/labels/factory.py b/pyquantflow/data/labels/factory.py
+index a4b62cf..396302d 100644
+--- a/pyquantflow/data/labels/factory.py
++++ b/pyquantflow/data/labels/factory.py
+@@ -1,11 +1,11 @@
+-import pandas as pd
+-import numpy as np
+ from abc import ABC, abstractmethod
+-from typing import List, Union
++
++import numpy as np
++import pandas as pd
+
+ from .sample_weights import get_sample_weights
+-from .triple_barrier import apply_triple_barrier
+ from .trend_scanning import trend_scanning
++from .triple_barrier import apply_triple_barrier
+
+
+ class BaseLabelFactory(ABC):
+@@ -36,7 +36,6 @@ def generate_labels(
+             - 'label': The categorical or continuous label.
+             - 't1': The timestamp when the label was resolved.
+         """
+-        pass
+
+     @abstractmethod
+     def generate_weights(self, t1: pd.Series, returns: pd.Series) -> pd.Series:
+@@ -55,7 +54,6 @@ def generate_weights(self, t1: pd.Series, returns: pd.Series) -> pd.Series:
+         pd.Series
+             Series of sample weights aligned with the input index.
+         """
+-        pass
+
+
+ class TripleBarrierLabelFactory(BaseLabelFactory):
+@@ -110,16 +108,20 @@ class TrendScanningLabelFactory(BaseLabelFactory):
+
+     def __init__(
+         self,
+-        windows: Union[List[int], int] = [5, 10, 20, 40, 80, 120],
+-        bins: Union[List[float], np.ndarray] = [-10.0, 12.0],
++        windows: list[int] | int | None = None,
++        bins: list[float] | np.ndarray | None = None,
+     ):
+         """
+         Initialises the TrendScanningLabelFactory.
+
+         Args:
+-            windows (list | int): Look-forward window sizes to scan.
+-            bins (list | np.ndarray): Bin boundaries for np.digitize to categorise trends.
++            windows (list | int | None): Look-forward window sizes to scan.
++            bins (list | np.ndarray | None): Bin boundaries for np.digitize to categorise trends.
+         """
++        if windows is None:
++            windows = [5, 10, 20, 40, 80, 120]
++        if bins is None:
++            bins = [-10.0, 12.0]
+         if isinstance(windows, int):
+             self.windows = [windows]
+         else:
+diff --git a/pyquantflow/data/labels/trend_scanning.py b/pyquantflow/data/labels/trend_scanning.py
+index f9c426e..301360b 100644
+--- a/pyquantflow/data/labels/trend_scanning.py
++++ b/pyquantflow/data/labels/trend_scanning.py
+@@ -1,8 +1,9 @@
++from functools import partial
++
+ import jax
+ import jax.numpy as jnp
+-import pandas as pd
+ import numpy as np
+-from functools import partial
++import pandas as pd
+
+ # Enable 64-bit precision
+ jax.config.update("jax_enable_x64", True)
+diff --git a/pyquantflow/data/pipelinedataorganiser.py b/pyquantflow/data/pipelinedataorganiser.py
+index ae844e3..fd78be7 100644
+--- a/pyquantflow/data/pipelinedataorganiser.py
++++ b/pyquantflow/data/pipelinedataorganiser.py
+@@ -1,5 +1,4 @@
+ import pandas as pd
+-from typing import Dict, List, Optional
+
+ from .assetorganiser import AssetOrganiser
+ from .labels import BaseLabelFactory
+@@ -39,12 +38,12 @@ class PipelineDataOrganiser:
+
+     def __init__(
+         self,
+-        data_map: Optional[Dict[str, pd.DataFrame]] = None,
+-        cutoff_date: Optional[str] = None,
+-        target_features: Optional[List[str]] = None,
+-        weight_col: Optional[str] = None,
+-        multi_asset: Optional[pd.DataFrame] = None,
+-        label_factory: Optional[BaseLabelFactory] = None,
++        data_map: dict[str, pd.DataFrame] | None = None,
++        cutoff_date: str | None = None,
++        target_features: list[str] | None = None,
++        weight_col: str | None = None,
++        multi_asset: pd.DataFrame | None = None,
++        label_factory: BaseLabelFactory | None = None,
+     ) -> None:
+         self._organiser = AssetOrganiser(
+             data_map=data_map,
+@@ -60,27 +59,27 @@ def __init__(
+     # ------------------------------------------------------------------
+
+     @property
+-    def multi_asset(self) -> Optional[pd.DataFrame]:
++    def multi_asset(self) -> pd.DataFrame | None:
+         """The full multi-asset panel DataFrame (read-only)."""
+         return self._organiser.multi_asset
+
+     @property
+-    def multi_asset_train(self) -> Optional[pd.DataFrame]:
++    def multi_asset_train(self) -> pd.DataFrame | None:
+         """Training partition of the multi-asset panel (read-only)."""
+         return self._organiser.multi_asset_train
+
+     @property
+-    def multi_asset_test(self) -> Optional[pd.DataFrame]:
++    def multi_asset_test(self) -> pd.DataFrame | None:
+         """Test partition of the multi-asset panel (read-only)."""
+         return self._organiser.multi_asset_test
+
+     @property
+-    def weight_col(self) -> Optional[str]:
++    def weight_col(self) -> str | None:
+         """The sample-weight column name (read-only)."""
+         return self._organiser.weight_col
+
+     @property
+-    def target_features(self) -> List[str]:
++    def target_features(self) -> list[str]:
+         """The target column names (read-only)."""
+         return self._organiser.target_features
+
+@@ -94,21 +93,21 @@ def prepare_multi_asset_frame(self) -> None:
+
+     def downsample_to_events(
+         self,
+-        events: "pd.DatetimeIndex | list | set | Dict[str, pd.DatetimeIndex]",
++        events: "pd.DatetimeIndex | list | set | dict[str, pd.DatetimeIndex]",
+     ) -> None:
+         """Delegates to ``AssetOrganiser.downsample_to_events``."""
+         self._organiser.downsample_to_events(events)
+
+     def downsample_to_cusum_events(
+         self,
+-        target_events_train: "int | Dict[str, int]",
++        target_events_train: "int | dict[str, int]",
+         filter_col: str,
+-        vol_col: Optional[str] = None,
++        vol_col: str | None = None,
+         span: int = 100,
+         alpha_min: float = 0.5,
+         alpha_max: float = 3.0,
+         alpha_step: float = 0.1,
+-    ) -> Dict[str, float]:
++    ) -> dict[str, float]:
+         """Delegates to ``AssetOrganiser.downsample_to_cusum_events``."""
+         return self._organiser.downsample_to_cusum_events(
+             target_events_train=target_events_train,
+@@ -130,15 +129,15 @@ def apply_sample_weights(self, price_col: str = "Close") -> None:
+
+     def build_learning_pipeline(
+         self,
+-        target_events_train: "int | Dict[str, int]",
++        target_events_train: "int | dict[str, int]",
+         filter_col: str,
+         price_col: str = "Close",
+-        vol_col: Optional[str] = None,
++        vol_col: str | None = None,
+         span: int = 100,
+         alpha_min: float = 0.5,
+         alpha_max: float = 3.0,
+         alpha_step: float = 0.1,
+-    ) -> Dict[str, float]:
++    ) -> dict[str, float]:
+         """Delegates to ``AssetOrganiser.build_learning_pipeline``."""
+         return self._organiser.build_learning_pipeline(
+             target_events_train=target_events_train,
+@@ -157,9 +156,9 @@ def build_learning_pipeline(
+
+     def get_classifierengine_payload(
+         self,
+-        features: List[str],
+-        tickers: Optional[List[str]] = None,
+-    ) -> Dict[str, "pd.DataFrame | List[str] | str | None"]:
++        features: list[str],
++        tickers: list[str] | None = None,
++    ) -> dict[str, "pd.DataFrame | list[str] | str | None"]:
+         """
+         Extracts the prepared data and metadata into a dictionary suitable
+         for unpacking (``**kwargs``) directly into
+diff --git a/pyquantflow/data/quarterly_pull.py b/pyquantflow/data/quarterly_pull.py
+index 1e19810..6652397 100644
+--- a/pyquantflow/data/quarterly_pull.py
++++ b/pyquantflow/data/quarterly_pull.py
+@@ -1,38 +1,11 @@
+ import logging
+
+-import yfinance as yf
+ import pandas as pd
++import yfinance as yf
+
+ logger = logging.getLogger(__name__)
+
+
+-def merge_last_hour(df) -> pd.DataFrame:
+-    """
+-    Merges the last trading hour of each day into the previous hour.
+-    """
+-    df = df.sort_index()
+-    df = df.copy()
+-
+-    # Group by date to handle each day separately
+-    for date, group in df.groupby(df.index.date):
+-        if len(group) < 2:
+-            continue  # Skip if there's no previous hour to merge with
+-
+-        last_idx = group.index[-1]
+-        prev_idx = group.index[-2]
+-
+-        # Merge logic
+-        df.at[prev_idx, "High"] = max(df.at[prev_idx, "High"], df.at[last_idx, "High"])
+-        df.at[prev_idx, "Low"] = min(df.at[prev_idx, "Low"], df.at[last_idx, "Low"])
+-        df.at[prev_idx, "Close"] = df.at[last_idx, "Close"]
+-        df.at[prev_idx, "Volume"] += df.at[last_idx, "Volume"]
+-
+-        # Drop the last row
+-        df = df.drop(last_idx)
+-
+-    return df
+-
+-
+ def fetch_quarterly_data(ticker, time_dict, period="quarterly") -> pd.DataFrame:
+     """
+     Fetches stock data from Yahoo Finance for specified quarters and years, bypassing
+diff --git a/pyquantflow/data/sk_transformers.py b/pyquantflow/data/sk_transformers.py
+index d9bc284..8099374 100644
+--- a/pyquantflow/data/sk_transformers.py
++++ b/pyquantflow/data/sk_transformers.py
+@@ -1,8 +1,9 @@
+-from sklearn.base import BaseEstimator, TransformerMixin
+ import pandas as pd
++from sklearn.base import BaseEstimator, TransformerMixin
++
++from .features.fractional_differentiation import frac_diff_ffd
+ from .features.sadf import get_sadf_jax as gsadf_values
+ from .labels.trend_scanning import trend_scanning
+-from .features.fractional_differentiation import frac_diff_ffd
+ from .labels.triple_barrier import apply_triple_barrier as triple_barrier_labels
+
+
+diff --git a/pyquantflow/data/utils.py b/pyquantflow/data/utils.py
+index 71cfc5c..776b4a3 100644
+--- a/pyquantflow/data/utils.py
++++ b/pyquantflow/data/utils.py
+@@ -157,3 +157,17 @@ def generate_ema_ribbon_names(prefix="EMAR", M=10):
+     names.extend([f"{prefix}_VELOCITY_{i}v{i + 1}" for i in range(1, M)])
+
+     return names
++
++
++def safe_stack(df: pd.DataFrame, level: str = "ticker") -> pd.Series | pd.DataFrame:
++    """
++    Safely stack a DataFrame level across pandas versions.
++
++    Maintains compatibility between legacy pandas implementations (which require
++    `dropna=False` to retain missing cold-start values) and modern pandas
++    (where `dropna` must remain unspecified).
++    """
++    try:
++        return df.stack(level=level, dropna=False)
++    except (ValueError, TypeError):
++        return df.stack(level=level)
+diff --git a/pyquantflow/diagnostics/__init__.py b/pyquantflow/diagnostics/__init__.py
+index d3502fe..858cbc9 100644
+--- a/pyquantflow/diagnostics/__init__.py
++++ b/pyquantflow/diagnostics/__init__.py
+@@ -6,33 +6,35 @@
+ trajectory auditing.
+ """
+
++from . import (
++    _accessors,  # noqa: F401  # side-effect: injects methods onto AssetOrganiser
++)
+ from ._renderer import DiagnosticResult, DiagnosticWarning, FigureFactory
+-from .events import plot_cusum_events, plot_multi_asset_events
+-from .uniqueness import plot_sample_concurrency
+ from .barriers import plot_barrier_trajectories
+-from .features import plot_downsampling_shift, plot_stationarity_profile
+ from .clustering import plot_feature_clusters
+ from .cv import plot_cv_splits, plot_fold_feature_drift
++from .events import plot_cusum_events, plot_multi_asset_events
++from .features import plot_downsampling_shift, plot_stationarity_profile
+ from .metalabel import plot_meta_label_entropy, plot_meta_label_precision_recall
+-from .regimes import plot_sadf_regimes
+ from .pbo import plot_cpcv_paths
+-from . import _accessors  # noqa: F401  # side-effect: injects methods onto AssetOrganiser
++from .regimes import plot_sadf_regimes
++from .uniqueness import plot_sample_concurrency
+
+ __all__ = [
+     "DiagnosticResult",
+     "DiagnosticWarning",
+     "FigureFactory",
+-    "plot_cusum_events",
+-    "plot_multi_asset_events",
+-    "plot_sample_concurrency",
+     "plot_barrier_trajectories",
++    "plot_cpcv_paths",
++    "plot_cusum_events",
++    "plot_cv_splits",
+     "plot_downsampling_shift",
+-    "plot_stationarity_profile",
+     "plot_feature_clusters",
+-    "plot_cv_splits",
+     "plot_fold_feature_drift",
+     "plot_meta_label_entropy",
+     "plot_meta_label_precision_recall",
++    "plot_multi_asset_events",
+     "plot_sadf_regimes",
+-    "plot_cpcv_paths",
++    "plot_sample_concurrency",
++    "plot_stationarity_profile",
+ ]
+diff --git a/pyquantflow/diagnostics/_accessors.py b/pyquantflow/diagnostics/_accessors.py
+index 37bf76d..56b14d9 100644
+--- a/pyquantflow/diagnostics/_accessors.py
++++ b/pyquantflow/diagnostics/_accessors.py
+@@ -5,6 +5,7 @@
+ """
+
+ import pandas as pd
++
+ from pyquantflow.data.assetorganiser import AssetOrganiser
+ from pyquantflow.data.sk_transformers import GSADFTransformer
+ from pyquantflow.model.classifier import PrimarySecondaryClassifier
+@@ -16,6 +17,7 @@
+     FeatureEvaluator,
+     StationaryTransformer,
+ )
++
+ from ._renderer import DiagnosticResult
+ from .events import plot_multi_asset_events
+ from .uniqueness import plot_sample_concurrency
+@@ -96,9 +98,10 @@ def _ao_plot_sample_concurrency(
+
+ # --- StationaryTransformer ---
+ def _st_plot_stationarity_profile(self, raw_series, col, max_lags=40):
+-    from .features import plot_stationarity_profile
+     from pyquantflow.data.features.fractional_differentiation import adf_screened_ffd
+
++    from .features import plot_stationarity_profile
++
+     d_star = self.optimal_d_.get(col, 1.0)
+     ffd_series, _ = adf_screened_ffd(raw_series, d=d_star, thres=self.ffd_thres)
+     return plot_stationarity_profile(
+diff --git a/pyquantflow/diagnostics/_renderer.py b/pyquantflow/diagnostics/_renderer.py
+index 1953680..44916e2 100644
+--- a/pyquantflow/diagnostics/_renderer.py
++++ b/pyquantflow/diagnostics/_renderer.py
+@@ -5,9 +5,10 @@
+ and context-aware figure display helpers for marimo, IPython, and standard Python execution environments.
+ """
+
+-from dataclasses import dataclass
+-from typing import Any, Dict, Optional
+ import sys
++from dataclasses import dataclass
++from typing import Any
++
+ import plotly.graph_objects as go
+
+ PALETTE = {
+@@ -23,8 +24,6 @@
+ class DiagnosticWarning(UserWarning):
+     """Warning raised for non-fatal diagnostic issues, such as ticker truncation."""
+
+-    pass
+-
+
+ @dataclass
+ class DiagnosticResult:
+@@ -40,7 +39,7 @@ class DiagnosticResult:
+     """
+
+     figure: go.Figure
+-    metadata: Dict[str, Any]
++    metadata: dict[str, Any]
+
+
+ class FigureFactory:
+@@ -49,7 +48,7 @@ class FigureFactory:
+     """
+
+     @staticmethod
+-    def create(layout_overrides: Optional[Dict[str, Any]] = None) -> go.Figure:
++    def create(layout_overrides: dict[str, Any] | None = None) -> go.Figure:
+         """
+         Creates a pre-themed Plotly Figure adhering to project aesthetic guidelines.
+
+diff --git a/pyquantflow/diagnostics/barriers.py b/pyquantflow/diagnostics/barriers.py
+index 802e298..a8c5495 100644
+--- a/pyquantflow/diagnostics/barriers.py
++++ b/pyquantflow/diagnostics/barriers.py
+@@ -6,11 +6,13 @@
+ """
+
+ import warnings
+-import pandas as pd
++
+ import numpy as np
+-import plotly.subplots
++import pandas as pd
+ import plotly.graph_objects as go
+-from ._renderer import DiagnosticResult, DiagnosticWarning, PALETTE
++import plotly.subplots
++
++from ._renderer import PALETTE, DiagnosticResult, DiagnosticWarning
+
+
+ def plot_barrier_trajectories(
+diff --git a/pyquantflow/diagnostics/clustering.py b/pyquantflow/diagnostics/clustering.py
+index c29aef6..ad848e4 100644
+--- a/pyquantflow/diagnostics/clustering.py
++++ b/pyquantflow/diagnostics/clustering.py
+@@ -7,21 +7,20 @@
+
+ import numpy as np
+ import pandas as pd
+-import plotly.subplots
+ import plotly.graph_objects as go
++import plotly.subplots
+ import scipy.cluster.hierarchy as sch
+ import scipy.spatial.distance as ssd
+-from typing import Optional, Dict, Union
+
+-from ._renderer import DiagnosticResult, PALETTE
++from ._renderer import PALETTE, DiagnosticResult
+
+
+ def plot_feature_clusters(
+-    regime_results: Union[Dict[int, Dict[str, pd.DataFrame]], pd.DataFrame],
++    regime_results: dict[int, dict[str, pd.DataFrame]] | pd.DataFrame,
+     correlation_matrix: pd.DataFrame,
+-    linkage_matrix: Optional[np.ndarray] = None,
++    linkage_matrix: np.ndarray | None = None,
+     method: str = "ward",
+-    regime_id: Optional[int] = None,
++    regime_id: int | None = None,
+ ) -> DiagnosticResult:
+     """
+     Renders a dendrogram-ordered correlation heatmap alongside cluster importance scores.
+diff --git a/pyquantflow/diagnostics/cv.py b/pyquantflow/diagnostics/cv.py
+index d9f63e3..8011666 100644
+--- a/pyquantflow/diagnostics/cv.py
++++ b/pyquantflow/diagnostics/cv.py
+@@ -6,16 +6,17 @@
+ """
+
+ import warnings
++
+ import pandas as pd
+ import plotly.graph_objects as go
+-from typing import Union
+
+-from ._renderer import DiagnosticResult, FigureFactory, DiagnosticWarning, PALETTE
+-from pyquantflow.model.cross_validation import PurgedKFoldCV, CombinatorialPurgedKFold
++from pyquantflow.model.cross_validation import CombinatorialPurgedKFold, PurgedKFoldCV
++
++from ._renderer import PALETTE, DiagnosticResult, DiagnosticWarning, FigureFactory
+
+
+ def plot_cv_splits(
+-    cv_splitter: Union[PurgedKFoldCV, CombinatorialPurgedKFold],
++    cv_splitter: PurgedKFoldCV | CombinatorialPurgedKFold,
+     X: pd.DataFrame,
+     y: pd.Series,
+ ) -> DiagnosticResult:
+@@ -215,7 +216,7 @@ def plot_cv_splits(
+
+ def plot_fold_feature_drift(
+     X: pd.DataFrame,
+-    cv_splitter: Union[PurgedKFoldCV, CombinatorialPurgedKFold],
++    cv_splitter: PurgedKFoldCV | CombinatorialPurgedKFold,
+     feature_col: str,
+ ) -> DiagnosticResult:
+     """
+diff --git a/pyquantflow/diagnostics/events.py b/pyquantflow/diagnostics/events.py
+index b96a6b5..a9580e2 100644
+--- a/pyquantflow/diagnostics/events.py
++++ b/pyquantflow/diagnostics/events.py
+@@ -6,17 +6,18 @@
+ """
+
+ import warnings
++
+ import pandas as pd
+-import plotly.subplots
+ import plotly.graph_objects as go
+-from typing import Dict, List, Optional
+-from ._renderer import DiagnosticResult, FigureFactory, DiagnosticWarning, PALETTE
++import plotly.subplots
++
++from ._renderer import PALETTE, DiagnosticResult, DiagnosticWarning, FigureFactory
+
+
+ def plot_cusum_events(
+     df: pd.DataFrame,
+     price_col: str = "Close",
+-    events: Optional[pd.Series] = None,
++    events: pd.Series | None = None,
+     ticker: str = "unknown",
+ ) -> DiagnosticResult:
+     """
+@@ -117,9 +118,9 @@ def plot_cusum_events(
+
+ def plot_multi_asset_events(
+     multi_asset_df: pd.DataFrame,
+-    tickers: List[str],
++    tickers: list[str],
+     max_tickers: int = 5,
+-    events_map: Optional[Dict[str, pd.DatetimeIndex]] = None,
++    events_map: dict[str, pd.DatetimeIndex] | None = None,
+ ) -> DiagnosticResult:
+     """
+     Renders stacked, synchronised price subplots across multiple tickers with CUSUM event overlays.
+@@ -226,19 +227,19 @@ def plot_multi_asset_events(
+
+                 y_vals = df_tk[price_col].reindex(events_idx, method="nearest")
+
+-            fig.add_trace(
+-                go.Scatter(
+-                    x=events_idx,
+-                    y=y_vals.values,
+-                    mode="markers",
+-                    marker_color=PALETTE["accent_1"],
+-                    marker_symbol="line-ns-open",
+-                    marker_size=12,
+-                    name=f"{ticker} Events",
+-                ),
+-                row=row,
+-                col=1,
+-            )
++                fig.add_trace(
++                    go.Scatter(
++                        x=events_idx,
++                        y=y_vals.values,
++                        mode="markers",
++                        marker_color=PALETTE["accent_1"],
++                        marker_symbol="line-ns-open",
++                        marker_size=12,
++                        name=f"{ticker} Events",
++                    ),
++                    row=row,
++                    col=1,
++                )
+
+     fig.update_layout(
+         template="plotly_dark",
+diff --git a/pyquantflow/diagnostics/features.py b/pyquantflow/diagnostics/features.py
+index d28e5ba..eb9b25e 100644
+--- a/pyquantflow/diagnostics/features.py
++++ b/pyquantflow/diagnostics/features.py
+@@ -7,19 +7,20 @@
+
+ import numpy as np
+ import pandas as pd
+-import plotly.subplots
+ import plotly.graph_objects as go
+-from scipy.stats import gaussian_kde, entropy as scipy_entropy, wasserstein_distance
+-from typing import Optional, List
++import plotly.subplots
++from scipy.stats import entropy as scipy_entropy
++from scipy.stats import gaussian_kde, wasserstein_distance
+
+-from ._renderer import DiagnosticResult, PALETTE
+ from pyquantflow.data.features.fractional_differentiation import _adf_test_stat
+
++from ._renderer import PALETTE, DiagnosticResult
++
+
+ def plot_downsampling_shift(
+     raw_df: pd.DataFrame,
+     event_df: pd.DataFrame,
+-    feature_cols: List[str],
++    feature_cols: list[str],
+     n_bins: int = 50,
+     divergence_metric: str = "kl",
+ ) -> DiagnosticResult:
+@@ -144,7 +145,7 @@ def plot_stationarity_profile(
+     raw_series: pd.Series,
+     ffd_series: pd.Series,
+     d_order: float,
+-    ticker: Optional[str] = None,
++    ticker: str | None = None,
+     max_lags: int = 40,
+ ) -> DiagnosticResult:
+     """
+diff --git a/pyquantflow/diagnostics/metalabel.py b/pyquantflow/diagnostics/metalabel.py
+index b029a1d..34312ef 100644
+--- a/pyquantflow/diagnostics/metalabel.py
++++ b/pyquantflow/diagnostics/metalabel.py
+@@ -7,13 +7,12 @@
+
+ import numpy as np
+ import pandas as pd
+-import plotly.subplots
+ import plotly.graph_objects as go
++import plotly.subplots
+ from scipy.stats import spearmanr
+-from sklearn.metrics import precision_recall_curve, auc
+-from typing import Optional
++from sklearn.metrics import auc, precision_recall_curve
+
+-from ._renderer import DiagnosticResult, FigureFactory, PALETTE
++from ._renderer import PALETTE, DiagnosticResult, FigureFactory
+
+
+ def plot_meta_label_entropy(
+@@ -21,7 +20,7 @@ def plot_meta_label_entropy(
+     primary_pred_col: str = "primary_pred",
+     entropy_col: str = "primary_entropy",
+     target_col: str = "label",
+-    return_col: Optional[str] = None,
++    return_col: str | None = None,
+     decision_col: str = "final_decision",
+ ) -> DiagnosticResult:
+     """
+diff --git a/pyquantflow/diagnostics/pbo.py b/pyquantflow/diagnostics/pbo.py
+index 266a9d7..3e264ed 100644
+--- a/pyquantflow/diagnostics/pbo.py
++++ b/pyquantflow/diagnostics/pbo.py
+@@ -5,13 +5,14 @@
+ combinatorial paths from StrategyLab's out-of-sample combinations.
+ """
+
++from typing import Any
++
+ import numpy as np
+ import pandas as pd
+-import plotly.subplots
+ import plotly.graph_objects as go
+-from typing import Any
++import plotly.subplots
+
+-from ._renderer import DiagnosticResult, PALETTE
++from ._renderer import PALETTE, DiagnosticResult
+
+
+ def plot_cpcv_paths(
+diff --git a/pyquantflow/diagnostics/regimes.py b/pyquantflow/diagnostics/regimes.py
+index 30b9b38..b6e8fb5 100644
+--- a/pyquantflow/diagnostics/regimes.py
++++ b/pyquantflow/diagnostics/regimes.py
+@@ -7,19 +7,18 @@
+
+ import numpy as np
+ import pandas as pd
+-import plotly.subplots
+ import plotly.graph_objects as go
+-from typing import Optional, Union
++import plotly.subplots
+
+-from ._renderer import DiagnosticResult, PALETTE
++from ._renderer import PALETTE, DiagnosticResult
+
+
+ def plot_sadf_regimes(
+     price_series: pd.Series,
+     sadf_series: pd.Series,
+     critical_value: float = 1.4,
+-    events: Optional[Union[pd.DatetimeIndex, pd.Series]] = None,
+-    title: Optional[str] = None,
++    events: pd.DatetimeIndex | pd.Series | None = None,
++    title: str | None = None,
+ ) -> DiagnosticResult:
+     """
+     Renders price overlaid with GSADF explosive bubble regimes and event triggers.
+diff --git a/pyquantflow/diagnostics/uniqueness.py b/pyquantflow/diagnostics/uniqueness.py
+index 8f7cf4e..deec364 100644
+--- a/pyquantflow/diagnostics/uniqueness.py
++++ b/pyquantflow/diagnostics/uniqueness.py
+@@ -5,17 +5,17 @@
+ to detect hidden label redundancy and sample size collapse.
+ """
+
+-import pandas as pd
+ import numpy as np
+-import plotly.subplots
++import pandas as pd
+ import plotly.graph_objects as go
+-from typing import Optional
+-from ._renderer import DiagnosticResult, PALETTE
++import plotly.subplots
++
++from ._renderer import PALETTE, DiagnosticResult
+
+
+ def plot_sample_concurrency(
+     t1_series: pd.Series,
+-    weight_series: Optional[pd.Series] = None,
++    weight_series: pd.Series | None = None,
+     concurrency_threshold_pct: float = 0.75,
+ ) -> DiagnosticResult:
+     """
+diff --git a/pyquantflow/model/classifier.py b/pyquantflow/model/classifier.py
+index d9d4c97..5ca52ef 100644
+--- a/pyquantflow/model/classifier.py
++++ b/pyquantflow/model/classifier.py
+@@ -1,10 +1,11 @@
+-from sklearn.base import BaseEstimator, ClassifierMixin, TransformerMixin, clone
++from abc import ABC, abstractmethod
++
++import numpy as np
++import pandas as pd
+
+ # from sklearn.utils.validation import check_is_fitted
+ from scipy.stats import entropy
+-import pandas as pd
+-import numpy as np
+-from abc import ABC, abstractmethod
++from sklearn.base import BaseEstimator, ClassifierMixin, TransformerMixin, clone
+
+
+ class BaseQuantClassifier(ABC, BaseEstimator, ClassifierMixin, TransformerMixin):
+diff --git a/pyquantflow/model/cross_validation.py b/pyquantflow/model/cross_validation.py
+index dcb4b64..e177604 100644
+--- a/pyquantflow/model/cross_validation.py
++++ b/pyquantflow/model/cross_validation.py
+@@ -1,8 +1,9 @@
+-from typing import Optional, Union, Generator, Tuple
++from collections.abc import Generator
++from itertools import combinations
++
+ import numpy as np
+ import pandas as pd
+ from sklearn.model_selection import BaseCrossValidator
+-from itertools import combinations
+
+
+ class PurgedKFoldCV(BaseCrossValidator):
+@@ -38,9 +39,9 @@ class PurgedKFoldCV(BaseCrossValidator):
+     def __init__(
+         self,
+         n_splits: int = 5,
+-        t1: Optional[Union[pd.Series, str]] = None,
++        t1: pd.Series | str | None = None,
+         embargo_pct: float = 0.01,
+-        datetime_level: Union[str, int] = "datetime",
++        datetime_level: str | int = "datetime",
+     ) -> None:
+         self.n_splits = n_splits
+         self.t1 = t1
+@@ -49,9 +50,9 @@ def __init__(
+
+     def get_n_splits(
+         self,
+-        X: Optional[Union[pd.DataFrame, pd.Series, np.ndarray]] = None,
+-        y: Optional[Union[pd.Series, np.ndarray]] = None,
+-        groups: Optional[np.ndarray] = None,
++        X: pd.DataFrame | pd.Series | np.ndarray | None = None,
++        y: pd.Series | np.ndarray | None = None,
++        groups: np.ndarray | None = None,
+     ) -> int:
+         """
+         Returns the number of splitting iterations in the cross-validator.
+@@ -96,9 +97,9 @@ def _extract_times(self, X: pd.DataFrame) -> pd.Index:
+     def split(
+         self,
+         X: pd.DataFrame,
+-        y: Optional[Union[pd.Series, np.ndarray]] = None,
+-        groups: Optional[np.ndarray] = None,
+-    ) -> Generator[Tuple[np.ndarray, np.ndarray], None, None]:
++        y: pd.Series | np.ndarray | None = None,
++        groups: np.ndarray | None = None,
++    ) -> Generator[tuple[np.ndarray, np.ndarray], None, None]:
+         """
+         Generate indices to split data into training and test sets.
+
+@@ -249,7 +250,6 @@ def split(self, X, y=None, groups=None):
+
+         for test_blocks in combinations(all_block_indices, self.n_test_splits):
+             test_blocks = sorted(test_blocks)
+-            [i for i in all_block_indices if i not in test_blocks]
+
+             # Collect test datetimes
+             test_dt_set = set()
+diff --git a/pyquantflow/model/feature_evaluation.py b/pyquantflow/model/feature_evaluation.py
+index e560362..0977eff 100644
+--- a/pyquantflow/model/feature_evaluation.py
++++ b/pyquantflow/model/feature_evaluation.py
+@@ -1,23 +1,24 @@
+ import warnings
+-from typing import List, Dict, Optional, Callable, Union
++from collections.abc import Callable
+
+ import numpy as np
+ import pandas as pd
+ import scipy.cluster.hierarchy
+ import scipy.spatial.distance
+ import scipy.stats
++from joblib import Parallel, delayed
+ from sklearn.base import BaseEstimator, TransformerMixin, clone
+ from sklearn.metrics import silhouette_score
+ from tsfeatures import tsfeatures
+-from joblib import Parallel, delayed
+
+ # Shared FFD + ADF utilities (canonical source: data.features.fractional_differentiation)
+ from pyquantflow.data.features.fractional_differentiation import (
+-    frac_diff_ffd,
+-    adf_screened_ffd,
+-    _adf_test_stat,
+     _adf_p_value,
++    _adf_test_stat,
++    adf_screened_ffd,
++    frac_diff_ffd,
+ )
++from pyquantflow.data.utils import safe_stack
+
+
+ class StationaryTransformer(BaseEstimator, TransformerMixin):
+@@ -106,7 +107,7 @@ def _fit_column(
+                             s, d=optimal_d, thres=self.ffd_thres
+                         )[0]
+                     )
+-                    diff_series = diff_unstacked.stack(level="ticker", dropna=False)
++                    diff_series = safe_stack(diff_unstacked, level="ticker")
+                     if diff_series.index.names != index_names:
+                         diff_series = diff_series.reorder_levels(index_names)
+                     diff_series = diff_series.reindex(col_data.index)
+@@ -167,7 +168,7 @@ def _transform_column(
+                 diff_unstacked = unstacked.apply(
+                     lambda s: adf_screened_ffd(s, d=d, thres=self.ffd_thres)[0]
+                 )
+-                diff_series = diff_unstacked.stack(level="ticker", dropna=False)
++                diff_series = safe_stack(diff_unstacked, level="ticker")
+
+                 if diff_series.index.names != index_names:
+                     diff_series = diff_series.reorder_levels(index_names)
+@@ -258,15 +259,15 @@ class FeatureEvaluator:
+
+     def __init__(
+         self,
+-        features: List[str],
+-        target_col: Optional[str] = None,
+-        weight_col: Optional[str] = None,
+-        t1_col: Optional[str] = None,
+-        cv: Optional[BaseEstimator] = None,
++        features: list[str],
++        target_col: str | None = None,
++        weight_col: str | None = None,
++        t1_col: str | None = None,
++        cv: BaseEstimator | None = None,
+         significance_level: float = 0.05,
+         freq: int = 1,
+         memory_threshold: float = 0.10,
+-        raw_features: Optional[List[str]] = None,
++        raw_features: list[str] | None = None,
+     ):
+         """
+         Parameters
+@@ -281,7 +282,7 @@ def __init__(
+             such as microstructure spreads, volume, or categorical metadata.
+         """
+         self.features = list(features)
+-        self.raw_features: List[str] = list(raw_features) if raw_features else []
++        self.raw_features: list[str] = list(raw_features) if raw_features else []
+         self.target_col = target_col
+         self.weight_col = weight_col
+         self.t1_col = t1_col
+@@ -383,8 +384,8 @@ def fit_transform_features(self, df: pd.DataFrame) -> pd.DataFrame:
+     def compute_time_series_profiles(
+         self,
+         df: pd.DataFrame,
+-        columns: List[str],
+-        groupby_level: Optional[str] = "ticker",
++        columns: list[str],
++        groupby_level: str | None = "ticker",
+     ) -> pd.DataFrame:
+         """
+         Uses Nixtla's tsfeatures to compute statistical metrics.
+@@ -482,8 +483,8 @@ def cluster_entities(
+         self,
+         data: pd.DataFrame,
+         method: str = "correlation",
+-        n_clusters: Optional[int] = None,
+-    ) -> Dict[int, List[Union[str, int]]]:
++        n_clusters: int | None = None,
++    ) -> dict[int, list[str | int]]:
+         """
+         Groups entities hierarchically.
+         If method == 'correlation', clusters the columns of data (features).
+@@ -562,11 +563,11 @@ def evaluate_importance(
+         df: pd.DataFrame,
+         estimator: BaseEstimator,
+         metric: Callable,
+-        metric_kwargs: Optional[dict] = None,
++        metric_kwargs: dict | None = None,
+         balance_classes: bool = True,
+         greater_is_better: bool = True,
+         needs_proba: bool = True,
+-    ) -> Dict[int, Dict[str, pd.DataFrame]]:
++    ) -> dict[int, dict[str, pd.DataFrame]]:
+         """
+         Runs the Macro-Regime Loop.
+         1. Clusters assets into regimes based on their statistical profiles.
+@@ -774,7 +775,7 @@ def evaluate_importance(
+
+     @staticmethod
+     def _convert_results_to_table(
+-        results: Dict[int, Dict[str, pd.DataFrame]],
++        results: dict[int, dict[str, pd.DataFrame]],
+     ) -> pd.DataFrame:
+         """
+         Converts the nested dictionary of regime results into a single consolidated DataFrame.
+diff --git a/pyquantflow/model/manager.py b/pyquantflow/model/manager.py
+index e30e722..b46b211 100644
+--- a/pyquantflow/model/manager.py
++++ b/pyquantflow/model/manager.py
+@@ -1,11 +1,13 @@
++import logging
++from abc import ABC, abstractmethod
++from collections.abc import Callable
++from typing import Any
++
++import numpy as np
+ import optuna
+ import pandas as pd
+-import numpy as np
+-from abc import ABC, abstractmethod
+-from typing import Callable, Any, Optional, Dict, Union
+-from sklearn.model_selection import BaseCrossValidator
+ from sklearn.metrics import f1_score
+-import logging
++from sklearn.model_selection import BaseCrossValidator
+
+ try:
+     import mlflow
+@@ -29,29 +31,27 @@ class BaseModelEngine(ABC):
+     def validate(
+         self,
+         model: Any,
+-        X: Union[pd.DataFrame, np.ndarray],
+-        y: Union[pd.Series, np.ndarray],
++        X: pd.DataFrame | np.ndarray,
++        y: pd.Series | np.ndarray,
+         metric: Callable,
+-    ) -> Dict[str, float]:
++    ) -> dict[str, float]:
+         """
+         Validate the model on a hold-out set.
+         Should return a dictionary of metrics.
+         """
+-        pass
+
+     @abstractmethod
+     def register_mlflow_evaluation(
+         self,
+         model: Any,
+-        params: Dict[str, Any],
+-        metrics: Dict[str, float],
+-        experiment_name: Optional[str] = None,
+-        run_name: Optional[str] = None,
++        params: dict[str, Any],
++        metrics: dict[str, float],
++        experiment_name: str | None = None,
++        run_name: str | None = None,
+     ) -> None:
+         """
+         Register the model, parameters, and metrics to a tracking server (e.g. MLflow).
+         """
+-        pass
+
+
+ class ClassifierEngine(BaseModelEngine):
+@@ -70,11 +70,11 @@ def __init__(self, optimiser: HyperparameterOptimiser):
+     def validate(
+         self,
+         model: Any,
+-        X: Union[pd.DataFrame, np.ndarray],
+-        y: Union[pd.Series, np.ndarray],
++        X: pd.DataFrame | np.ndarray,
++        y: pd.Series | np.ndarray,
+         metric: Callable = f1_score,
+-        metric_kwargs: Optional[dict] = None,
+-    ) -> Dict[str, float]:
++        metric_kwargs: dict | None = None,
++    ) -> dict[str, float]:
+         """
+         Computes the metric score on X, y.
+         """
+@@ -98,14 +98,15 @@ def validate(
+     def register_mlflow_evaluation(
+         self,
+         model: Any,
+-        X: Union[pd.DataFrame, np.ndarray],
+-        y: Union[pd.Series, np.ndarray],
+-        params: Dict[str, Any],
+-        tags: Dict[str, str],
++        X: pd.DataFrame | np.ndarray,
++        y: pd.Series | np.ndarray,
++        params: dict[str, Any],
++        tags: dict[str, str],
+         #        metrics: Dict[str, float],
+-        experiment_name: Optional[str] = None,
+-        run_name: Optional[str] = None,
+-        evaluator_config: Optional[dict] = None,
++        experiment_name: str | None = None,
++        run_name: str | None = None,
++        evaluator_config: dict | None = None,
++        skops_trusted_types: list[str] | None = None,
+     ) -> None:
+         """
+         Registers to MLflow if available.
+@@ -135,6 +136,16 @@ def register_mlflow_evaluation(
+         if experiment_name:
+             mlflow.set_experiment(experiment_name)
+
++        trusted_types = [
++            "xgboost.core.Booster",
++            "xgboost.sklearn.XGBClassifier",
++            "sklearn.tree._tree.Tree",
++        ]
++        if skops_trusted_types:
++            for item in skops_trusted_types:
++                if item not in trusted_types:
++                    trusted_types.append(item)
++
+         with mlflow.start_run(run_name=run_name):
+             # Log model
+             signature = infer_signature(X, model.predict(X))
+@@ -143,10 +154,7 @@ def register_mlflow_evaluation(
+                 name="model",
+                 signature=signature,
+                 serialization_format="skops",
+-                skops_trusted_types=[
+-                    "xgboost.core.Booster",
+-                    "xgboost.sklearn.XGBClassifier",
+-                ],
++                skops_trusted_types=trusted_types,
+             )
+             logger.info(f"Model saved to {model_info.model_uri}")
+
+@@ -171,22 +179,23 @@ def register_mlflow_evaluation(
+     def run_pipeline(
+         self,
+         X_train: pd.DataFrame,
+-        y_train: Union[pd.Series, pd.DataFrame],
++        y_train: pd.Series | pd.DataFrame,
+         X_test: pd.DataFrame,
+-        y_test: Union[pd.Series, pd.DataFrame],
++        y_test: pd.Series | pd.DataFrame,
+         features: list[str],
+         model_factory: Callable[[optuna.Trial], Any],
+         cv: BaseCrossValidator,
+-        weight_col: Optional[str] = None,
+-        t1_col: Optional[str] = None,
++        weight_col: str | None = None,
++        t1_col: str | None = None,
+         metric: Callable = f1_score,
+         n_trials: int = 50,
+-        timeout: Optional[int] = None,
+-        metric_kwargs: Optional[dict] = None,
+-        experiment_name: Optional[str] = None,
+-        run_name: Optional[str] = None,
+-        tags: Optional[Dict[str, str]] = None,
++        timeout: int | None = None,
++        metric_kwargs: dict | None = None,
++        experiment_name: str | None = None,
++        run_name: str | None = None,
++        tags: dict[str, str] | None = None,
+         balance_classes: bool = True,
++        skops_trusted_types: list[str] | None = None,
+     ) -> None:
+         """
+         Executes the full pipeline.
+@@ -260,6 +269,5 @@ def run_pipeline(
+             #            metrics=validation_metrics,
+             experiment_name=experiment_name,
+             run_name=run_name,
++            skops_trusted_types=skops_trusted_types,
+         )
+-
+-        return None
+diff --git a/pyquantflow/model/training.py b/pyquantflow/model/training.py
+index 07af0e5..2291fda 100644
+--- a/pyquantflow/model/training.py
++++ b/pyquantflow/model/training.py
+@@ -1,9 +1,11 @@
++from collections.abc import Callable
++from typing import Any
++
++import numpy as np
+ import optuna
+ import pandas as pd
+-import numpy as np
+-from typing import Callable, Any, Optional, Union
+-from sklearn.model_selection import BaseCrossValidator
+ from sklearn.metrics import f1_score
++from sklearn.model_selection import BaseCrossValidator
+
+
+ class HyperparameterOptimiser:
+@@ -17,7 +19,7 @@ def __init__(
+         study_name: str,
+         storage_uri: str = None,
+         direction: str = "maximize",
+-        sampler: Optional[optuna.samplers.BaseSampler] = None,
++        sampler: optuna.samplers.BaseSampler | None = None,
+     ):
+         """
+         Args:
+@@ -42,16 +44,16 @@ def __init__(
+     def run(
+         self,
+         X: pd.DataFrame,
+-        y: Union[pd.Series, np.ndarray, pd.DataFrame],
++        y: pd.Series | np.ndarray | pd.DataFrame,
+         features: list[str],
+         model_factory: Callable[[optuna.Trial], Any],
+         cv: BaseCrossValidator,
+-        weight_col: Optional[str] = None,
+-        t1_col: Optional[str] = None,
++        weight_col: str | None = None,
++        t1_col: str | None = None,
+         metric: Callable = f1_score,
+         n_trials: int = 50,
+-        timeout: Optional[int] = None,
+-        metric_kwargs: Optional[dict] = None,
++        timeout: int | None = None,
++        metric_kwargs: dict | None = None,
+         balance_classes: bool = True,
+     ) -> optuna.Study:
+         """
+diff --git a/pyquantflow/portfolio/strategylab.py b/pyquantflow/portfolio/strategylab.py
+index e19409a..edbfe62 100644
+--- a/pyquantflow/portfolio/strategylab.py
++++ b/pyquantflow/portfolio/strategylab.py
+@@ -1,18 +1,17 @@
+ import logging
++from collections.abc import Callable
++from typing import Any
+
+-import pandas as pd
+ import numpy as np
+-
+-from sklearn.model_selection import GridSearchCV
+-
+-from skfolio import Population, RatioMeasure, RiskMeasure, PerfMeasure
+-from typing import Any, Callable, Dict, Optional, Union
++import pandas as pd
++from skfolio import PerfMeasure, Population, RatioMeasure, RiskMeasure
+ from skfolio.model_selection import (
+-    cross_val_predict,
+-    WalkForward,
+     CombinatorialPurgedCV,
+     MultipleRandomizedCV,
++    WalkForward,
++    cross_val_predict,
+ )
++from sklearn.model_selection import GridSearchCV
+
+ logger = logging.getLogger(__name__)
+
+@@ -25,7 +24,7 @@ class StrategyLab:
+     hyperparameter search, cross-validation, and robustness testing.
+     """
+
+-    def __init__(self, returns: pd.DataFrame, strategy_dict: Dict[str, Dict[str, Any]]):
++    def __init__(self, returns: pd.DataFrame, strategy_dict: dict[str, dict[str, Any]]):
+         """
+         Initialize the StrategyLab.
+
+@@ -36,11 +35,11 @@ def __init__(self, returns: pd.DataFrame, strategy_dict: Dict[str, Dict[str, Any
+         """
+         self.returns = returns
+         self.strategy_dict = strategy_dict
+-        self.best_estimators: Dict[str, Any] = {}
++        self.best_estimators: dict[str, Any] = {}
+         self.cv = WalkForward(train_size=126, test_size=63)
+
+     def search_strategy_hyperparameters(
+-        self, scoring: Union[str, Callable], cv: Optional[Any] = None
++        self, scoring: str | Callable, cv: Any | None = None
+     ) -> None:
+         """
+         Perform grid search to find the best hyperparameters for each strategy.
+@@ -69,7 +68,7 @@ def search_strategy_hyperparameters(
+             grid_search.fit(self.returns)
+             self.best_estimators[name] = grid_search.best_estimator_
+
+-    def simulate_journey(self, cv: Optional[Any] = None) -> Population:
++    def simulate_journey(self, cv: Any | None = None) -> Population:
+         """
+         Simulate the portfolio journey using WalkForward cross-validation.
+
+@@ -95,7 +94,7 @@ def simulate_journey(self, cv: Optional[Any] = None) -> Population:
+         return Population(final_portfolios)
+
+     def get_journey_with_frontier(
+-        self, strategy_name: str, cv: Optional[Any] = None
++        self, strategy_name: str, cv: Any | None = None
+     ) -> None:
+         """
+         Manually runs WalkForward to capture the 'Moving Frontier'
+@@ -186,10 +185,10 @@ def evaluate_robustness_combinatorial(
+
+     def evaluate_robustness_randomised(
+         self,
+-        cv: Optional[WalkForward] = None,
++        cv: WalkForward | None = None,
+         n_subsamples: int = 100,
+         asset_subset_size: int = 10,
+-        window_size: Optional[int] = None,
++        window_size: int | None = None,
+     ) -> Population:
+         """
+         Evaluate strategy robustness using Multiple Randomised Cross-Validation.
+diff --git a/tests/stocks.db b/tests/stocks.db
+index 493f844..af363c4 100644
+Binary files a/tests/stocks.db and b/tests/stocks.db differ
+diff --git a/tests/test_assetorganiser_coverage.py b/tests/test_assetorganiser_coverage.py
+index fc64769..ad656ac 100644
+--- a/tests/test_assetorganiser_coverage.py
++++ b/tests/test_assetorganiser_coverage.py
+@@ -1,10 +1,12 @@
++import os
+ import unittest
+-import pandas as pd
++
+ import numpy as np
+-import os
++import pandas as pd
++from sklearn.tree import DecisionTreeClassifier
++
+ from pyquantflow.data.assetorganiser import AssetOrganiser
+ from pyquantflow.data.database import DatabaseManager
+-from sklearn.tree import DecisionTreeClassifier
+
+
+ class MockLabelFactory:
+diff --git a/tests/test_assetorganiser_training.py b/tests/test_assetorganiser_training.py
+index d4c93fc..a5caead 100644
+--- a/tests/test_assetorganiser_training.py
++++ b/tests/test_assetorganiser_training.py
+@@ -1,13 +1,15 @@
+ import unittest
+-import pandas as pd
++
+ import numpy as np
+-from pyquantflow.data.assetorganiser import AssetOrganiser
+-from pyquantflow.model.manager import ClassifierEngine
+-from pyquantflow.model.training import HyperparameterOptimiser
++import pandas as pd
+ from sklearn.model_selection import KFold
+ from sklearn.pipeline import Pipeline
+ from sklearn.tree import DecisionTreeClassifier
+
++from pyquantflow.data.assetorganiser import AssetOrganiser
++from pyquantflow.model.manager import ClassifierEngine
++from pyquantflow.model.training import HyperparameterOptimiser
++
+
+ class MockEstimator:
+     """A mock estimator to catch fit parameters."""
+@@ -31,6 +33,7 @@ def predict_proba(self, X):
+ class TestDataHierarchyIntegration(unittest.TestCase):
+     def setUp(self):
+         import os
++
+         from pyquantflow.data.database import DatabaseManager
+
+         self.data_map = {}
+@@ -132,6 +135,7 @@ def mock_factory(trial):
+ class TestAssetOrganiserFlexibility(unittest.TestCase):
+     def setUp(self):
+         import os
++
+         from pyquantflow.data.database import DatabaseManager
+
+         self.data_map = {}
+diff --git a/tests/test_backtest_database.py b/tests/test_backtest_database.py
+index 9d6f85d..5b5d505 100644
+--- a/tests/test_backtest_database.py
++++ b/tests/test_backtest_database.py
+@@ -1,5 +1,5 @@
+-import unittest
+ import json
++import unittest
+ from unittest.mock import patch
+
+ from pyquantflow.backtesting.backtest_database import BacktestDatabaseManager
+@@ -81,6 +81,17 @@ def test_save_result_serialization_error(self, mock_logger, mock_dumps):
+         count = cursor.fetchone()[0]
+         self.assertEqual(count, 0)
+
++    def test_context_manager(self):
++        """Test context manager and close method."""
++        with BacktestDatabaseManager(":memory:") as db:
++            db.create_tables()
++            # Verify we can execute something
++            db.conn.execute("SELECT 1")
++
++        # Verify connection is closed
++        with self.assertRaises(Exception):
++            db.conn.execute("SELECT 1")
++
+
+ if __name__ == "__main__":
+     unittest.main()
+diff --git a/tests/test_backtesting.py b/tests/test_backtesting.py
+index 94257ac..1bfee6b 100644
+--- a/tests/test_backtesting.py
++++ b/tests/test_backtesting.py
+@@ -1,13 +1,14 @@
++import json
+ import logging
+-
+-import unittest
+ import os
+ import sqlite3
+-import json
++import unittest
++
+ import pandas as pd
++
+ from pyquantflow.backtesting.batchbacktest import BatchBacktester
+-from pyquantflow.strategies.example_strategy import SmaCross
+ from pyquantflow.data.database import DatabaseManager
++from pyquantflow.strategies.example_strategy import SmaCross
+
+ logger = logging.getLogger(__name__)
+
+@@ -81,7 +82,7 @@ def test_run_batch_backtest_and_verify_results(self):
+         self.assertIn("average_metrics", self.backtester.results)
+
+         # Verify individual results
+-        for ticker in data_map.keys():
++        for ticker in data_map:
+             self.assertIn(ticker, self.backtester.results["individual_results"])
+             stats = self.backtester.results["individual_results"][ticker]
+
+@@ -121,7 +122,7 @@ def test_run_batch_backtest_and_verify_results(self):
+         self.assertTrue(batch_name.endswith(SmaCross.__name__))
+
+         # 6. Verify Database Storage after saving
+-        for ticker in data_map.keys():
++        for ticker in data_map:
+             cursor.execute("SELECT * FROM backtest_results WHERE ticker = ?", (ticker,))
+             row = cursor.fetchone()
+             self.assertIsNotNone(row, f"No results found in database for {ticker}")
+diff --git a/tests/test_batchbacktest.py b/tests/test_batchbacktest.py
+index e74e9da..b18c116 100644
+--- a/tests/test_batchbacktest.py
++++ b/tests/test_batchbacktest.py
+@@ -1,10 +1,12 @@
+-import pytest
+-import pandas as pd
++from unittest.mock import MagicMock, patch
++
+ import numpy as np
+-from unittest.mock import patch, MagicMock
++import pandas as pd
++import pytest
++
+ from pyquantflow.backtesting.batchbacktest import BatchBacktester
+-from pyquantflow.strategies.example_strategy import SmaCross
+ from pyquantflow.data.assetorganiser import AssetOrganiser
++from pyquantflow.strategies.example_strategy import SmaCross
+
+
+ @pytest.fixture
+diff --git a/tests/test_classifier.py b/tests/test_classifier.py
+index 57dee5b..a6efd09 100644
+--- a/tests/test_classifier.py
++++ b/tests/test_classifier.py
+@@ -1,15 +1,16 @@
++import os
+ import unittest
++
+ import numpy as np
+ import pandas as pd
+-import os
+ from sklearn.ensemble import RandomForestClassifier
+ from sklearn.linear_model import LogisticRegression
+ from sklearn.model_selection import KFold
+
+ from pyquantflow.data.database import DatabaseManager
+ from pyquantflow.model.classifier import (
+-    PrimarySecondaryClassifier,
+     IchimokuBaselineClassifier,
++    PrimarySecondaryClassifier,
+ )
+
+
+diff --git a/tests/test_cross_validation.py b/tests/test_cross_validation.py
+index 4063686..64ea858 100644
+--- a/tests/test_cross_validation.py
++++ b/tests/test_cross_validation.py
+@@ -3,7 +3,8 @@
+
+ import numpy as np
+ import pandas as pd
+-from pyquantflow.model.cross_validation import PurgedKFoldCV, CombinatorialPurgedKFold
++
++from pyquantflow.model.cross_validation import CombinatorialPurgedKFold, PurgedKFoldCV
+
+
+ class TestPurgedKFoldCV(unittest.TestCase):
+diff --git a/tests/test_cusum.py b/tests/test_cusum.py
+index 427fdfc..551eb19 100644
+--- a/tests/test_cusum.py
++++ b/tests/test_cusum.py
+@@ -1,13 +1,16 @@
+ import unittest
++
+ import numpy as np
+ import pandas as pd
+-from pyquantflow.data.labels import get_cusum_events, calibrate_cusum_alpha
++
+ from pyquantflow.data.assetorganiser import AssetOrganiser
++from pyquantflow.data.labels import calibrate_cusum_alpha, get_cusum_events
+
+
+ class TestCUSUMFilter(unittest.TestCase):
+     def setUp(self):
+         import os
++
+         from pyquantflow.data.database import DatabaseManager
+
+         source_db_path = os.path.join(os.path.dirname(__file__), "stocks.db")
+@@ -161,6 +164,7 @@ def test_calibrate_cusum_alpha_budget_no_target_raises(self):
+ class TestAssetOrganiserDownsampling(unittest.TestCase):
+     def setUp(self):
+         import os
++
+         from pyquantflow.data.database import DatabaseManager
+
+         self.data_map = {}
+diff --git a/tests/test_data_additions.py b/tests/test_data_additions.py
+index 0be7daf..2fbabc8 100644
+--- a/tests/test_data_additions.py
++++ b/tests/test_data_additions.py
+@@ -1,25 +1,26 @@
++import os
+ import unittest
++from unittest.mock import patch
++
+ import numpy as np
+ import pandas as pd
+-from unittest.mock import patch
++
++from pyquantflow.data.database import DatabaseManager
+ from pyquantflow.data.features.fractional_differentiation import frac_diff_ffd
++from pyquantflow.data.features.indicator import ICHIMOKU
++from pyquantflow.data.features.sadf import get_sadf_jax as gsadf_values
+ from pyquantflow.data.labels.trend_scanning import trend_scanning
+ from pyquantflow.data.labels.triple_barrier import (
+     apply_triple_barrier as triple_barrier_labels,
+ )
+-from pyquantflow.data.features.sadf import get_sadf_jax as gsadf_values
+-from pyquantflow.data.features.indicator import ICHIMOKU
+-from pyquantflow.data.utils import pipe_indicator
+-from pyquantflow.data.quarterly_pull import fetch_quarterly_data, merge_last_hour
++from pyquantflow.data.quarterly_pull import fetch_quarterly_data
+ from pyquantflow.data.sk_transformers import (
+     FractionalDiffTransformer,
+-    TrendScanningTransformer,
+     GSADFTransformer,
++    TrendScanningTransformer,
+     TripleBarrierLabeler,
+ )
+-
+-import os
+-from pyquantflow.data.database import DatabaseManager
++from pyquantflow.data.utils import pipe_indicator
+
+
+ class TestDataAdditions(unittest.TestCase):
+@@ -260,55 +261,6 @@ def test_fetch_quarterly_data_exception(self, mock_download):
+         self.assertIsInstance(result, pd.DataFrame)
+         self.assertTrue(result.empty)
+
+-    def test_merge_last_hour(self):
+-        """Test merge_last_hour logic."""
+-        # Create a DF with hourly data for a single day
+-        # 10:00, 11:00 ... 15:00, 16:00 (last hour)
+-        # We need at least 2 rows
+-        dates = pd.date_range("2023-01-01 15:00", periods=2, freq="h")
+-        df = pd.DataFrame(
+-            {
+-                "High": [100, 102],
+-                "Low": [90, 95],
+-                "Close": [95, 98],
+-                "Volume": [1000, 500],
+-            },
+-            index=dates,
+-        )
+-
+-        merged = merge_last_hour(df)
+-
+-        # Should have 1 row now
+-        self.assertEqual(len(merged), 1)
+-        # Check merged values
+-        # High = max(100, 102) = 102
+-        self.assertEqual(merged.iloc[0]["High"], 102)
+-        # Low = min(90, 95) = 90
+-        self.assertEqual(merged.iloc[0]["Low"], 90)
+-        # Close = last close = 98
+-        self.assertEqual(merged.iloc[0]["Close"], 98)
+-        # Volume = sum(1000, 500) = 1500
+-        self.assertEqual(merged.iloc[0]["Volume"], 1500)
+-
+-    def test_merge_last_hour_fewer_than_2_elements(self):
+-        """Test merge_last_hour with a day having fewer than 2 elements."""
+-        dates = pd.date_range("2023-01-01 15:00", periods=1, freq="h")
+-        df = pd.DataFrame(
+-            {
+-                "High": [100],
+-                "Low": [90],
+-                "Close": [95],
+-                "Volume": [1000],
+-            },
+-            index=dates,
+-        )
+-
+-        merged = merge_last_hour(df)
+-
+-        # Should remain unchanged
+-        self.assertEqual(len(merged), 1)
+-        self.assertEqual(merged.iloc[0]["High"], 100)
+-
+
+ if __name__ == "__main__":
+     unittest.main()
+diff --git a/tests/test_database.py b/tests/test_database.py
+index 2a52529..41d77f5 100644
+--- a/tests/test_database.py
++++ b/tests/test_database.py
+@@ -1,6 +1,8 @@
+ import unittest
+ from unittest.mock import patch
++
+ import pandas as pd
++
+ from pyquantflow.data.database import DatabaseManager
+
+
+@@ -258,6 +260,58 @@ def test_get_data_not_found(self):
+         df = self.db.get_data("UNKNOWN.AX")
+         self.assertTrue(df.empty)
+
++    def test_context_manager(self):
++        """Test context manager and close method."""
++        with DatabaseManager(":memory:") as db:
++            db.create_tables()
++            # Verify we can execute something
++            db.conn.execute("SELECT 1")
++
++        # Verify connection is closed
++        with self.assertRaises(Exception):
++            db.conn.execute("SELECT 1")
++
++    def test_insert_duplicate_row(self):
++        """Test that UNIQUE constraint and INSERT OR IGNORE prevent duplicate data."""
++        # Insert a ticker first
++        cursor = self.db.conn.cursor()
++        cursor.execute(
++            "INSERT INTO tickers (ticker, interval, last_updated) VALUES (?, ?, ?)",
++            ("DUPLICATE.AX", "1d", "2023-01-01"),
++        )
++        ticker_id = cursor.lastrowid
++        self.db.conn.commit()
++
++        dates = pd.date_range(
++            start="2023-01-04", periods=1, freq="D", tz="Australia/Sydney"
++        )
++        mock_df = pd.DataFrame(
++            {
++                "Open": [1.0],
++                "High": [1.5],
++                "Low": [0.5],
++                "Close": [1.2],
++                "Volume": [100],
++            },
++            index=dates,
++        )
++        mock_df.index.name = "Datetime"
++
++        # Insert first time
++        self.db._insert_price_data(ticker_id, mock_df)
++        self.db.conn.commit()
++
++        # Insert second time (duplicate)
++        self.db._insert_price_data(ticker_id, mock_df)
++        self.db.conn.commit()
++
++        # Check total records
++        cursor.execute(
++            "SELECT COUNT(*) FROM price_data WHERE ticker_id = ?", (ticker_id,)
++        )
++        count = cursor.fetchone()[0]
++        self.assertEqual(count, 1)
++
+
+ if __name__ == "__main__":
+     unittest.main()
+diff --git a/tests/test_diagnostics.py b/tests/test_diagnostics.py
+index 56b4176..05e14a0 100644
+--- a/tests/test_diagnostics.py
++++ b/tests/test_diagnostics.py
+@@ -1,34 +1,33 @@
+ import unittest
+ from unittest.mock import MagicMock, patch
++
+ import numpy as np
+ import pandas as pd
+ import plotly.graph_objects as go
+
++from pyquantflow.data.assetorganiser import AssetOrganiser
++from pyquantflow.data.features.fractional_differentiation import frac_diff_ffd
++from pyquantflow.data.sk_transformers import GSADFTransformer
+ from pyquantflow.diagnostics import (
+-    FigureFactory,
+     DiagnosticResult,
+-    plot_cusum_events,
+-    plot_multi_asset_events,
+-    plot_sample_concurrency,
++    FigureFactory,
+     plot_barrier_trajectories,
++    plot_cpcv_paths,
++    plot_cusum_events,
++    plot_cv_splits,
+     plot_downsampling_shift,
+-    plot_stationarity_profile,
+     plot_feature_clusters,
+-    plot_cv_splits,
+     plot_fold_feature_drift,
+     plot_meta_label_entropy,
+     plot_meta_label_precision_recall,
++    plot_multi_asset_events,
+     plot_sadf_regimes,
+-    plot_cpcv_paths,
++    plot_sample_concurrency,
++    plot_stationarity_profile,
+ )
+-
+-from pyquantflow.data.assetorganiser import AssetOrganiser
+-from pyquantflow.data.features.fractional_differentiation import frac_diff_ffd
+-from pyquantflow.model.feature_evaluation import StationaryTransformer, FeatureEvaluator
+-from pyquantflow.model.cross_validation import PurgedKFoldCV, CombinatorialPurgedKFold
+ from pyquantflow.model.classifier import PrimarySecondaryClassifier
+-from pyquantflow.data.sk_transformers import GSADFTransformer
+-
++from pyquantflow.model.cross_validation import CombinatorialPurgedKFold, PurgedKFoldCV
++from pyquantflow.model.feature_evaluation import FeatureEvaluator, StationaryTransformer
+
+ # ==============================================================================
+ # Synthetic Data Fixtures
+@@ -693,8 +692,8 @@ def test_provided_linkage_matrix(self):
+             index=["f_1_0", "f_1_1", "f_2_0", "f_2_1"],
+         )
+         dist = np.sqrt(0.5 * (1 - corr_matrix.clip(-1, 1)))
+-        import scipy.spatial.distance as ssd
+         import scipy.cluster.hierarchy as sch
++        import scipy.spatial.distance as ssd
+
+         condensed = ssd.squareform(dist.values, checks=False)
+         linkage_matrix = sch.linkage(condensed, method="ward")
+diff --git a/tests/test_dualgatepipeline.py b/tests/test_dualgatepipeline.py
+index 0c3bf93..3cfe849 100644
+--- a/tests/test_dualgatepipeline.py
++++ b/tests/test_dualgatepipeline.py
+@@ -1,12 +1,13 @@
+ import unittest
+-import pandas as pd
++
+ import numpy as np
++import pandas as pd
+ from sklearn.model_selection import StratifiedKFold
+
+ from pyquantflow.data.assetorganiser import AssetOrganiser
+-from pyquantflow.model.feature_evaluation import FeatureEvaluator
+ from pyquantflow.data.features.dualgatepipeline import DualGatePipelineFactory
+ from pyquantflow.data.labels.factory import TrendScanningLabelFactory
++from pyquantflow.model.feature_evaluation import FeatureEvaluator
+
+
+ class TestDualGatePipeline(unittest.TestCase):
+@@ -14,6 +15,7 @@ class TestDualGatePipeline(unittest.TestCase):
+
+     def setUp(self):
+         import os
++
+         from pyquantflow.data.database import DatabaseManager
+
+         self.clean_daily_map = {}
+@@ -201,6 +203,14 @@ def test_dual_gate_pipeline_with_precomputed_indicators(self):
+         self.assertIn("ffd_close", ao.multi_asset.columns)
+         self.assertIn("sadf_close", ao.multi_asset.columns)
+
++    def test_dualgatepipeline_default_target_labels(self):
++        """Test DualGatePipelineFactory.execute default target_labels parameter."""
++        import inspect
++
++        factory = DualGatePipelineFactory()
++        sig = inspect.signature(factory.execute)
++        self.assertIsNone(sig.parameters["target_labels"].default)
++
+
+ if __name__ == "__main__":
+     unittest.main()
+diff --git a/tests/test_example_strategy.py b/tests/test_example_strategy.py
+index be7143c..5871cdb 100644
+--- a/tests/test_example_strategy.py
++++ b/tests/test_example_strategy.py
+@@ -1,5 +1,6 @@
+ import unittest
+-from unittest.mock import MagicMock, patch, PropertyMock
++from unittest.mock import MagicMock, PropertyMock, patch
++
+ from pyquantflow.strategies.example_strategy import SmaCross
+
+
+diff --git a/tests/test_feature_evaluation.py b/tests/test_feature_evaluation.py
+index d972f07..cc83c04 100644
+--- a/tests/test_feature_evaluation.py
++++ b/tests/test_feature_evaluation.py
+@@ -1,19 +1,20 @@
+ import unittest
+ from unittest.mock import patch
+-import pandas as pd
++
+ import numpy as np
++import pandas as pd
++from sklearn.linear_model import LogisticRegression
++from sklearn.metrics import accuracy_score, brier_score_loss, f1_score, log_loss
+ from sklearn.model_selection import KFold
+ from sklearn.pipeline import Pipeline
+ from sklearn.preprocessing import StandardScaler
+ from sklearn.tree import DecisionTreeClassifier
+-from sklearn.linear_model import LogisticRegression
+-from sklearn.metrics import log_loss, brier_score_loss, f1_score, accuracy_score
+
+ from pyquantflow.model.feature_evaluation import (
+-    _adf_test_stat,
+-    _adf_p_value,
+-    StationaryTransformer,
+     FeatureEvaluator,
++    StationaryTransformer,
++    _adf_p_value,
++    _adf_test_stat,
+ )
+
+
+diff --git a/tests/test_fractional_differentiation.py b/tests/test_fractional_differentiation.py
+index 5481363..95cb9a9 100644
+--- a/tests/test_fractional_differentiation.py
++++ b/tests/test_fractional_differentiation.py
+@@ -1,14 +1,16 @@
++import os
+ import unittest
+ from unittest.mock import patch
++
+ import numpy as np
+ import pandas as pd
+-import os
++
+ from pyquantflow.data.database import DatabaseManager
+ from pyquantflow.data.features.fractional_differentiation import (
+-    frac_diff_ffd,
+-    adf_screened_ffd,
+-    _adf_test_stat,
+     _adf_p_value,
++    _adf_test_stat,
++    adf_screened_ffd,
++    frac_diff_ffd,
+ )
+
+
+@@ -203,6 +205,19 @@ def test_adf_screened_ffd_fallback(self):
+         expected = frac_diff_ffd(explosive_series, d=1.0)
+         np.testing.assert_array_almost_equal(result.values, expected.values)
+
++    def test_adf_test_stat_rank_deficient_singular(self):
++        """Test that rank-deficient design matrix X immediately returns NaN."""
++        constant_series = pd.Series([5.0, 5.0, 5.0, 5.0, 5.0, 5.0])
++        t_stat = _adf_test_stat(constant_series, lags=1)
++        self.assertTrue(np.isnan(t_stat))
++
++    def test_adf_screened_ffd_default_d_grid(self):
++        """Test adf_screened_ffd operates correctly with default d_grid=None."""
++        series = self.ohlc_data["Close"]
++        result, d_star = adf_screened_ffd(series)
++        self.assertIsInstance(result, pd.Series)
++        self.assertGreaterEqual(d_star, 0.25)
++
+
+ if __name__ == "__main__":
+     unittest.main()
+diff --git a/tests/test_indicators_alpha.py b/tests/test_indicators_alpha.py
+index 399c16c..88ab63a 100644
+--- a/tests/test_indicators_alpha.py
++++ b/tests/test_indicators_alpha.py
+@@ -1,18 +1,19 @@
+ import unittest
++
+ import numpy as np
+ import pandas as pd
+
+ from pyquantflow.data.features.fractional_differentiation import (
+-    frac_diff_ffd,
+-    adf_screened_ffd,
+-    _adf_test_stat,
+     _adf_p_value,
++    _adf_test_stat,
++    adf_screened_ffd,
++    frac_diff_ffd,
+ )
+ from pyquantflow.data.features.indicator import (
++    EMA_RIBBON,
+     FRACTIONAL_DIFF,
+-    SADF_JAX,
+     ROGERSATCHELL,
+-    EMA_RIBBON,
++    SADF_JAX,
+ )
+
+
+diff --git a/tests/test_labels.py b/tests/test_labels.py
+index d642cec..fa309ed 100644
+--- a/tests/test_labels.py
++++ b/tests/test_labels.py
+@@ -1,14 +1,17 @@
+ import unittest
+-import pandas as pd
++
+ import numpy as np
+-from pyquantflow.data.labels.triple_barrier import apply_triple_barrier
+-from pyquantflow.data.labels.sample_weights import get_sample_weights
++import pandas as pd
++
+ from pyquantflow.data.labels import TrendScanningLabelFactory
++from pyquantflow.data.labels.sample_weights import get_sample_weights
++from pyquantflow.data.labels.triple_barrier import apply_triple_barrier
+
+
+ class TestLabelsAndWeights(unittest.TestCase):
+     def setUp(self):
+         import os
++
+         from pyquantflow.data.database import DatabaseManager
+
+         source_db_path = os.path.join(os.path.dirname(__file__), "stocks.db")
+@@ -86,6 +89,17 @@ def test_trend_scanning_label_factory(self):
+         valid_custom = labels_custom["label"].dropna()
+         self.assertTrue(set(valid_custom.unique()).issubset({0.0, 1.0}))
+
++    def test_trend_scanning_label_factory_defaults(self):
++        """Test default arguments and mutable default isolation."""
++        factory1 = TrendScanningLabelFactory()
++        self.assertEqual(factory1.windows, [5, 10, 20, 40, 80, 120])
++        self.assertEqual(factory1.bins, [-10.0, 12.0])
++
++        # Mutate instance attribute and verify new instance is unaffected
++        factory1.windows.append(999)
++        factory2 = TrendScanningLabelFactory()
++        self.assertEqual(factory2.windows, [5, 10, 20, 40, 80, 120])
++
+     def test_asset_organiser_label_dropping(self):
+         # Verify that AssetOrganiser drops rows with NaN/NaT values in label-related columns
+         from pyquantflow.data.assetorganiser import AssetOrganiser
+@@ -191,7 +205,7 @@ def test_sample_weights_returns_utc_index(self):
+             weights.index.tz,
+             msg="weights.index must be timezone-aware (UTC).",
+         )
+-        utc_tz = datetime.timezone.utc
++        utc_tz = datetime.UTC
+         # Accept both pytz.UTC and datetime.timezone.utc representations
+         self.assertTrue(
+             str(weights.index.tz) in ("UTC", "utc")
+diff --git a/tests/test_manager.py b/tests/test_manager.py
+index 6b53cd5..e10cd15 100644
+--- a/tests/test_manager.py
++++ b/tests/test_manager.py
+@@ -1,6 +1,6 @@
+-import unittest
+-import sys
+ import importlib
++import sys
++import unittest
+
+ from pyquantflow.model.manager import BaseModelEngine
+
+diff --git a/tests/test_pipelinedataorganiser.py b/tests/test_pipelinedataorganiser.py
+index 69ad0ea..929e54f 100644
+--- a/tests/test_pipelinedataorganiser.py
++++ b/tests/test_pipelinedataorganiser.py
+@@ -1,6 +1,8 @@
+ import unittest
+-import pandas as pd
++
+ import numpy as np
++import pandas as pd
++
+ from pyquantflow.data.pipelinedataorganiser import PipelineDataOrganiser
+
+
+diff --git a/tests/test_quarterly_pull.py b/tests/test_quarterly_pull.py
+index a036214..526f28f 100644
+--- a/tests/test_quarterly_pull.py
++++ b/tests/test_quarterly_pull.py
+@@ -1,98 +1,12 @@
+ import unittest
+ from unittest.mock import patch
++
+ import pandas as pd
+
+-from pyquantflow.data.quarterly_pull import merge_last_hour, fetch_quarterly_data
++from pyquantflow.data.quarterly_pull import fetch_quarterly_data
+
+
+ class TestQuarterlyPull(unittest.TestCase):
+-    def test_merge_last_hour_basic(self):
+-        """Test merging two hours on the same day."""
+-        dates = pd.date_range("2023-01-01 10:00:00", periods=2, freq="h")
+-        df = pd.DataFrame(
+-            {
+-                "High": [10.0, 12.0],
+-                "Low": [8.0, 9.0],
+-                "Close": [11.0, 11.5],
+-                "Volume": [100, 200],
+-            },
+-            index=dates,
+-        )
+-
+-        merged = merge_last_hour(df)
+-
+-        self.assertEqual(len(merged), 1)
+-        self.assertEqual(merged.index[0], pd.Timestamp("2023-01-01 10:00:00"))
+-        self.assertEqual(merged.at[merged.index[0], "High"], 12.0)  # max(10, 12)
+-        self.assertEqual(merged.at[merged.index[0], "Low"], 8.0)  # min(8, 9)
+-        self.assertEqual(merged.at[merged.index[0], "Close"], 11.5)  # last close
+-        self.assertEqual(merged.at[merged.index[0], "Volume"], 300)  # sum(100, 200)
+-
+-    def test_merge_last_hour_multiple_days(self):
+-        """Test merging across multiple days."""
+-        dates = pd.DatetimeIndex(
+-            [
+-                "2023-01-01 10:00:00",
+-                "2023-01-01 11:00:00",
+-                "2023-01-02 10:00:00",
+-                "2023-01-02 11:00:00",
+-                "2023-01-02 12:00:00",
+-            ]
+-        )
+-        df = pd.DataFrame(
+-            {
+-                "High": [10.0, 12.0, 15.0, 16.0, 14.0],
+-                "Low": [8.0, 9.0, 13.0, 12.0, 11.0],
+-                "Close": [11.0, 11.5, 14.5, 13.5, 12.5],
+-                "Volume": [100, 200, 300, 400, 500],
+-            },
+-            index=dates,
+-        )
+-
+-        merged = merge_last_hour(df)
+-
+-        self.assertEqual(len(merged), 3)  # 1 from day 1, 2 from day 2
+-
+-        # Check day 1
+-        day1_idx = pd.Timestamp("2023-01-01 10:00:00")
+-        self.assertEqual(merged.at[day1_idx, "High"], 12.0)
+-        self.assertEqual(merged.at[day1_idx, "Low"], 8.0)
+-        self.assertEqual(merged.at[day1_idx, "Close"], 11.5)
+-        self.assertEqual(merged.at[day1_idx, "Volume"], 300)
+-
+-        # Check day 2
+-        day2_idx1 = pd.Timestamp("2023-01-02 10:00:00")
+-        day2_idx2 = pd.Timestamp("2023-01-02 11:00:00")  # 12:00 is merged into 11:00
+-
+-        self.assertEqual(merged.at[day2_idx1, "High"], 15.0)
+-        self.assertEqual(merged.at[day2_idx1, "Low"], 13.0)
+-        self.assertEqual(merged.at[day2_idx1, "Close"], 14.5)
+-        self.assertEqual(merged.at[day2_idx1, "Volume"], 300)
+-
+-        self.assertEqual(merged.at[day2_idx2, "High"], 16.0)  # max(16, 14)
+-        self.assertEqual(merged.at[day2_idx2, "Low"], 11.0)  # min(12, 11)
+-        self.assertEqual(merged.at[day2_idx2, "Close"], 12.5)  # last close
+-        self.assertEqual(merged.at[day2_idx2, "Volume"], 900)  # sum(400, 500)
+-
+-    def test_merge_last_hour_single_hour_day(self):
+-        """Test behavior when a day has only one hour."""
+-        dates = pd.date_range("2023-01-01 10:00:00", periods=1, freq="h")
+-        df = pd.DataFrame(
+-            {
+-                "High": [10.0],
+-                "Low": [8.0],
+-                "Close": [11.0],
+-                "Volume": [100],
+-            },
+-            index=dates,
+-        )
+-
+-        merged = merge_last_hour(df)
+-
+-        # Should be unchanged
+-        self.assertEqual(len(merged), 1)
+-        pd.testing.assert_frame_equal(df, merged)
+-
+     @patch("pyquantflow.data.quarterly_pull.yf.download")
+     def test_fetch_quarterly_data_success(self, mock_download):
+         """Test successful fetch and concatenation of quarterly data."""
+diff --git a/tests/test_strategylab.py b/tests/test_strategylab.py
+index 9b00ca0..3f32305 100644
+--- a/tests/test_strategylab.py
++++ b/tests/test_strategylab.py
+@@ -1,16 +1,16 @@
+ import logging
+ import os
+-
+ import unittest
+-from unittest.mock import patch, MagicMock
+-import pandas as pd
++from unittest.mock import MagicMock, patch
++
+ import numpy as np
+-from skfolio.optimization import EqualWeighted, MeanRisk
++import pandas as pd
+ from skfolio import Population, RatioMeasure
+ from skfolio.model_selection import WalkForward
++from skfolio.optimization import EqualWeighted, MeanRisk
+
+-from pyquantflow.portfolio.strategylab import StrategyLab
+ from pyquantflow.data.database import DatabaseManager
++from pyquantflow.portfolio.strategylab import StrategyLab
+
+ logger = logging.getLogger(__name__)
+
+diff --git a/tests/test_utils.py b/tests/test_utils.py
+index 27f3ea9..49132ca 100644
+--- a/tests/test_utils.py
++++ b/tests/test_utils.py
+@@ -1,4 +1,5 @@
+ import unittest
++
+ import pandas as pd
+
+ from pyquantflow.data.utils import (
