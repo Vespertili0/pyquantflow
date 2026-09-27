@@ -333,15 +333,19 @@ class TestDatabaseManager(unittest.TestCase):
 
         # Simulate yf.download returning UTC-indexed new data (one day later)
         new_rows = pd.DataFrame(
-            {"Open": [5.0], "High": [6.0], "Low": [4.0], "Close": [5.5], "Volume": [10]},
+            {
+                "Open": [5.0],
+                "High": [6.0],
+                "Low": [4.0],
+                "Close": [5.5],
+                "Volume": [10],
+            },
             index=pd.DatetimeIndex(["2023-01-04 00:00:00+00:00"]),
         )
         new_rows.index.name = "Datetime"
         mock_yf.return_value = new_rows
 
-        self.db._update_ticker_internal(
-            "TZ_UPDATE.AX", ticker_id, "1d", commit=True
-        )
+        self.db._update_ticker_internal("TZ_UPDATE.AX", ticker_id, "1d", commit=True)
 
         cursor.execute(
             "SELECT datetime FROM price_data WHERE ticker_id = ? ORDER BY datetime",

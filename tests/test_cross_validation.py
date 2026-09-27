@@ -63,8 +63,10 @@ class TestPurgedKFoldCV(unittest.TestCase):
         raising TypeError and without dropping any rows."""
         dates = pd.date_range("2020-01-01", periods=30, freq="B", tz="UTC")
         t1 = pd.Series(
-            [pd.NaT if i % 5 == 0 else dates[i] + pd.Timedelta(days=1)
-             for i in range(30)],
+            [
+                pd.NaT if i % 5 == 0 else dates[i] + pd.Timedelta(days=1)
+                for i in range(30)
+            ],
             index=dates,
         )
         X = pd.DataFrame({"feature": range(30)}, index=dates)
