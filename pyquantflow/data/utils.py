@@ -22,6 +22,7 @@ def pipe_indicator(
     Returns:
         pd.DataFrame: The dataframe with new indicator columns.
     """
+    df = df.copy()
 
     # 1. Prepare Data Inputs
     if isinstance(input_map, dict):
