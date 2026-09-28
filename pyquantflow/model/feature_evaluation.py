@@ -489,6 +489,10 @@ class ImportanceEvaluator:
             (e.g. ``f1_score``, ``accuracy_score``).
         """
         metric_kwargs = metric_kwargs or {}
+        if self.cv is None:
+            raise ValueError(
+                "A cross-validator 'cv' must be provided to evaluate feature importance."
+            )
         groupby_level = "ticker"
 
         # Combined ordered list: transformed features first, then raw pass-through
@@ -542,12 +546,8 @@ class ImportanceEvaluator:
             X = df_regime[all_features]
             y = df_regime[self.target_col]
 
-            mda_scores: dict[int, list[float]] = {
-                c_id: [] for c_id in feature_clusters.keys()
-            }
-            sfi_scores: dict[int, list[float]] = {
-                c_id: [] for c_id in feature_clusters.keys()
-            }
+            mda_scores: dict[int, list[float]] = {c_id: [] for c_id in feature_clusters}
+            sfi_scores: dict[int, list[float]] = {c_id: [] for c_id in feature_clusters}
 
             for step, (train_idx, val_idx) in enumerate(self.cv.split(df_regime, y)):
                 X_train = X.iloc[train_idx]
@@ -678,7 +678,7 @@ class ImportanceEvaluator:
             return pd.DataFrame()
 
         regime_dfs = []
-        for regime_id, inner_dict in results.items():
+        for inner_dict in results.values():
             sfi_df = inner_dict["SFI"]
             mda_df = inner_dict["MDA"]
 
@@ -843,13 +843,11 @@ class FeatureEvaluator:
             frames_to_concat.append(df[self.raw_features])
 
         # Merge back with targets and metadata
-        cols_to_keep = [self.target_col]
-        if self.weight_col:
-            cols_to_keep.append(self.weight_col)
-        if self.t1_col:
-            cols_to_keep.append(self.t1_col)
-
-        frames_to_concat.append(df[cols_to_keep])
+        cols_to_keep = [
+            c for c in [self.target_col, self.weight_col, self.t1_col] if c is not None
+        ]
+        if cols_to_keep:
+            frames_to_concat.append(df[cols_to_keep])
         df_out = pd.concat(frames_to_concat, axis=1)
 
         # We do NOT drop NaNs here. They are propagated to preserve panel integrity.

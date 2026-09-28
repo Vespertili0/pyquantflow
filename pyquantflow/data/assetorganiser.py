@@ -321,8 +321,7 @@ class LabelPipeline:
                 ticker_df, price_col=price_col
             )
 
-            if labels_df.index.name is None:
-                labels_df.index.name = "datetime"
+            labels_df.index.name = "datetime"
 
             labels_df["ticker"] = tk
             labels_df = labels_df.reset_index().set_index(["datetime", "ticker"])
@@ -367,6 +366,7 @@ class LabelPipeline:
             weights.name = self.weight_col
 
             weights_df = weights.to_frame()
+            weights_df.index.name = "datetime"
             weights_df["ticker"] = tk
             weights_df = weights_df.reset_index().set_index(["datetime", "ticker"])
             all_weights.append(weights_df)
@@ -498,6 +498,9 @@ class LabelPipeline:
         )
 
         new_columns = pd.concat([new_columns, proba_df], axis=1)
+        existing_cols = [c for c in new_columns.columns if c in multi_asset.columns]
+        if existing_cols:
+            multi_asset = multi_asset.drop(columns=existing_cols)
 
         multi_asset = pd.concat([multi_asset, new_columns], axis=1)
         if filter_prediction is not None:
