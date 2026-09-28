@@ -366,8 +366,7 @@ class AssetOrganiser:
         # Globally rescale weights so their mean is 1.0
         if weights_concat[self.weight_col].sum() > 0:
             weights_concat[self.weight_col] = (
-                weights_concat[self.weight_col]
-                / weights_concat[self.weight_col].mean()
+                weights_concat[self.weight_col] / weights_concat[self.weight_col].mean()
             )
 
         # Clip the extreme tails to prevent overfitting and zero-weights

@@ -132,7 +132,9 @@ class BatchBacktester:
             # Use AssetOrganiser
             multiasset_test_data = asset_organiser.multi_asset_test
             if multiasset_test_data is None:
-                logger.warning("AssetOrganiser has no test data. Call prepare_multi_asset_frame() first.")
+                logger.warning(
+                    "AssetOrganiser has no test data. Call prepare_multi_asset_frame() first."
+                )
                 self.results = {"individual_results": {}, "average_metrics": {}}
                 return self.results
             available_symbols = list(
