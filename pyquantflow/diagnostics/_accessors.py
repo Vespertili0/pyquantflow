@@ -235,8 +235,10 @@ register_diagnostics_accessor("diagnostics")(GSADFDiagnostics)
 # the old flat API and the new accessor namespace work simultaneously.
 # ------------------------------------------------------------------
 
+
 def _st_plot_stationarity_profile(self, raw_series, col, max_lags=40):
     return self.diagnostics.plot_stationarity_profile(raw_series, col, max_lags)
+
 
 StationaryTransformer.plot_stationarity_profile = _st_plot_stationarity_profile
 
@@ -244,11 +246,13 @@ StationaryTransformer.plot_stationarity_profile = _st_plot_stationarity_profile
 def _fe_plot_feature_clusters(self, df, regime_id=None):
     return self.diagnostics.plot_feature_clusters(df, regime_id)
 
+
 FeatureEvaluator.plot_feature_clusters = _fe_plot_feature_clusters
 
 
 def _cv_plot_splits(self, X, y):
     return self.diagnostics.plot_splits(X, y)
+
 
 PurgedKFoldCV.plot_splits = _cv_plot_splits
 CombinatorialPurgedKFold.plot_splits = _cv_plot_splits
@@ -256,6 +260,7 @@ CombinatorialPurgedKFold.plot_splits = _cv_plot_splits
 
 def _psc_plot_meta_diagnostics(self, X, y_true):
     return self.diagnostics.plot_meta_diagnostics(X, y_true)
+
 
 PrimarySecondaryClassifier.plot_meta_diagnostics = _psc_plot_meta_diagnostics
 
@@ -266,5 +271,6 @@ def _gsadf_plot_sadf_regimes(
     return self.diagnostics.plot_sadf_regimes(
         price_series, sadf_series, critical_value, events
     )
+
 
 GSADFTransformer.plot_sadf_regimes = _gsadf_plot_sadf_regimes
