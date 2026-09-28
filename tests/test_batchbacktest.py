@@ -145,13 +145,10 @@ def test_run_batch_backtest_organiser(mock_run_single, backtester, sample_data):
     mock_run_single.return_value = {"Return [%]": 10.0}
 
     organiser = MagicMock()
-    multi_index = pd.MultiIndex.from_tuples(
-        [("2023-01-01", "SYM1"), ("2023-01-02", "SYM2")], names=["datetime", "ticker"]
-    )
-    organiser.get_transformed_multiasset_testdata.return_value = pd.DataFrame(
-        index=multi_index
-    )
-    organiser.get_transformed_test_ticker.return_value = sample_data
+    mock_df = MagicMock(spec=pd.DataFrame)
+    mock_df.index.get_level_values.return_value.unique.return_value = ["SYM1", "SYM2"]
+    mock_df.xs.return_value = sample_data
+    organiser.multi_asset_test = mock_df
 
     # Test "all"
     backtester.run_batch_backtest(SmaCross, asset_organiser=organiser, symbols="all")

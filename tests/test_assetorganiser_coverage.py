@@ -695,12 +695,11 @@ class TestAssetOrganiserNewBranches(unittest.TestCase):
     def test_apply_sample_weights_uses_default_weight_col_name(self):
         """
         When weight_col was not set at construction time,
-        apply_sample_weights should default the column name to 'weight'
-        and update self.weight_col accordingly.
+        the column name defaults to 'weight'.
         """
         org = self._make_organiser_with_labels()
-        # weight_col is None by default from _make_organiser
-        self.assertIsNone(org.weight_col)
+        # weight_col defaults to "weight" from _make_organiser
+        self.assertEqual(org.weight_col, "weight")
 
         org.apply_sample_weights()
 
