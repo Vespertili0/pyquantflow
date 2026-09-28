@@ -33,6 +33,11 @@ class PanelBuilder:
         """
         if multi_asset is None:
             return None, None
+        if (
+            not isinstance(multi_asset.index, pd.MultiIndex)
+            or "datetime" not in multi_asset.index.names
+        ):
+            return multi_asset, multi_asset
         datetime_vals = pd.to_datetime(
             multi_asset.index.get_level_values("datetime"), utc=True
         )
@@ -323,6 +328,9 @@ class LabelPipeline:
             labels_df = labels_df.reset_index().set_index(["datetime", "ticker"])
             all_labels.append(labels_df)
 
+        if not all_labels:
+            return multi_asset
+
         labels_concat = pd.concat(all_labels)
 
         drop_cols = [c for c in labels_concat.columns if c in multi_asset.columns]
@@ -362,6 +370,9 @@ class LabelPipeline:
             weights_df["ticker"] = tk
             weights_df = weights_df.reset_index().set_index(["datetime", "ticker"])
             all_weights.append(weights_df)
+
+        if not all_weights:
+            return multi_asset
 
         weights_concat = pd.concat(all_weights)
 
@@ -570,7 +581,7 @@ class AssetOrganiser:
 
         self.data_map: dict[str, pd.DataFrame] | None = data_map
         self.cutoff_date: str = cutoff_date
-        self.target_features: list[str] = target_features
+        self.target_features: list[str] = list(target_features)
         self._weight_col: str = weight_col or "weight"
         self._label_factory: BaseLabelFactory | None = label_factory
         self.cusum_events_map: dict[str, pd.DatetimeIndex] | None = None

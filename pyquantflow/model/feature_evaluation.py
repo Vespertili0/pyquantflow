@@ -1,5 +1,6 @@
 import warnings
 from collections.abc import Callable
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -52,9 +53,9 @@ class StationaryTransformer(BaseEstimator, TransformerMixin):
         self.rolling_z_window = rolling_z_window
         self.ffd_thres = ffd_thres
         self.z_mode = z_mode
-        self.optimal_d_ = {}
-        self.z_mean_ = {}
-        self.z_std_ = {}
+        self.optimal_d_: dict[str, float] = {}
+        self.z_mean_: dict[str, Any] = {}
+        self.z_std_: dict[str, Any] = {}
 
     def _fit_column(
         self,
@@ -424,7 +425,7 @@ class FeatureClusterer:
                 n_clusters = best_n
 
         labels = scipy.cluster.hierarchy.fcluster(Z, n_clusters, criterion="maxclust")
-        clusters = {}
+        clusters: dict[int, list[str | int]] = {}
         for i, lbl in enumerate(labels_list):
             if labels[i] not in clusters:
                 clusters[labels[i]] = []
@@ -442,8 +443,8 @@ class ImportanceEvaluator:
         self.target_col = target_col
         self.weight_col = weight_col
         self.t1_col = t1_col
-        self.importance_df = None
-        self.regime_clusters_ = None
+        self.importance_df: pd.DataFrame | None = None
+        self.regime_clusters_: dict[int, list[Any]] | None = None
 
     def evaluate_importance(
         self,
@@ -454,8 +455,8 @@ class ImportanceEvaluator:
         balance_classes: bool = True,
         greater_is_better: bool = True,
         needs_proba: bool = True,
-        features: list[str] = None,
-        raw_features: list[str] = None,
+        features: list[str] | None = None,
+        raw_features: list[str] | None = None,
     ) -> dict[int, dict[str, pd.DataFrame]]:
         """
         Runs the Macro-Regime Loop.
@@ -541,8 +542,12 @@ class ImportanceEvaluator:
             X = df_regime[all_features]
             y = df_regime[self.target_col]
 
-            mda_scores = {c_id: [] for c_id in feature_clusters.keys()}
-            sfi_scores = {c_id: [] for c_id in feature_clusters.keys()}
+            mda_scores: dict[int, list[float]] = {
+                c_id: [] for c_id in feature_clusters.keys()
+            }
+            sfi_scores: dict[int, list[float]] = {
+                c_id: [] for c_id in feature_clusters.keys()
+            }
 
             for step, (train_idx, val_idx) in enumerate(self.cv.split(df_regime, y)):
                 X_train = X.iloc[train_idx]
@@ -637,7 +642,7 @@ class ImportanceEvaluator:
                 sfi_agg.append(
                     {
                         "cluster_id": c_id,
-                        "features": ", ".join(cols),
+                        "features": ", ".join(str(c) for c in cols),
                         "sfi_mean": np.mean(sfi_scores[c_id]),
                         "sfi_std": np.std(sfi_scores[c_id]),
                     }
@@ -649,7 +654,7 @@ class ImportanceEvaluator:
                 mda_agg.append(
                     {
                         "cluster_id": c_id,
-                        "features": ", ".join(cols),
+                        "features": ", ".join(str(c) for c in cols),
                         "mda_mean": np.mean(mda_scores[c_id]),
                         "mda_std": np.std(mda_scores[c_id]),
                     }

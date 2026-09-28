@@ -137,9 +137,12 @@ class BatchBacktester:
                 )
                 self.results = {"individual_results": {}, "average_metrics": {}}
                 return self.results
-            available_symbols = list(
-                multiasset_test_data.index.get_level_values("ticker").unique()
-            )
+            try:
+                available_symbols = list(
+                    multiasset_test_data.index.get_level_values("ticker").unique()
+                )
+            except (KeyError, AttributeError):
+                available_symbols = []
 
             if symbols == "all":
                 target_symbols = available_symbols
@@ -159,11 +162,16 @@ class BatchBacktester:
         elif data is not None:
             # Direct data handling
             if isinstance(data, pd.DataFrame):
-                symbol = (
-                    symbols[0]
-                    if (isinstance(symbols, list) and len(symbols) > 0)
-                    else ("asset" if symbols == "all" else symbols)
-                )
+                if isinstance(symbols, str) and symbols != "all":
+                    symbol: str = symbols
+                elif (
+                    isinstance(symbols, list)
+                    and len(symbols) > 0
+                    and isinstance(symbols[0], str)
+                ):
+                    symbol = symbols[0]
+                else:
+                    symbol = "asset"
                 data_map[symbol] = data
             elif isinstance(data, dict):
                 data_map = data

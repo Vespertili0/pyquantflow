@@ -63,6 +63,10 @@ class AODiagnostics:
             raise AttributeError(
                 "cusum_events_map is None. Call downsample_to_cusum_events() first."
             )
+        if self._obj.multi_asset is None:
+            raise AttributeError(
+                "multi_asset is None. Call prepare_multi_asset_frame() first."
+            )
         return plot_multi_asset_events(
             multi_asset_df=self._obj.multi_asset,
             tickers=list(self._obj.cusum_events_map.keys()),
@@ -72,7 +76,7 @@ class AODiagnostics:
     def plot_sample_concurrency(
         self, concurrency_threshold_pct: float = 0.75
     ) -> DiagnosticResult:
-        if "t1" not in self._obj.multi_asset.columns:
+        if self._obj.multi_asset is None or "t1" not in self._obj.multi_asset.columns:
             raise KeyError("'t1' column missing. Call apply_continuous_labels() first.")
 
         t1_series = self._obj.multi_asset["t1"]
@@ -108,8 +112,8 @@ def _ao_plot_sample_concurrency(self, concurrency_threshold_pct: float = 0.75):
     return self.diagnostics.plot_sample_concurrency(concurrency_threshold_pct)
 
 
-AssetOrganiser.plot_cusum_events = _ao_plot_cusum_events
-AssetOrganiser.plot_sample_concurrency = _ao_plot_sample_concurrency
+AssetOrganiser.plot_cusum_events = _ao_plot_cusum_events  # type: ignore[attr-defined]
+AssetOrganiser.plot_sample_concurrency = _ao_plot_sample_concurrency  # type: ignore[attr-defined]
 
 
 class STDiagnostics:
@@ -124,6 +128,7 @@ class STDiagnostics:
         from pyquantflow.data.features.fractional_differentiation import (
             adf_screened_ffd,
         )
+
         from .features import plot_stationarity_profile
 
         d_star = self._obj.optimal_d_.get(col, 1.0)
@@ -180,12 +185,8 @@ class CVDiagnostics:
         return plot_cv_splits(self._obj, X, y)
 
 
-setattr(PurgedKFoldCV, "diagnostics", CachedAccessor("diagnostics", CVDiagnostics))
-setattr(
-    CombinatorialPurgedKFold,
-    "diagnostics",
-    CachedAccessor("diagnostics", CVDiagnostics),
-)
+PurgedKFoldCV.diagnostics = CachedAccessor("diagnostics", CVDiagnostics)
+CombinatorialPurgedKFold.diagnostics = CachedAccessor("diagnostics", CVDiagnostics)
 
 
 class PSCDiagnostics:
@@ -240,29 +241,29 @@ def _st_plot_stationarity_profile(self, raw_series, col, max_lags=40):
     return self.diagnostics.plot_stationarity_profile(raw_series, col, max_lags)
 
 
-StationaryTransformer.plot_stationarity_profile = _st_plot_stationarity_profile
+StationaryTransformer.plot_stationarity_profile = _st_plot_stationarity_profile  # type: ignore[attr-defined]
 
 
 def _fe_plot_feature_clusters(self, df, regime_id=None):
     return self.diagnostics.plot_feature_clusters(df, regime_id)
 
 
-FeatureEvaluator.plot_feature_clusters = _fe_plot_feature_clusters
+FeatureEvaluator.plot_feature_clusters = _fe_plot_feature_clusters  # type: ignore[attr-defined]
 
 
 def _cv_plot_splits(self, X, y):
     return self.diagnostics.plot_splits(X, y)
 
 
-PurgedKFoldCV.plot_splits = _cv_plot_splits
-CombinatorialPurgedKFold.plot_splits = _cv_plot_splits
+PurgedKFoldCV.plot_splits = _cv_plot_splits  # type: ignore[attr-defined]
+CombinatorialPurgedKFold.plot_splits = _cv_plot_splits  # type: ignore[attr-defined]
 
 
 def _psc_plot_meta_diagnostics(self, X, y_true):
     return self.diagnostics.plot_meta_diagnostics(X, y_true)
 
 
-PrimarySecondaryClassifier.plot_meta_diagnostics = _psc_plot_meta_diagnostics
+PrimarySecondaryClassifier.plot_meta_diagnostics = _psc_plot_meta_diagnostics  # type: ignore[attr-defined]
 
 
 def _gsadf_plot_sadf_regimes(
@@ -273,4 +274,4 @@ def _gsadf_plot_sadf_regimes(
     )
 
 
-GSADFTransformer.plot_sadf_regimes = _gsadf_plot_sadf_regimes
+GSADFTransformer.plot_sadf_regimes = _gsadf_plot_sadf_regimes  # type: ignore[attr-defined]

@@ -225,6 +225,10 @@ class ClassifierEngine(BaseModelEngine):
         logger.info("Re-instantiating best model...")
         fixed_trial = optuna.trial.FixedTrial(best_params)
         self.best_estimator_ = model_factory(fixed_trial)
+        if self.best_estimator_ is None:
+            raise RuntimeError(
+                "Hyperparameter optimization did not produce a best estimator."
+            )
 
         # 3. Fit on ALL training data
         logger.info("Retraining best model on full training set...")
