@@ -130,16 +130,14 @@ class BatchBacktester:
                 )
 
             # Use AssetOrganiser
-            multiasset_test_data = asset_organiser.get_transformed_multiasset_testdata()
-            available_symbols = getattr(
-                multiasset_test_data.index.get_level_values("ticker"),
-                "unique",
-                list,
-            )()
-            if callable(available_symbols):
-                available_symbols = available_symbols()
-            else:
-                available_symbols = list(available_symbols)
+            multiasset_test_data = asset_organiser.multi_asset_test
+            if multiasset_test_data is None:
+                logger.warning("AssetOrganiser has no test data. Call prepare_multi_asset_frame() first.")
+                self.results = {"individual_results": {}, "average_metrics": {}}
+                return self.results
+            available_symbols = list(
+                multiasset_test_data.index.get_level_values("ticker").unique()
+            )
 
             if symbols == "all":
                 target_symbols = available_symbols
@@ -150,7 +148,7 @@ class BatchBacktester:
 
             for sym in target_symbols:
                 if sym in available_symbols:
-                    data_map[sym] = asset_organiser.get_transformed_test_ticker(sym)
+                    data_map[sym] = multiasset_test_data.xs(sym, level="ticker")
                 else:
                     logger.info(
                         f"Warning: Symbol '{sym}' not found in AssetOrganiser test data."

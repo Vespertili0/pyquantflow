@@ -107,6 +107,8 @@ class PipelineDataOrganiser:
         alpha_min: float = 0.5,
         alpha_max: float = 3.0,
         alpha_step: float = 0.1,
+        objective: str = "budget",
+        t1_col: str | None = None,
     ) -> dict[str, float]:
         """Delegates to ``AssetOrganiser.downsample_to_cusum_events``."""
         return self._organiser.downsample_to_cusum_events(
@@ -117,6 +119,8 @@ class PipelineDataOrganiser:
             alpha_min=alpha_min,
             alpha_max=alpha_max,
             alpha_step=alpha_step,
+            objective=objective,
+            t1_col=t1_col,
         )
 
     def apply_continuous_labels(self, price_col: str = "Close") -> None:
@@ -137,6 +141,8 @@ class PipelineDataOrganiser:
         alpha_min: float = 0.5,
         alpha_max: float = 3.0,
         alpha_step: float = 0.1,
+        objective: str = "budget",
+        t1_col: str | None = None,
     ) -> dict[str, float]:
         """Delegates to ``AssetOrganiser.build_learning_pipeline``."""
         return self._organiser.build_learning_pipeline(
@@ -148,6 +154,8 @@ class PipelineDataOrganiser:
             alpha_min=alpha_min,
             alpha_max=alpha_max,
             alpha_step=alpha_step,
+            objective=objective,
+            t1_col=t1_col,
         )
 
     # ------------------------------------------------------------------

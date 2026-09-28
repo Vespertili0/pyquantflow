@@ -47,8 +47,8 @@ class AssetOrganiser:
             cutoff_date (str): The date string (e.g., 'YYYY-MM-DD') separating
                 train and test sets.
             target_features (List[str]): List of column names to be used as targets (y).
-            weight_col (Optional[str]): Optional column name in the DataFrame
-                containing target weights.
+            weight_col (Optional[str]): Column name in the DataFrame containing
+                target weights. Defaults to ``"weight"`` when not supplied.
             multi_asset (Optional[pd.DataFrame]): Pre-constructed multi-asset DataFrame.
             label_factory (Optional[BaseLabelFactory]): Factory for generating labels and weights.
         """
@@ -64,7 +64,7 @@ class AssetOrganiser:
         self.data_map: dict[str, pd.DataFrame] | None = data_map
         self.cutoff_date: str = cutoff_date
         self.target_features: list[str] = target_features
-        self.weight_col: str | None = weight_col
+        self.weight_col: str = weight_col or "weight"
         self.label_factory: BaseLabelFactory | None = label_factory
         self.cusum_events_map: dict[str, pd.DatetimeIndex] | None = None
 
@@ -354,7 +354,7 @@ class AssetOrganiser:
             returns = ticker_df[price_col].pct_change()
 
             weights = self.label_factory.generate_weights(t1, returns)
-            weights.name = self.weight_col if self.weight_col else "weight"
+            weights.name = self.weight_col
 
             weights_df = weights.to_frame()
             weights_df["ticker"] = tk
@@ -364,39 +364,28 @@ class AssetOrganiser:
         weights_concat = pd.concat(all_weights)
 
         # Globally rescale weights so their mean is 1.0
-        if weights_concat[self.weight_col if self.weight_col else "weight"].sum() > 0:
-            weights_concat[self.weight_col if self.weight_col else "weight"] = (
-                weights_concat[self.weight_col if self.weight_col else "weight"]
-                / weights_concat[
-                    self.weight_col if self.weight_col else "weight"
-                ].mean()
+        if weights_concat[self.weight_col].sum() > 0:
+            weights_concat[self.weight_col] = (
+                weights_concat[self.weight_col]
+                / weights_concat[self.weight_col].mean()
             )
 
         # Clip the extreme tails to prevent overfitting and zero-weights
         # Lower bound of 0.01 keeps highly concurrent events barely visible.
         # Upper bound caps the maximum influence of a single event to a
         # safe multiple (e.g., 10x or the 99th percentile).
-        upper_cap = weights_concat[
-            self.weight_col if self.weight_col else "weight"
-        ].quantile(0.99)
-        weights_concat[self.weight_col if self.weight_col else "weight"] = (
-            weights_concat[self.weight_col if self.weight_col else "weight"].clip(
-                lower=0.01, upper=upper_cap
-            )
+        upper_cap = weights_concat[self.weight_col].quantile(0.99)
+        weights_concat[self.weight_col] = weights_concat[self.weight_col].clip(
+            lower=0.01, upper=upper_cap
         )
 
-        col_name = self.weight_col if self.weight_col else "weight"
-        if col_name in self.multi_asset.columns:
-            self.multi_asset = self.multi_asset.drop(columns=[col_name])
+        if self.weight_col in self.multi_asset.columns:
+            self.multi_asset = self.multi_asset.drop(columns=[self.weight_col])
 
         self.multi_asset = self.multi_asset.join(weights_concat, how="left")
 
         # Drop rows with NaN values in the weights column
-        self.multi_asset = self.multi_asset.dropna(subset=[col_name])
-
-        # If no explicit weight_col was passed during __init__, update it so the pipeline knows
-        if not self.weight_col:
-            self.weight_col = col_name
+        self.multi_asset = self.multi_asset.dropna(subset=[self.weight_col])
 
         self._split_train_test()
 

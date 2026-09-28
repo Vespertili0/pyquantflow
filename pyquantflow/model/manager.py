@@ -98,13 +98,13 @@ class ClassifierEngine(BaseModelEngine):
     def register_mlflow_evaluation(
         self,
         model: Any,
-        X: pd.DataFrame | np.ndarray,
-        y: pd.Series | np.ndarray,
         params: dict[str, Any],
-        tags: dict[str, str],
-        #        metrics: Dict[str, float],
+        metrics: dict[str, float],
         experiment_name: str | None = None,
         run_name: str | None = None,
+        X: pd.DataFrame | np.ndarray | None = None,
+        y: pd.Series | np.ndarray | None = None,
+        tags: dict[str, str] | None = None,
         evaluator_config: dict | None = None,
         skops_trusted_types: list[str] | None = None,
     ) -> None:
@@ -118,18 +118,8 @@ class ClassifierEngine(BaseModelEngine):
                 "average": "weighted",
             }
 
-        # Create evaluation dataset
-        if isinstance(X, np.ndarray):
-            X_df = pd.DataFrame(X)
-        else:
-            X_df = X.copy()
-
-        eval_data = X_df.copy()
-        eval_data["label"] = y
-
         if mlflow is None:
             logger.warning("MLflow is not installed. Skipping registration.")
-            logger.info("MLflow is not installed. Skipping registration.")
             return
 
         # Set or create experiment
@@ -148,7 +138,7 @@ class ClassifierEngine(BaseModelEngine):
 
         with mlflow.start_run(run_name=run_name):
             # Log model
-            signature = infer_signature(X, model.predict(X))
+            signature = infer_signature(X, model.predict(X)) if X is not None else None
             model_info = mlflow.sklearn.log_model(
                 model,
                 name="model",
@@ -159,17 +149,25 @@ class ClassifierEngine(BaseModelEngine):
             logger.info(f"Model saved to {model_info.model_uri}")
 
             mlflow.log_params(params)
+            mlflow.log_metrics(metrics)
             if tags is not None:
                 mlflow.set_tags(tags)
 
-            # Evaluate
-            _ = mlflow.models.evaluate(
-                model_info.model_uri,
-                eval_data,
-                targets="label",
-                model_type="classifier",
-                evaluator_config=evaluator_config,
-            )
+            # Evaluate against hold-out data when available
+            if X is not None and y is not None:
+                if isinstance(X, np.ndarray):
+                    X_df = pd.DataFrame(X)
+                else:
+                    X_df = X.copy()
+                eval_data = X_df.copy()
+                eval_data["label"] = y
+                _ = mlflow.models.evaluate(
+                    model_info.model_uri,
+                    eval_data,
+                    targets="label",
+                    model_type="classifier",
+                    evaluator_config=evaluator_config,
+                )
 
             logger.info("Model registered to MLflow successfully.")
             logger.info(
@@ -262,12 +260,12 @@ class ClassifierEngine(BaseModelEngine):
         # Combine best params and extra info if needed
         self.register_mlflow_evaluation(
             model=self.best_estimator_,
-            X=X_test[features],
-            y=y_test,
             params=best_params,
-            tags=tags,
-            #            metrics=validation_metrics,
+            metrics=validation_metrics,
             experiment_name=experiment_name,
             run_name=run_name,
+            X=X_test[features],
+            y=y_test,
+            tags=tags,
             skops_trusted_types=skops_trusted_types,
         )
