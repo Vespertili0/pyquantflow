@@ -42,8 +42,11 @@ class CachedAccessor:
 
 def register_diagnostics_accessor(name: str):
     def decorator(accessor_cls):
-        setattr(accessor_cls.get_target_class(), name, CachedAccessor(name, accessor_cls))
+        setattr(
+            accessor_cls.get_target_class(), name, CachedAccessor(name, accessor_cls)
+        )
         return accessor_cls
+
     return decorator
 
 
@@ -79,7 +82,9 @@ class AODiagnostics:
 
         weight_col = self._obj.weight_col if self._obj.weight_col else "weight"
         weight_series = (
-            self._obj.multi_asset[weight_col] if weight_col in self._obj.multi_asset.columns else None
+            self._obj.multi_asset[weight_col]
+            if weight_col in self._obj.multi_asset.columns
+            else None
         )
         if weight_series is not None and isinstance(weight_series.index, pd.MultiIndex):
             if "ticker" in weight_series.index.names:
@@ -90,6 +95,7 @@ class AODiagnostics:
             weight_series=weight_series,
             concurrency_threshold_pct=concurrency_threshold_pct,
         )
+
 
 register_diagnostics_accessor("diagnostics")(AODiagnostics)
 
@@ -103,14 +109,19 @@ class STDiagnostics:
         self._obj = obj
 
     def plot_stationarity_profile(self, raw_series, col, max_lags=40):
-        from pyquantflow.data.features.fractional_differentiation import adf_screened_ffd
+        from pyquantflow.data.features.fractional_differentiation import (
+            adf_screened_ffd,
+        )
         from .features import plot_stationarity_profile
 
         d_star = self._obj.optimal_d_.get(col, 1.0)
-        ffd_series, _ = adf_screened_ffd(raw_series, d=d_star, thres=self._obj.ffd_thres)
+        ffd_series, _ = adf_screened_ffd(
+            raw_series, d=d_star, thres=self._obj.ffd_thres
+        )
         return plot_stationarity_profile(
             raw_series, ffd_series, d_star, ticker=col, max_lags=max_lags
         )
+
 
 register_diagnostics_accessor("diagnostics")(STDiagnostics)
 
@@ -143,6 +154,7 @@ class FEDiagnostics:
             regime_id=regime_id,
         )
 
+
 register_diagnostics_accessor("diagnostics")(FEDiagnostics)
 
 
@@ -152,10 +164,16 @@ class CVDiagnostics:
 
     def plot_splits(self, X, y):
         from .cv import plot_cv_splits
+
         return plot_cv_splits(self._obj, X, y)
 
+
 setattr(PurgedKFoldCV, "diagnostics", CachedAccessor("diagnostics", CVDiagnostics))
-setattr(CombinatorialPurgedKFold, "diagnostics", CachedAccessor("diagnostics", CVDiagnostics))
+setattr(
+    CombinatorialPurgedKFold,
+    "diagnostics",
+    CachedAccessor("diagnostics", CVDiagnostics),
+)
 
 
 class PSCDiagnostics:
@@ -174,6 +192,7 @@ class PSCDiagnostics:
 
         return plot_meta_label_entropy(enriched)
 
+
 register_diagnostics_accessor("diagnostics")(PSCDiagnostics)
 
 
@@ -185,8 +204,12 @@ class GSADFDiagnostics:
     def __init__(self, obj: GSADFTransformer):
         self._obj = obj
 
-    def plot_sadf_regimes(self, price_series, sadf_series, critical_value=1.4, events=None):
+    def plot_sadf_regimes(
+        self, price_series, sadf_series, critical_value=1.4, events=None
+    ):
         from .regimes import plot_sadf_regimes
+
         return plot_sadf_regimes(price_series, sadf_series, critical_value, events)
+
 
 register_diagnostics_accessor("diagnostics")(GSADFDiagnostics)

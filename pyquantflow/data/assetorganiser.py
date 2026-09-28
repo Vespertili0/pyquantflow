@@ -24,7 +24,9 @@ class PanelBuilder:
     def __init__(self, cutoff_date: str) -> None:
         self.cutoff_date = cutoff_date
 
-    def split_train_test(self, multi_asset: pd.DataFrame) -> tuple[pd.DataFrame | None, pd.DataFrame | None]:
+    def split_train_test(
+        self, multi_asset: pd.DataFrame
+    ) -> tuple[pd.DataFrame | None, pd.DataFrame | None]:
         """
         Splits the multi_asset DataFrame into train and test sets
         based on the cutoff date.
@@ -40,14 +42,14 @@ class PanelBuilder:
         multi_asset_test = multi_asset[datetime_vals >= cutoff]
         return multi_asset_train, multi_asset_test
 
-    def prepare(self, data_map: dict | None, multi_asset: pd.DataFrame | None) -> pd.DataFrame | None:
+    def prepare(
+        self, data_map: dict | None, multi_asset: pd.DataFrame | None
+    ) -> pd.DataFrame | None:
         """
         Converts data_map to Date-Ticker multi-index DataFrame or splits multi_asset if already provided.
         """
         if data_map is not None:
-            return align_and_ffill_multiasset(
-                restructure_map_2_multiasset_df(data_map)
-            )
+            return align_and_ffill_multiasset(restructure_map_2_multiasset_df(data_map))
         return multi_asset
 
     def update(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -62,7 +64,10 @@ class PanelBuilder:
         return df.copy()
 
     def replace_features(
-        self, multi_asset: pd.DataFrame, transformed_df: pd.DataFrame, original_features: list[str]
+        self,
+        multi_asset: pd.DataFrame,
+        transformed_df: pd.DataFrame,
+        original_features: list[str],
     ) -> pd.DataFrame:
         """
         Replaces the original features in the multi_asset panel dataset with
@@ -93,13 +98,16 @@ class PanelBuilder:
             multi_asset_new[feat] = transformed_df[feat]
 
         # Drop failed features
-        multi_asset_new = multi_asset_new.drop(
-            columns=failed_features, errors="ignore"
-        )
+        multi_asset_new = multi_asset_new.drop(columns=failed_features, errors="ignore")
         return multi_asset_new
 
     def to_tsfeatures_format(
-        self, multi_asset: pd.DataFrame | None, multi_asset_train: pd.DataFrame | None, multi_asset_test: pd.DataFrame | None, value_col: str, subset: str = "all"
+        self,
+        multi_asset: pd.DataFrame | None,
+        multi_asset_train: pd.DataFrame | None,
+        multi_asset_test: pd.DataFrame | None,
+        value_col: str,
+        subset: str = "all",
     ) -> pd.DataFrame:
         """
         Transforms the multi-asset DataFrame into the format required by Nixtla's `tsfeatures`.
@@ -280,12 +288,19 @@ class EventFilter:
 
 
 class LabelPipeline:
-    def __init__(self, label_factory: BaseLabelFactory | None, weight_col: str, target_features: list[str]) -> None:
+    def __init__(
+        self,
+        label_factory: BaseLabelFactory | None,
+        weight_col: str,
+        target_features: list[str],
+    ) -> None:
         self.label_factory = label_factory
         self.weight_col = weight_col
         self.target_features = target_features
 
-    def apply_continuous_labels(self, multi_asset: pd.DataFrame, price_col: str = "Close") -> pd.DataFrame:
+    def apply_continuous_labels(
+        self, multi_asset: pd.DataFrame, price_col: str = "Close"
+    ) -> pd.DataFrame:
         if multi_asset is None:
             raise ValueError("multi_asset is not initialised.")
 
@@ -318,7 +333,9 @@ class LabelPipeline:
         multi_asset = multi_asset.dropna(subset=labels_concat.columns)
         return multi_asset
 
-    def apply_sample_weights(self, multi_asset: pd.DataFrame, price_col: str = "Close") -> pd.DataFrame:
+    def apply_sample_weights(
+        self, multi_asset: pd.DataFrame, price_col: str = "Close"
+    ) -> pd.DataFrame:
         if multi_asset is None:
             raise ValueError("Multi-asset DataFrame not initialized.")
 
@@ -574,14 +591,18 @@ class AssetOrganiser:
             self._split_train_test()
 
     def _split_train_test(self) -> None:
-        self.multi_asset_train, self.multi_asset_test = self._panel.split_train_test(self.multi_asset)
+        self.multi_asset_train, self.multi_asset_test = self._panel.split_train_test(
+            self.multi_asset
+        )
 
     def prepare_multi_asset_frame(self) -> None:
         if self.data_map is not None:
             self.multi_asset = self._panel.prepare(self.data_map, self.multi_asset)
         self._split_train_test()
 
-    def downsample_to_events(self, events: pd.DatetimeIndex | list | set | dict[str, pd.DatetimeIndex]) -> None:
+    def downsample_to_events(
+        self, events: pd.DatetimeIndex | list | set | dict[str, pd.DatetimeIndex]
+    ) -> None:
         """
         Down-samples the multi-asset DataFrame to keep only the dates matching
         the specified events for each ticker.
@@ -610,8 +631,17 @@ class AssetOrganiser:
         if self.multi_asset is None:
             self.prepare_multi_asset_frame()
         filtered_multi_asset, events_map, calibrated_alphas = self._events.cusum_filter(
-            self.multi_asset, self.multi_asset_train, target_events_train, filter_col,
-            vol_col, span, alpha_min, alpha_max, alpha_step, objective, t1_col
+            self.multi_asset,
+            self.multi_asset_train,
+            target_events_train,
+            filter_col,
+            vol_col,
+            span,
+            alpha_min,
+            alpha_max,
+            alpha_step,
+            objective,
+            t1_col,
         )
         self.multi_asset = filtered_multi_asset
         self.cusum_events_map = events_map
@@ -625,7 +655,9 @@ class AssetOrganiser:
         """
         if self.multi_asset is None:
             self.prepare_multi_asset_frame()
-        self.multi_asset = self._labels.apply_continuous_labels(self.multi_asset, price_col)
+        self.multi_asset = self._labels.apply_continuous_labels(
+            self.multi_asset, price_col
+        )
         self._split_train_test()
 
     def apply_sample_weights(self, price_col: str = "Close") -> None:
@@ -635,7 +667,9 @@ class AssetOrganiser:
         """
         if self.multi_asset is None:
             self.prepare_multi_asset_frame()
-        self.multi_asset = self._labels.apply_sample_weights(self.multi_asset, price_col)
+        self.multi_asset = self._labels.apply_sample_weights(
+            self.multi_asset, price_col
+        )
         self._split_train_test()
 
     def build_learning_pipeline(
@@ -683,7 +717,9 @@ class AssetOrganiser:
         """
         if self.multi_asset is None:
             self.prepare_multi_asset_frame()
-        self.multi_asset = self._labels.add_model_predictions(self.multi_asset, model, features, prefix, filter_prediction)
+        self.multi_asset = self._labels.add_model_predictions(
+            self.multi_asset, model, features, prefix, filter_prediction
+        )
         self._split_train_test()
 
     def get_classifierengine_payload(
@@ -697,7 +733,9 @@ class AssetOrganiser:
         """
         if self.multi_asset_train is None or self.multi_asset_test is None:
             self.prepare_multi_asset_frame()
-        return self._labels.get_classifierengine_payload(self.multi_asset_train, self.multi_asset_test, features, tickers)
+        return self._labels.get_classifierengine_payload(
+            self.multi_asset_train, self.multi_asset_test, features, tickers
+        )
 
     def to_tsfeatures_format(
         self,
@@ -709,7 +747,13 @@ class AssetOrganiser:
         """
         if self.multi_asset is None and self.data_map is not None:
             self.prepare_multi_asset_frame()
-        return self._panel.to_tsfeatures_format(self.multi_asset, self.multi_asset_train, self.multi_asset_test, value_col, subset)
+        return self._panel.to_tsfeatures_format(
+            self.multi_asset,
+            self.multi_asset_train,
+            self.multi_asset_test,
+            value_col,
+            subset,
+        )
 
     def apply_ichimoku_regime(
         self, mode: str = "standard", displacement: int = 26
@@ -720,7 +764,9 @@ class AssetOrganiser:
         """
         if self.multi_asset is None:
             self.prepare_multi_asset_frame()
-        self.multi_asset = self._labels.apply_ichimoku_regime(self.multi_asset, mode, displacement)
+        self.multi_asset = self._labels.apply_ichimoku_regime(
+            self.multi_asset, mode, displacement
+        )
         self._split_train_test()
 
     def update_multi_asset(self, df: pd.DataFrame) -> None:
@@ -740,5 +786,7 @@ class AssetOrganiser:
         aligns the dataset to the transformed dataset's index (removing rows
         dropped during transformation), and re-synchronises the train/test split boundaries.
         """
-        self.multi_asset = self._panel.replace_features(self.multi_asset, transformed_df, original_features)
+        self.multi_asset = self._panel.replace_features(
+            self.multi_asset, transformed_df, original_features
+        )
         self._split_train_test()

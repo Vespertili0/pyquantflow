@@ -434,7 +434,9 @@ class FeatureClusterer:
 
 
 class ImportanceEvaluator:
-    def __init__(self, clusterer: FeatureClusterer, cv, target_col, weight_col, t1_col) -> None:
+    def __init__(
+        self, clusterer: FeatureClusterer, cv, target_col, weight_col, t1_col
+    ) -> None:
         self.clusterer = clusterer
         self.cv = cv
         self.target_col = target_col
@@ -845,7 +847,13 @@ class FeatureEvaluator:
         needs_proba: bool = True,
     ) -> dict[int, dict[str, pd.DataFrame]]:
         return self._importance.evaluate_importance(
-            df, estimator, metric, metric_kwargs,
-            balance_classes, greater_is_better, needs_proba,
-            features=self.features, raw_features=self.raw_features
+            df,
+            estimator,
+            metric,
+            metric_kwargs,
+            balance_classes,
+            greater_is_better,
+            needs_proba,
+            features=self.features,
+            raw_features=self.raw_features,
         )
