@@ -598,16 +598,20 @@ class TestPBOPaths(unittest.TestCase):
 
 class TestAccessors(unittest.TestCase):
     def test_asset_organiser_accessors_bound(self):
-        self.assertTrue(hasattr(AssetOrganiser, "plot_cusum_events"))
-        self.assertTrue(hasattr(AssetOrganiser, "plot_sample_concurrency"))
+        self.assertTrue(hasattr(AssetOrganiser.diagnostics, "plot_cusum_events"))
+        self.assertTrue(hasattr(AssetOrganiser.diagnostics, "plot_sample_concurrency"))
 
     def test_phase2_accessors_bound(self):
-        self.assertTrue(hasattr(StationaryTransformer, "plot_stationarity_profile"))
-        self.assertTrue(hasattr(FeatureEvaluator, "plot_feature_clusters"))
-        self.assertTrue(hasattr(PurgedKFoldCV, "plot_splits"))
-        self.assertTrue(hasattr(CombinatorialPurgedKFold, "plot_splits"))
-        self.assertTrue(hasattr(PrimarySecondaryClassifier, "plot_meta_diagnostics"))
-        self.assertTrue(hasattr(GSADFTransformer, "plot_sadf_regimes"))
+        self.assertTrue(
+            hasattr(StationaryTransformer.diagnostics, "plot_stationarity_profile")
+        )
+        self.assertTrue(hasattr(FeatureEvaluator.diagnostics, "plot_feature_clusters"))
+        self.assertTrue(hasattr(PurgedKFoldCV.diagnostics, "plot_splits"))
+        self.assertTrue(hasattr(CombinatorialPurgedKFold.diagnostics, "plot_splits"))
+        self.assertTrue(
+            hasattr(PrimarySecondaryClassifier.diagnostics, "plot_meta_diagnostics")
+        )
+        self.assertTrue(hasattr(GSADFTransformer.diagnostics, "plot_sadf_regimes"))
 
 
 class TestClusteringCoverage(unittest.TestCase):

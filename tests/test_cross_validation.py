@@ -26,6 +26,71 @@ class TestPurgedKFoldCV(unittest.TestCase):
         groups = np.array([1, 2, 3])
         self.assertEqual(cv.get_n_splits(X=X, y=y, groups=groups), 3)
 
+    def test_split_tz_aware_index_and_t1_epoch_alignment(self):
+        """BUG-07: When X.index and t1 carry non-UTC timezones, tz_convert(None)
+        must preserve epoch alignment so no sample is double-counted or silently
+        dropped from either train or test across all folds."""
+        # Build a UTC-indexed frame and localise to Sydney to force the bug path
+        dates_utc = pd.date_range("2020-01-01", periods=60, freq="B", tz="UTC")
+        dates_sydney = dates_utc.tz_convert("Australia/Sydney")
+
+        t1_utc = dates_utc + pd.Timedelta(days=2)
+        t1_sydney = t1_utc.tz_convert("Australia/Sydney")
+
+        X = pd.DataFrame({"feature": range(60)}, index=dates_sydney)
+        X["t1"] = t1_sydney.values  # store as Sydney-aware Timestamps
+
+        cv = PurgedKFoldCV(n_splits=3, t1="t1", embargo_pct=0.0)
+        all_test_indices: list[int] = []
+
+        for train_idx, test_idx in cv.split(X):
+            all_test_indices.extend(test_idx.tolist())
+            # Train and test must be disjoint
+            self.assertTrue(
+                set(train_idx).isdisjoint(set(test_idx)),
+                "Train and test index sets must be disjoint.",
+            )
+
+        # Every sample must appear in at least one test fold
+        self.assertEqual(
+            sorted(set(all_test_indices)),
+            list(range(len(X))),
+            "Every sample must appear in exactly one test fold.",
+        )
+
+    def test_split_t1_with_nat_does_not_raise(self):
+        """BUG-07: pd.NaT values in t1 must pass through tz_convert(None) without
+        raising TypeError and without dropping any rows."""
+        dates = pd.date_range("2020-01-01", periods=30, freq="B", tz="UTC")
+        t1 = pd.Series(
+            [
+                pd.NaT if i % 5 == 0 else dates[i] + pd.Timedelta(days=1)
+                for i in range(30)
+            ],
+            index=dates,
+        )
+        X = pd.DataFrame({"feature": range(30)}, index=dates)
+
+        cv = PurgedKFoldCV(n_splits=3, t1=t1, embargo_pct=0.0)
+        splits = list(cv.split(X))
+        self.assertEqual(len(splits), 3)
+        for train_idx, test_idx in splits:
+            self.assertGreater(len(test_idx), 0)
+
+    def test_split_tz_naive_index_unchanged(self):
+        """BUG-07: When X.index is tz-naive the tz_convert path must not be entered
+        and behaviour must be identical to the pre-fix baseline."""
+        dates = pd.date_range("2020-01-01", periods=30, freq="B")  # tz-naive
+        X = pd.DataFrame({"feature": range(30)}, index=dates)
+        cv = PurgedKFoldCV(n_splits=3, embargo_pct=0.0)
+
+        all_test: list[int] = []
+        for train_idx, test_idx in cv.split(X):
+            all_test.extend(test_idx.tolist())
+            self.assertTrue(set(train_idx).isdisjoint(set(test_idx)))
+
+        self.assertEqual(sorted(set(all_test)), list(range(30)))
+
 
 # ---------------------------------------------------------------------------
 # CombinatorialPurgedKFold — temporal slicing tests

@@ -13,7 +13,6 @@ logger = logging.getLogger(__name__)
 class DatabaseManager:
     _DEFAULT_INTERVAL = "1h"
     _DEFAULT_START_YEAR = 2020
-    _TZ_DEFAULT = "Australia/Sydney"
 
     _SQL_INSERT_TICKER = (
         "INSERT INTO tickers (ticker, interval, last_updated) VALUES (?, ?, ?)"
@@ -290,18 +289,6 @@ class DatabaseManager:
         if new_data.empty:
             logger.info(f"No new data after filtering for {ticker}.")
             return
-
-        try:
-            new_data.index = new_data.index.tz_convert(self._TZ_DEFAULT)
-        except TypeError:
-            if new_data.index.tz is None:
-                new_data.index = new_data.index.tz_localize("UTC").tz_convert(
-                    self._TZ_DEFAULT
-                )
-        except Exception as e:
-            logger.warning(
-                f"Timezone conversion failed for {ticker}. Proceeding with current index. Error: {type(e).__name__}"
-            )
 
         self._insert_price_data(ticker_id, new_data)
 

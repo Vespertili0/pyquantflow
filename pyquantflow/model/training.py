@@ -17,7 +17,7 @@ class HyperparameterOptimiser:
     def __init__(
         self,
         study_name: str,
-        storage_uri: str = None,
+        storage_uri: str | None = None,
         direction: str = "maximize",
         sampler: optuna.samplers.BaseSampler | None = None,
     ):

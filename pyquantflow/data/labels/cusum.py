@@ -265,6 +265,7 @@ def calibrate_cusum_alpha(
         return float(alphas[best_idx])
 
     # objective == "uniqueness"
+    assert t1 is not None
     from .sample_weights import get_sample_weights
 
     best_alpha = alpha_min
