@@ -571,15 +571,15 @@ class AssetOrganiser:
         self.data_map: dict[str, pd.DataFrame] | None = data_map
         self.cutoff_date: str = cutoff_date
         self.target_features: list[str] = target_features
-        self.weight_col: str = weight_col or "weight"
-        self.label_factory: BaseLabelFactory | None = label_factory
+        self._weight_col: str = weight_col or "weight"
+        self._label_factory: BaseLabelFactory | None = label_factory
         self.cusum_events_map: dict[str, pd.DatetimeIndex] | None = None
 
         self._panel = PanelBuilder(cutoff_date=self.cutoff_date)
         self._events = EventFilter()
         self._labels = LabelPipeline(
-            label_factory=self.label_factory,
-            weight_col=self.weight_col,
+            label_factory=self._label_factory,
+            weight_col=self._weight_col,
             target_features=self.target_features,
         )
 
@@ -589,6 +589,24 @@ class AssetOrganiser:
 
         if self.multi_asset is not None:
             self._split_train_test()
+
+    @property
+    def label_factory(self) -> "BaseLabelFactory | None":
+        return self._label_factory
+
+    @label_factory.setter
+    def label_factory(self, value: "BaseLabelFactory | None") -> None:
+        self._label_factory = value
+        self._labels.label_factory = value
+
+    @property
+    def weight_col(self) -> str:
+        return self._weight_col
+
+    @weight_col.setter
+    def weight_col(self, value: str) -> None:
+        self._weight_col = value
+        self._labels.weight_col = value
 
     def _split_train_test(self) -> None:
         self.multi_asset_train, self.multi_asset_test = self._panel.split_train_test(

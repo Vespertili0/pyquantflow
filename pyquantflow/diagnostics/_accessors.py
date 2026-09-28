@@ -100,6 +100,18 @@ class AODiagnostics:
 register_diagnostics_accessor("diagnostics")(AODiagnostics)
 
 
+def _ao_plot_cusum_events(self):
+    return self.diagnostics.plot_cusum_events()
+
+
+def _ao_plot_sample_concurrency(self, concurrency_threshold_pct: float = 0.75):
+    return self.diagnostics.plot_sample_concurrency(concurrency_threshold_pct)
+
+
+AssetOrganiser.plot_cusum_events = _ao_plot_cusum_events
+AssetOrganiser.plot_sample_concurrency = _ao_plot_sample_concurrency
+
+
 class STDiagnostics:
     @classmethod
     def get_target_class(cls):
@@ -213,3 +225,46 @@ class GSADFDiagnostics:
 
 
 register_diagnostics_accessor("diagnostics")(GSADFDiagnostics)
+
+
+# ------------------------------------------------------------------
+# Backward-compatible flat shims
+# Tests and user code written against the original monkey-patched API
+# call methods directly on instances (e.g. ao.plot_cusum_events()).
+# These thin wrappers delegate to the .diagnostics namespace so both
+# the old flat API and the new accessor namespace work simultaneously.
+# ------------------------------------------------------------------
+
+def _st_plot_stationarity_profile(self, raw_series, col, max_lags=40):
+    return self.diagnostics.plot_stationarity_profile(raw_series, col, max_lags)
+
+StationaryTransformer.plot_stationarity_profile = _st_plot_stationarity_profile
+
+
+def _fe_plot_feature_clusters(self, df, regime_id=None):
+    return self.diagnostics.plot_feature_clusters(df, regime_id)
+
+FeatureEvaluator.plot_feature_clusters = _fe_plot_feature_clusters
+
+
+def _cv_plot_splits(self, X, y):
+    return self.diagnostics.plot_splits(X, y)
+
+PurgedKFoldCV.plot_splits = _cv_plot_splits
+CombinatorialPurgedKFold.plot_splits = _cv_plot_splits
+
+
+def _psc_plot_meta_diagnostics(self, X, y_true):
+    return self.diagnostics.plot_meta_diagnostics(X, y_true)
+
+PrimarySecondaryClassifier.plot_meta_diagnostics = _psc_plot_meta_diagnostics
+
+
+def _gsadf_plot_sadf_regimes(
+    self, price_series, sadf_series, critical_value=1.4, events=None
+):
+    return self.diagnostics.plot_sadf_regimes(
+        price_series, sadf_series, critical_value, events
+    )
+
+GSADFTransformer.plot_sadf_regimes = _gsadf_plot_sadf_regimes

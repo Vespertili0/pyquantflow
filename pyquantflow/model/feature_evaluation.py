@@ -739,9 +739,31 @@ class FeatureEvaluator:
     def importance_df(self):
         return self._importance.importance_df
 
+    @importance_df.setter
+    def importance_df(self, value):
+        self._importance.importance_df = value
+
     @property
     def regime_clusters_(self):
         return self._importance.regime_clusters_
+
+    def compute_time_series_profiles(
+        self,
+        df: pd.DataFrame,
+        columns: list[str],
+        groupby_level: str | None = "ticker",
+    ) -> pd.DataFrame:
+        return self._clusterer.compute_time_series_profiles(df, columns, groupby_level)
+
+    @staticmethod
+    def _coerce_numeric(data: pd.DataFrame) -> pd.DataFrame:
+        return FeatureClusterer._coerce_numeric(data)
+
+    @staticmethod
+    def _convert_results_to_table(
+        results: dict[int, dict[str, pd.DataFrame]],
+    ) -> pd.DataFrame:
+        return ImportanceEvaluator._convert_results_to_table(results)
 
     def fit_transform_features(self, df: pd.DataFrame) -> pd.DataFrame:
         """
