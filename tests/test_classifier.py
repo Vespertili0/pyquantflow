@@ -534,5 +534,167 @@ class TestPrimarySecondaryClassifierExtended(unittest.TestCase):
         self.assertEqual(len(preds), n)
 
 
+class TestIchimokuBaselineClassifierMultiClass(unittest.TestCase):
+    """Verify ARCH-04: IchimokuBaselineClassifier handles multi-class targets."""
+
+    def _make_X(self, n=30, regime_values=None):
+        np.random.seed(0)
+        if regime_values is None:
+            regime_values = np.random.randint(0, 3, n)
+        return pd.DataFrame(
+            {
+                "feat_a": np.random.randn(n),
+                "ichimoku_regime": regime_values,
+            }
+        )
+
+    def test_fit_derives_classes_from_y(self):
+        """classes_ must match the unique values in y when y is provided."""
+        y = np.array([0, 1, 2, 0, 1, 2])
+        X = self._make_X(n=len(y))
+        clf = IchimokuBaselineClassifier()
+        clf.fit(X, y)
+        np.testing.assert_array_equal(clf.classes_, np.array([0, 1, 2]))
+
+    def test_fit_fallback_binary_when_y_is_none(self):
+        """classes_ must be [0, 1] when y is None."""
+        clf = IchimokuBaselineClassifier()
+        clf.fit(self._make_X())
+        np.testing.assert_array_equal(clf.classes_, np.array([0, 1]))
+
+    def test_predict_proba_multiclass_shape(self):
+        """predict_proba must return (n_samples, 3) for a 3-class target."""
+        regime_values = np.array([0, 1, 2, 0, 1])
+        X = self._make_X(n=len(regime_values), regime_values=regime_values)
+        y = np.array([0, 1, 2, 0, 1])
+        clf = IchimokuBaselineClassifier()
+        clf.fit(X, y)
+        probas = clf.predict_proba(X)
+        self.assertEqual(probas.shape, (5, 3))
+        np.testing.assert_array_almost_equal(probas.sum(axis=1), np.ones(5))
+
+    def test_predict_proba_multiclass_values(self):
+        """Each row must be a one-hot vector matching the predicted class."""
+        regime_values = np.array([0, 1, 2])
+        X = self._make_X(n=3, regime_values=regime_values)
+        y = np.array([0, 1, 2])
+        clf = IchimokuBaselineClassifier()
+        clf.fit(X, y)
+        probas = clf.predict_proba(X)
+        # classes_ = [0, 1, 2] -> col i = P(class == i)
+        np.testing.assert_array_equal(probas[0], [1.0, 0.0, 0.0])  # regime=0
+        np.testing.assert_array_equal(probas[1], [0.0, 1.0, 0.0])  # regime=1
+        np.testing.assert_array_equal(probas[2], [0.0, 0.0, 1.0])  # regime=2
+
+    def test_binary_fast_path_unchanged(self):
+        """Binary output must remain a (n, 2) column_stack, unaffected by the refactor."""
+        regime_values = np.array([1, 0, 1, 0, 1])
+        X = self._make_X(n=5, regime_values=regime_values)
+        clf = IchimokuBaselineClassifier()
+        clf.fit(X)  # y=None -> classes_ = [0, 1]
+        probas = clf.predict_proba(X)
+        self.assertEqual(probas.shape, (5, 2))
+        np.testing.assert_array_equal(probas[:, 1], regime_values.astype(float))
+
+
+class TestPrimarySecondaryClassifierMultiClass(unittest.TestCase):
+    """Verify ARCH-05: PrimarySecondaryClassifier.transform handles multi-class models."""
+
+    def _build_multiclass_clf(self):
+        """
+        Returns a PrimarySecondaryClassifier (proba_class_idx=2) wrapping
+        two RandomForestClassifiers pre-trained on a 3-class {0,1,2} target.
+        """
+        np.random.seed(7)
+        n = 90
+        X = pd.DataFrame(
+            {
+                "feat_1": np.random.randn(n),
+                "feat_2": np.random.randn(n),
+                "feat_3": np.random.randn(n),
+            }
+        )
+        y_primary = np.tile([0, 1, 2], n // 3)
+        y_secondary = np.tile([0, 1, 2], n // 3)
+
+        primary = RandomForestClassifier(n_estimators=5, random_state=7)
+        secondary = RandomForestClassifier(n_estimators=5, random_state=7)
+
+        oof_entropy = np.full((n, 1), 0.5)
+        X_sec = np.hstack([X[["feat_2", "feat_3"]].values, oof_entropy])
+
+        primary.fit(X[["feat_1", "feat_2"]], y_primary)
+        secondary.fit(X_sec, y_secondary)
+
+        clf = PrimarySecondaryClassifier(
+            primary_model=primary,
+            secondary_model=secondary,
+            primary_features=["feat_1", "feat_2"],
+            secondary_features=["feat_2", "feat_3"],
+            prefitted=True,
+            proba_class_idx=2,
+        )
+        return clf, X
+
+    def test_transform_multiclass_expands_proba_columns(self):
+        """transform() must add primary_proba_{0,1,2} and secondary_proba_{0,1,2}."""
+        clf, X = self._build_multiclass_clf()
+        result = clf.transform(X)
+        for i in range(3):
+            self.assertIn(f"primary_proba_{i}", result.columns)
+            self.assertIn(f"secondary_proba_{i}", result.columns)
+
+    def test_transform_multiclass_focal_proba_column(self):
+        """primary_proba must equal primary_proba_{proba_class_idx} (=2)."""
+        clf, X = self._build_multiclass_clf()
+        result = clf.transform(X)
+        np.testing.assert_array_almost_equal(
+            result["primary_proba"].values,
+            result["primary_proba_2"].values,
+        )
+        np.testing.assert_array_almost_equal(
+            result["secondary_proba"].values,
+            result["secondary_proba_2"].values,
+        )
+
+    def test_transform_binary_does_not_expand_columns(self):
+        """transform() must NOT add _0/_1 columns for binary models (backward compat)."""
+        from sklearn.linear_model import LogisticRegression
+        from sklearn.model_selection import KFold
+
+        np.random.seed(0)
+        n = 100
+        X = pd.DataFrame(
+            {
+                "feat_1": np.random.randn(n),
+                "feat_2": np.random.randn(n),
+                "feat_3": np.random.randn(n),
+            }
+        )
+        y = pd.DataFrame(
+            {
+                "y_primary": np.random.randint(0, 2, n),
+                "y_secondary": np.random.randint(0, 2, n),
+            }
+        )
+        clf = PrimarySecondaryClassifier(
+            primary_model=RandomForestClassifier(n_estimators=5, random_state=0),
+            secondary_model=LogisticRegression(random_state=0),
+            primary_features=["feat_1", "feat_2"],
+            secondary_features=["feat_2", "feat_3"],
+            cv_generator=KFold(n_splits=3),
+            prefitted=False,
+        )
+        clf.fit(X, y)
+        result = clf.transform(X)
+
+        self.assertNotIn("primary_proba_0", result.columns)
+        self.assertNotIn("primary_proba_1", result.columns)
+        self.assertNotIn("secondary_proba_0", result.columns)
+        self.assertNotIn("secondary_proba_1", result.columns)
+        self.assertIn("primary_proba", result.columns)
+        self.assertIn("secondary_proba", result.columns)
+
+
 if __name__ == "__main__":
     unittest.main()

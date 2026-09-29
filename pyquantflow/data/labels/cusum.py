@@ -27,7 +27,10 @@ def get_cusum_events(
     Parameters
     ----------
     series : pd.Series
-        Series with a DatetimeIndex.
+        A **differenced** series (e.g. log-returns or ``pct_change()`` output)
+        with a DatetimeIndex. Do not pass raw price levels — the filter
+        accumulates values directly; passing undifferenced data will produce
+        incorrect event timing.
     threshold : float or pd.Series
         The threshold parameter (h). If a pd.Series is passed, it must align
         with the index of the series.
@@ -39,6 +42,22 @@ def get_cusum_events(
     """
     if not isinstance(series.index, pd.DatetimeIndex):
         raise TypeError("series index must be a pandas DatetimeIndex.")
+
+    # Warn callers who appear to be passing raw price levels.
+    # A strictly monotonic series strongly suggests undifferenced data.
+    if (
+        series.dropna().is_monotonic_increasing
+        or series.dropna().is_monotonic_decreasing
+    ):
+        import warnings
+
+        warnings.warn(
+            "get_cusum_events received a monotonic series. "
+            "The CUSUM filter expects a differenced input (e.g. pct_change()). "
+            "Passing raw price levels will produce incorrect results.",
+            UserWarning,
+            stacklevel=2,
+        )
 
     # Align threshold if it is a Series
     if isinstance(threshold, pd.Series):
@@ -194,8 +213,8 @@ def calibrate_cusum_alpha(
     Parameters
     ----------
     series : pd.Series
-        Series with a DatetimeIndex. Used for calibration (typically training
-        fold only).
+        A **differenced** series (e.g. log-returns or ``pct_change()`` output)
+        with a DatetimeIndex. Used for calibration (typically training fold only).
     target_events : Optional[int], default=None
         The target event count (budget). Required when ``objective="budget"``.
     volatility : Optional[pd.Series], default=None

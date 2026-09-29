@@ -613,6 +613,20 @@ class TestAccessors(unittest.TestCase):
         )
         self.assertTrue(hasattr(GSADFTransformer.diagnostics, "plot_sadf_regimes"))
 
+    def test_accessors_import_does_not_raise(self):
+        """
+        Reloading pyquantflow.diagnostics._accessors must not raise
+        ImportError or AttributeError, verifying idempotent lazy imports.
+        """
+        import importlib
+
+        import pyquantflow.diagnostics._accessors as acc_module
+
+        try:
+            importlib.reload(acc_module)
+        except (ImportError, AttributeError) as exc:
+            self.fail(f"Reloading _accessors raised {type(exc).__name__}: {exc}")
+
 
 class TestClusteringCoverage(unittest.TestCase):
     def test_regime_dict_no_regime_id(self):

@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import sqlite3
 
 logger = logging.getLogger(__name__)
@@ -7,6 +8,9 @@ logger = logging.getLogger(__name__)
 
 class BacktestDatabaseManager:
     def __init__(self, db_path="backtest_results.db"):
+        db_dir = os.path.dirname(os.path.abspath(db_path))
+        if db_dir and not os.path.exists(db_dir):
+            os.makedirs(db_dir)
         self.conn = sqlite3.connect(db_path)
         self.create_tables()
 

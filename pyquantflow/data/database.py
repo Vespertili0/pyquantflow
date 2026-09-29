@@ -1,4 +1,5 @@
 import logging
+import os
 import sqlite3
 from datetime import datetime
 
@@ -12,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 class DatabaseManager:
     _DEFAULT_INTERVAL = "1h"
-    _DEFAULT_START_YEAR = 2020
+    _DEFAULT_START_YEAR = datetime.now().year - 5
 
     _SQL_INSERT_TICKER = (
         "INSERT INTO tickers (ticker, interval, last_updated) VALUES (?, ?, ?)"
@@ -36,6 +37,9 @@ class DatabaseManager:
     """
 
     def __init__(self, db_path="stocks.db"):
+        db_dir = os.path.dirname(os.path.abspath(db_path))
+        if db_dir and not os.path.exists(db_dir):
+            os.makedirs(db_dir)
         self.conn = sqlite3.connect(db_path)
         self.create_tables()
 

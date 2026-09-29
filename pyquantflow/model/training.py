@@ -54,6 +54,7 @@ class HyperparameterOptimiser:
         n_trials: int = 50,
         timeout: int | None = None,
         metric_kwargs: dict | None = None,
+        needs_proba: bool = False,
         balance_classes: bool = True,
     ) -> optuna.Study:
         """
@@ -67,6 +68,8 @@ class HyperparameterOptimiser:
             weight_col: Optional column name for sample weights.
             t1_col: Optional column name for event end times (purging metadata).
             metric: Scoring function (y_true, y_pred) -> float.
+            needs_proba: If True, calls model.predict_proba() and uses the
+                positive-class column for binary classifiers, instead of model.predict().
             balance_classes: If True, dynamically scales sample weights by inverse class frequencies in the training fold.
         """
         metric_kwargs = metric_kwargs or {}
@@ -120,13 +123,10 @@ class HyperparameterOptimiser:
                 model.fit(X_train_features, y_train_fold, **fit_params)
 
                 # Predict logic
-                if metric.__name__ in ("log_loss", "roc_auc_score"):
-                    # For metrics requiring probabilities
+                if needs_proba and hasattr(model, "predict_proba"):
                     proba = model.predict_proba(X_val_features)
-                    # Handle binary classification case (return prob of positive class)
                     preds = proba[:, 1] if proba.shape[1] == 2 else proba
                 else:
-                    # For metrics requiring class labels
                     preds = model.predict(X_val_features)
 
                 # Score
