@@ -53,6 +53,32 @@ class TestQuarterlyPull(unittest.TestCase):
         self.assertTrue(result.empty)
         self.assertIn("Failed to fetch data for 2023 Q1: Exception", cm.output[0])
 
+    @patch("pyquantflow.data.quarterly_pull.yf.download")
+    def test_fetch_quarterly_data_continues_after_exception(self, mock_download):
+        """
+        When Q1 raises an exception, Q2 must still be fetched.
+        The returned DataFrame must contain the Q2 data only.
+        """
+        dates_q2 = pd.date_range(
+            "2023-04-01", periods=2, freq="D", tz="America/New_York"
+        )
+        df_q2 = pd.DataFrame({"Close": [20.0, 21.0]}, index=dates_q2)
+
+        # Q1 raises; Q2 succeeds
+        mock_download.side_effect = [Exception("transient error"), df_q2]
+
+        time_dict = {"2023": [1, 2]}
+
+        with self.assertLogs("pyquantflow.data.quarterly_pull", level="ERROR") as cm:
+            result = fetch_quarterly_data("AAPL", time_dict)
+
+        self.assertFalse(result.empty)
+        self.assertEqual(len(result), 2)
+        self.assertEqual(list(result["Close"].values), [20.0, 21.0])
+        self.assertEqual(str(result.index.tz), "UTC")
+        self.assertIn("Failed to fetch data for 2023 Q1: Exception", cm.output[0])
+        self.assertEqual(mock_download.call_count, 2)
+
 
 if __name__ == "__main__":
     unittest.main()

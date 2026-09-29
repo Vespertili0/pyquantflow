@@ -180,5 +180,43 @@ class TestStrategyLab(unittest.TestCase):
         self.assertTrue(len(population) > 0)
 
 
+class TestStrategyLabCVInjection(unittest.TestCase):
+    """Verify ARCH-07: StrategyLab accepts a custom cv at construction time."""
+
+    def _make_returns(self):
+        np.random.seed(99)
+        dates = pd.date_range("2023-01-01", periods=200, freq="B")
+        return pd.DataFrame(
+            np.random.normal(0.001, 0.01, size=(200, 2)),
+            index=dates,
+            columns=["Asset1", "Asset2"],
+        )
+
+    def test_init_default_cv_is_walkforward_126_63(self):
+        """Default cv must be WalkForward(train_size=126, test_size=63)."""
+        lab = StrategyLab(returns=self._make_returns(), strategy_dict={})
+        self.assertIsInstance(lab.cv, WalkForward)
+        self.assertEqual(lab.cv.train_size, 126)
+        self.assertEqual(lab.cv.test_size, 63)
+
+    def test_init_custom_cv_is_stored(self):
+        """A custom cv passed at construction must be stored unchanged."""
+        custom_cv = WalkForward(train_size=50, test_size=20)
+        lab = StrategyLab(
+            returns=self._make_returns(),
+            strategy_dict={},
+            cv=custom_cv,
+        )
+        self.assertIs(lab.cv, custom_cv)
+        self.assertEqual(lab.cv.train_size, 50)
+        self.assertEqual(lab.cv.test_size, 20)
+
+    def test_init_none_cv_falls_back_to_default(self):
+        """Passing cv=None explicitly must still use the default WalkForward."""
+        lab = StrategyLab(returns=self._make_returns(), strategy_dict={}, cv=None)
+        self.assertIsInstance(lab.cv, WalkForward)
+        self.assertEqual(lab.cv.train_size, 126)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -55,7 +55,7 @@ def fetch_quarterly_data(ticker, time_dict, period="quarterly") -> pd.DataFrame:
                 logger.error(
                     f"Failed to fetch data for {year} Q{t}: {type(e).__name__}"
                 )
-                break
+                continue
 
     if not data_frames:
         return pd.DataFrame()

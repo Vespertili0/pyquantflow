@@ -46,6 +46,7 @@ class PrimarySecondaryClassifier(BaseQuantClassifier):
         secondary_features,
         cv_generator=None,
         prefitted=True,
+        proba_class_idx: int = 1,
     ):
         self.primary_model = primary_model
         self.secondary_model = secondary_model
@@ -53,6 +54,7 @@ class PrimarySecondaryClassifier(BaseQuantClassifier):
         self.secondary_features = secondary_features
         self.cv_generator = cv_generator
         self.prefitted = prefitted
+        self.proba_class_idx = proba_class_idx
 
         if self.prefitted:
             self.primary_model_ = self.primary_model
@@ -133,6 +135,13 @@ class PrimarySecondaryClassifier(BaseQuantClassifier):
     def transform(self, X):
         """
         Enriches the input DataFrame with model predictions and probabilities.
+
+        For binary models ``primary_proba`` and ``secondary_proba`` contain
+        the scalar probability for the positive class (``self.proba_class_idx``,
+        default 1). For multi-class models those columns still contain the
+        focal-class scalar, and additional per-class columns are added:
+        ``primary_proba_0``, ``primary_proba_1``, ... (and equivalent secondary
+        columns) for downstream inspection.
         """
         # check_is_fitted(self)
         X_out = X.copy()
@@ -140,7 +149,10 @@ class PrimarySecondaryClassifier(BaseQuantClassifier):
         # Primary outputs
         X_out["primary_pred"] = self.primary_model_.predict(X[self.primary_features])
         probas = self.primary_model_.predict_proba(X[self.primary_features])
-        X_out["primary_proba"] = probas[:, 1]
+        X_out["primary_proba"] = probas[:, self.proba_class_idx]
+        if probas.shape[1] > 2:
+            for i in range(probas.shape[1]):
+                X_out[f"primary_proba_{i}"] = probas[:, i]
         X_out["primary_entropy"] = self._calculate_entropy(probas)
 
         # Prepare secondary inputs
@@ -152,9 +164,11 @@ class PrimarySecondaryClassifier(BaseQuantClassifier):
         )
 
         # Secondary outputs
-        X_out["secondary_proba"] = self.secondary_model_.predict_proba(X_secondary)[
-            :, 1
-        ]
+        sec_probas = self.secondary_model_.predict_proba(X_secondary)
+        X_out["secondary_proba"] = sec_probas[:, self.proba_class_idx]
+        if sec_probas.shape[1] > 2:
+            for i in range(sec_probas.shape[1]):
+                X_out[f"secondary_proba_{i}"] = sec_probas[:, i]
         X_out["final_decision"] = self.secondary_model_.predict(X_secondary)
 
         return X_out
@@ -204,18 +218,28 @@ class IchimokuBaselineClassifier(BaseEstimator, ClassifierMixin):
         No-op fit. The classifier is entirely rule-based and requires no
         training. Stores ``classes_`` to satisfy sklearn validators.
 
+        When ``y`` is supplied, ``classes_`` is inferred from the unique
+        values in ``y`` so that multi-class label sets (e.g. ``{-1, 0, 1}``
+        or ``{0, 1, 2}``) are reflected correctly. If ``y`` is ``None`` the
+        default binary set ``[0, 1]`` is used as a safe fallback.
+
         Parameters
         ----------
         X : pd.DataFrame
             Feature matrix. Must contain ``self.regime_col``.
-        y : ignored
+        y : array-like of shape (n_samples,) or None, default None
+            Target labels used solely to infer ``classes_``. The classifier
+            does not use ``y`` during inference.
         sample_weight : ignored
 
         Returns
         -------
         self
         """
-        self.classes_ = np.array([0, 1])
+        if y is not None:
+            self.classes_ = np.unique(np.asarray(y).ravel())
+        else:
+            self.classes_ = np.array([0, 1])
         return self
 
     def predict(self, X: pd.DataFrame | np.ndarray) -> np.ndarray:
@@ -283,9 +307,14 @@ class IchimokuBaselineClassifier(BaseEstimator, ClassifierMixin):
 
     def predict_proba(self, X: pd.DataFrame | np.ndarray) -> np.ndarray:
         """
-        Returns a two-column probability matrix consistent with the binary
-        regime signal.  For each sample, the probability of class 1 equals
-        the regime value (0.0 or 1.0), giving a hard, threshold-free decision.
+        Returns a probability matrix consistent with the regime signal.
+
+        For binary classification (``classes_ == [0, 1]``), each row is
+        ``[1 - regime, regime]``.  For multi-class targets the returned
+        matrix has shape ``(n_samples, n_classes)`` where column ``i``
+        contains 1.0 for samples whose predicted class equals
+        ``self.classes_[i]`` and 0.0 otherwise, preserving the hard
+        threshold-free decision contract.
 
         Accepts both :class:`pandas.DataFrame` and :class:`numpy.ndarray`
         inputs; all input-handling logic is delegated to :meth:`predict`.
@@ -298,7 +327,13 @@ class IchimokuBaselineClassifier(BaseEstimator, ClassifierMixin):
         Returns
         -------
         np.ndarray
-            Array of shape ``(n_samples, 2)`` where each row sums to 1.
+            Array of shape ``(n_samples, n_classes)`` where each row sums to 1.
         """
-        regime = self.predict(X).astype(float)
-        return np.column_stack([1.0 - regime, regime])
+        classes = getattr(self, "classes_", np.array([0, 1]))
+        preds = self.predict(X)
+        if len(classes) == 2 and np.array_equal(classes, np.array([0, 1])):
+            regime = preds.astype(float)
+            return np.column_stack([1.0 - regime, regime])
+        return np.column_stack(
+            [(preds == c).astype(float) for c in classes]
+        )
