@@ -45,8 +45,12 @@ def get_cusum_events(
 
     # Warn callers who appear to be passing raw price levels.
     # A strictly monotonic series strongly suggests undifferenced data.
-    if series.dropna().is_monotonic_increasing or series.dropna().is_monotonic_decreasing:
+    if (
+        series.dropna().is_monotonic_increasing
+        or series.dropna().is_monotonic_decreasing
+    ):
         import warnings
+
         warnings.warn(
             "get_cusum_events received a monotonic series. "
             "The CUSUM filter expects a differenced input (e.g. pct_change()). "

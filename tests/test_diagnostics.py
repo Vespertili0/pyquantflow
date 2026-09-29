@@ -625,9 +625,7 @@ class TestAccessors(unittest.TestCase):
         try:
             importlib.reload(acc_module)
         except (ImportError, AttributeError) as exc:
-            self.fail(
-                f"Reloading _accessors raised {type(exc).__name__}: {exc}"
-            )
+            self.fail(f"Reloading _accessors raised {type(exc).__name__}: {exc}")
 
 
 class TestClusteringCoverage(unittest.TestCase):

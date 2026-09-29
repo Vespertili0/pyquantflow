@@ -334,6 +334,4 @@ class IchimokuBaselineClassifier(BaseEstimator, ClassifierMixin):
         if len(classes) == 2 and np.array_equal(classes, np.array([0, 1])):
             regime = preds.astype(float)
             return np.column_stack([1.0 - regime, regime])
-        return np.column_stack(
-            [(preds == c).astype(float) for c in classes]
-        )
+        return np.column_stack([(preds == c).astype(float) for c in classes])

@@ -16,7 +16,9 @@ import typing
 
 import pandas as pd
 
-from pyquantflow.data.assetorganiser import AssetOrganiser  # safe: AO never imports diagnostics
+from pyquantflow.data.assetorganiser import (
+    AssetOrganiser,
+)  # safe: AO never imports diagnostics
 
 if typing.TYPE_CHECKING:
     from pyquantflow.data.sk_transformers import GSADFTransformer
@@ -132,6 +134,7 @@ class STDiagnostics:
     @classmethod
     def get_target_class(cls):
         from pyquantflow.model.feature_evaluation import StationaryTransformer
+
         return StationaryTransformer
 
     def __init__(self, obj: StationaryTransformer):
@@ -160,6 +163,7 @@ class FEDiagnostics:
     @classmethod
     def get_target_class(cls):
         from pyquantflow.model.feature_evaluation import FeatureEvaluator
+
         return FeatureEvaluator
 
     def __init__(self, obj: FeatureEvaluator):
@@ -222,6 +226,7 @@ class PSCDiagnostics:
     @classmethod
     def get_target_class(cls):
         from pyquantflow.model.classifier import PrimarySecondaryClassifier
+
         return PrimarySecondaryClassifier
 
     def __init__(self, obj: PrimarySecondaryClassifier):
@@ -243,6 +248,7 @@ class GSADFDiagnostics:
     @classmethod
     def get_target_class(cls):
         from pyquantflow.data.sk_transformers import GSADFTransformer
+
         return GSADFTransformer
 
     def __init__(self, obj: GSADFTransformer):

@@ -256,7 +256,12 @@ class ClassifierEngine(BaseModelEngine):
         # 4. Validate on Hold-out Test Set
         logger.info("Validating on hold-out test set...")
         validation_metrics = self.validate(
-            self.best_estimator_, X_test[features], y_test, metric, metric_kwargs, needs_proba=needs_proba
+            self.best_estimator_,
+            X_test[features],
+            y_test,
+            metric,
+            metric_kwargs,
+            needs_proba=needs_proba,
         )
         logger.info(f"Validation Metrics: {validation_metrics}")
 
