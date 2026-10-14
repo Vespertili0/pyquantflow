@@ -24,19 +24,31 @@ class StrategyLab:
     hyperparameter search, cross-validation, and robustness testing.
     """
 
-    def __init__(self, returns: pd.DataFrame, strategy_dict: dict[str, dict[str, Any]]):
+    def __init__(
+        self,
+        returns: pd.DataFrame,
+        strategy_dict: dict[str, dict[str, Any]],
+        cv: Any | None = None,
+    ):
         """
-        Initialize the StrategyLab.
+        Initialise the StrategyLab.
 
         Args:
             returns (pd.DataFrame): DataFrame of asset returns.
-            strategy_dict (Dict[str, Dict[str, Any]]): Dictionary mapping strategy names
-                to their configurations (e.g., estimator and parameter grid).
+            strategy_dict (Dict[str, Dict[str, Any]]): Dictionary mapping
+                strategy names to their configurations (e.g., estimator and
+                parameter grid).
+            cv (Optional[Any]): Cross-validation strategy instance used as
+                the default for all methods that accept an optional ``cv``
+                parameter. Defaults to
+                ``WalkForward(train_size=126, test_size=63)``, where both
+                sizes are expressed in *trading days* (~6-month train window,
+                ~3-month test window).
         """
         self.returns = returns
         self.strategy_dict = strategy_dict
         self.best_estimators: dict[str, Any] = {}
-        self.cv = WalkForward(train_size=126, test_size=63)
+        self.cv = cv if cv is not None else WalkForward(train_size=126, test_size=63)
 
     def search_strategy_hyperparameters(
         self, scoring: str | Callable, cv: Any | None = None

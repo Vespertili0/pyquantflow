@@ -74,6 +74,7 @@ class ClassifierEngine(BaseModelEngine):
         y: pd.Series | np.ndarray,
         metric: Callable = f1_score,
         metric_kwargs: dict | None = None,
+        needs_proba: bool = False,
     ) -> dict[str, float]:
         """
         Computes the metric score on X, y.
@@ -82,9 +83,7 @@ class ClassifierEngine(BaseModelEngine):
 
         # Ensure model is fitted (assumed to be done by caller or prior step)
         # We try to handle proba if the metric suggests it, similar to training.py
-        if hasattr(model, "predict_proba") and (
-            metric.__name__ in ("log_loss", "roc_auc_score")
-        ):
+        if needs_proba and hasattr(model, "predict_proba"):
             preds = model.predict_proba(X)
             # Handle binary classification if needed
             if preds.ndim > 1 and preds.shape[1] == 2:
@@ -193,6 +192,7 @@ class ClassifierEngine(BaseModelEngine):
         run_name: str | None = None,
         tags: dict[str, str] | None = None,
         balance_classes: bool = True,
+        needs_proba: bool = False,
         skops_trusted_types: list[str] | None = None,
     ) -> None:
         """
@@ -213,6 +213,7 @@ class ClassifierEngine(BaseModelEngine):
             timeout=timeout,
             metric_kwargs=metric_kwargs,
             balance_classes=balance_classes,
+            needs_proba=needs_proba,
         )
 
         best_params = study.best_params
@@ -255,7 +256,12 @@ class ClassifierEngine(BaseModelEngine):
         # 4. Validate on Hold-out Test Set
         logger.info("Validating on hold-out test set...")
         validation_metrics = self.validate(
-            self.best_estimator_, X_test[features], y_test, metric, metric_kwargs
+            self.best_estimator_,
+            X_test[features],
+            y_test,
+            metric,
+            metric_kwargs,
+            needs_proba=needs_proba,
         )
         logger.info(f"Validation Metrics: {validation_metrics}")
 

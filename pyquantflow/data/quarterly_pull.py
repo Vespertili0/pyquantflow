@@ -20,7 +20,7 @@ def fetch_quarterly_data(ticker, time_dict, period="quarterly") -> pd.DataFrame:
     pd.DataFrame: A concatenated DataFrame containing the data for all selected quarters.
     """
     if period not in ["quarterly"]:
-        raise ValueError("period must be quarterly or bimonthly")
+        raise ValueError("period must be 'quarterly'")
 
     # Define all quarters with their start and end dates
     if period == "quarterly":
@@ -55,7 +55,7 @@ def fetch_quarterly_data(ticker, time_dict, period="quarterly") -> pd.DataFrame:
                 logger.error(
                     f"Failed to fetch data for {year} Q{t}: {type(e).__name__}"
                 )
-                break
+                continue
 
     if not data_frames:
         return pd.DataFrame()

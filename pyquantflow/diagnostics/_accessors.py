@@ -1,22 +1,36 @@
 """
 AssetOrganiser Accessors Module
 
-Provides CachedAccessor for binding diagnostic methods to classes via the `.diagnostics` namespace.
+Provides CachedAccessor for binding diagnostic methods to classes via the
+``.diagnostics`` namespace.
+
+All imports of concrete core classes (except ``AssetOrganiser``, which is
+safe — see module note below) are deferred to function bodies or guarded by
+``typing.TYPE_CHECKING`` so that importing ``pyquantflow.diagnostics`` never
+triggers a circular import from inside the core ``data`` or ``model`` packages.
 """
+
+from __future__ import annotations
+
+import typing
 
 import pandas as pd
 
-from pyquantflow.data.assetorganiser import AssetOrganiser
-from pyquantflow.data.sk_transformers import GSADFTransformer
-from pyquantflow.model.classifier import PrimarySecondaryClassifier
-from pyquantflow.model.cross_validation import (
-    CombinatorialPurgedKFold,
-    PurgedKFoldCV,
-)
-from pyquantflow.model.feature_evaluation import (
-    FeatureEvaluator,
-    StationaryTransformer,
-)
+from pyquantflow.data.assetorganiser import (
+    AssetOrganiser,
+)  # safe: AO never imports diagnostics
+
+if typing.TYPE_CHECKING:
+    from pyquantflow.data.sk_transformers import GSADFTransformer
+    from pyquantflow.model.classifier import PrimarySecondaryClassifier
+    from pyquantflow.model.cross_validation import (
+        CombinatorialPurgedKFold,
+        PurgedKFoldCV,
+    )
+    from pyquantflow.model.feature_evaluation import (
+        FeatureEvaluator,
+        StationaryTransformer,
+    )
 
 from ._renderer import DiagnosticResult
 from .events import plot_multi_asset_events
@@ -119,6 +133,8 @@ AssetOrganiser.plot_sample_concurrency = _ao_plot_sample_concurrency  # type: ig
 class STDiagnostics:
     @classmethod
     def get_target_class(cls):
+        from pyquantflow.model.feature_evaluation import StationaryTransformer
+
         return StationaryTransformer
 
     def __init__(self, obj: StationaryTransformer):
@@ -146,6 +162,8 @@ register_diagnostics_accessor("diagnostics")(STDiagnostics)
 class FEDiagnostics:
     @classmethod
     def get_target_class(cls):
+        from pyquantflow.model.feature_evaluation import FeatureEvaluator
+
         return FeatureEvaluator
 
     def __init__(self, obj: FeatureEvaluator):
@@ -185,13 +203,30 @@ class CVDiagnostics:
         return plot_cv_splits(self._obj, X, y)
 
 
-PurgedKFoldCV.diagnostics = CachedAccessor("diagnostics", CVDiagnostics)
-CombinatorialPurgedKFold.diagnostics = CachedAccessor("diagnostics", CVDiagnostics)
+try:
+    from pyquantflow.model.cross_validation import (
+        CombinatorialPurgedKFold,
+        PurgedKFoldCV,
+    )
+
+    PurgedKFoldCV.diagnostics = CachedAccessor("diagnostics", CVDiagnostics)
+    CombinatorialPurgedKFold.diagnostics = CachedAccessor("diagnostics", CVDiagnostics)
+
+    def _cv_plot_splits(self, X, y):
+        return self.diagnostics.plot_splits(X, y)
+
+    PurgedKFoldCV.plot_splits = _cv_plot_splits  # type: ignore[attr-defined]
+    CombinatorialPurgedKFold.plot_splits = _cv_plot_splits  # type: ignore[attr-defined]
+
+except ImportError:
+    pass
 
 
 class PSCDiagnostics:
     @classmethod
     def get_target_class(cls):
+        from pyquantflow.model.classifier import PrimarySecondaryClassifier
+
         return PrimarySecondaryClassifier
 
     def __init__(self, obj: PrimarySecondaryClassifier):
@@ -212,6 +247,8 @@ register_diagnostics_accessor("diagnostics")(PSCDiagnostics)
 class GSADFDiagnostics:
     @classmethod
     def get_target_class(cls):
+        from pyquantflow.data.sk_transformers import GSADFTransformer
+
         return GSADFTransformer
 
     def __init__(self, obj: GSADFTransformer):
@@ -241,29 +278,39 @@ def _st_plot_stationarity_profile(self, raw_series, col, max_lags=40):
     return self.diagnostics.plot_stationarity_profile(raw_series, col, max_lags)
 
 
-StationaryTransformer.plot_stationarity_profile = _st_plot_stationarity_profile  # type: ignore[attr-defined]
+try:
+    from pyquantflow.model.feature_evaluation import StationaryTransformer
+
+    StationaryTransformer.plot_stationarity_profile = _st_plot_stationarity_profile  # type: ignore[attr-defined]
+
+except ImportError:
+    pass
 
 
 def _fe_plot_feature_clusters(self, df, regime_id=None):
     return self.diagnostics.plot_feature_clusters(df, regime_id)
 
 
-FeatureEvaluator.plot_feature_clusters = _fe_plot_feature_clusters  # type: ignore[attr-defined]
+try:
+    from pyquantflow.model.feature_evaluation import FeatureEvaluator
 
+    FeatureEvaluator.plot_feature_clusters = _fe_plot_feature_clusters  # type: ignore[attr-defined]
 
-def _cv_plot_splits(self, X, y):
-    return self.diagnostics.plot_splits(X, y)
-
-
-PurgedKFoldCV.plot_splits = _cv_plot_splits  # type: ignore[attr-defined]
-CombinatorialPurgedKFold.plot_splits = _cv_plot_splits  # type: ignore[attr-defined]
+except ImportError:
+    pass
 
 
 def _psc_plot_meta_diagnostics(self, X, y_true):
     return self.diagnostics.plot_meta_diagnostics(X, y_true)
 
 
-PrimarySecondaryClassifier.plot_meta_diagnostics = _psc_plot_meta_diagnostics  # type: ignore[attr-defined]
+try:
+    from pyquantflow.model.classifier import PrimarySecondaryClassifier
+
+    PrimarySecondaryClassifier.plot_meta_diagnostics = _psc_plot_meta_diagnostics  # type: ignore[attr-defined]
+
+except ImportError:
+    pass
 
 
 def _gsadf_plot_sadf_regimes(
@@ -274,4 +321,10 @@ def _gsadf_plot_sadf_regimes(
     )
 
 
-GSADFTransformer.plot_sadf_regimes = _gsadf_plot_sadf_regimes  # type: ignore[attr-defined]
+try:
+    from pyquantflow.data.sk_transformers import GSADFTransformer
+
+    GSADFTransformer.plot_sadf_regimes = _gsadf_plot_sadf_regimes  # type: ignore[attr-defined]
+
+except ImportError:
+    pass
