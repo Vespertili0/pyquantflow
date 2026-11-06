@@ -87,7 +87,7 @@ class GSADFTransformer(BaseEstimator, TransformerMixin):
     Transforms a log-price series into GSADF statistics for bubble detection.
     """
 
-    def __init__(self, min_length=None, add_trend=False, lags=1):
+    def __init__(self, min_length: int = 20, add_trend: bool = False, lags: int = 1):
         self.min_length = min_length
         self.add_trend = add_trend
         self.lags = lags
@@ -105,6 +105,7 @@ class GSADFTransformer(BaseEstimator, TransformerMixin):
         Returns:
             pd.Series or pd.DataFrame: GSADF statistics.
         """
+        min_len = self.min_length if self.min_length is not None else 20
         if isinstance(X, pd.DataFrame):
             if X.shape[1] == 1:
                 series = X.iloc[:, 0]
@@ -112,14 +113,22 @@ class GSADFTransformer(BaseEstimator, TransformerMixin):
                 # Apply column-wise
                 return X.apply(
                     lambda col: gsadf_values(
-                        col, model="linear", min_length=self.min_length, lags=self.lags
+                        col,
+                        model="linear",
+                        min_length=min_len,
+                        lags=self.lags,
+                        add_const=True,
                     )
                 )
         else:
             series = X
 
         return gsadf_values(
-            series, model="linear", min_length=self.min_length, lags=self.lags
+            series,
+            model="linear",
+            min_length=min_len,
+            lags=self.lags,
+            add_const=True,
         )
 
 
@@ -183,16 +192,18 @@ class TripleBarrierLabeler(BaseEstimator, TransformerMixin):
             prices = X
             # Volatility remains None
 
-        # Default to sl_col as fixed 0.01 if no volatility is provided
-        sl_col = (
+        vol_series = (
             volatility
             if volatility is not None
-            else pd.Series(self.sl, index=prices.index)
+            else pd.Series(0.01, index=prices.index)
         )
+        sl_col = prices - prices * vol_series * self.sl
+        tp_col = prices + prices * vol_series * self.pt
 
         return triple_barrier_labels(
             prices=prices,
             sl_col=sl_col,
             tp_mult=self.pt,
             horizon=self.vertical_barrier_steps,
+            tp_col=tp_col,
         )

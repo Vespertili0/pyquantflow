@@ -61,9 +61,17 @@ def plot_sample_concurrency(
     if len(t0_idx_naive) == 0:
         raise ValueError("t1_series is empty or contains only NaTs")
 
+    unique_t0 = np.sort(t0_idx_naive.unique())
+    if len(unique_t0) >= 2:
+        median_delta = pd.Series(unique_t0).diff().median()
+        inferred_freq = "1h" if median_delta <= pd.Timedelta(hours=4) else "B"
+    else:
+        inferred_freq = "B"
     date_range = pd.date_range(
-        start=t0_idx_naive.min(), end=t1_vals_naive.max(), freq="B"
+        start=t0_idx_naive.min(), end=t1_vals_naive.max(), freq=inferred_freq
     )
+    if len(date_range) == 0:
+        date_range = pd.DatetimeIndex(np.unique(np.concatenate([t0_idx_naive.values, t1_vals_naive.values])))
     bars = date_range.values  # numpy datetime64 array
 
     # 2. Difference-array concurrency
@@ -137,9 +145,15 @@ def plot_sample_concurrency(
             col=1,
         )
 
+    t0_plot = (
+        t0_idx_naive.tz_localize("UTC")
+        if hasattr(t0_idx_naive, "tz_localize")
+        else t0_idx_naive.dt.tz_localize("UTC")
+    )
+
     fig.add_trace(
         go.Scatter(
-            x=t0_dt,
+            x=t0_plot,
             y=u_i,
             mode="markers",
             name="Uniqueness u_i",

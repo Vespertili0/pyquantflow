@@ -7,6 +7,7 @@ continuous labelling, dynamic CUSUM down-sampling, feature generation (such as I
 and sample weight calculation while strictly preventing sequential data hazards.
 """
 
+import numpy as np
 import pandas as pd
 from scipy.stats import entropy
 from sklearn.base import BaseEstimator
@@ -152,6 +153,29 @@ class EventFilter:
     def __init__(self) -> None:
         pass
 
+    @staticmethod
+    def _ensure_differenced(series: pd.Series, col_name: str) -> pd.Series:
+        clean = series.dropna()
+        if len(clean) == 0:
+            return series
+        # If column is a standard price column or strictly positive with mean > 1.0,
+        # convert to simple returns so CUSUM accumulates shocks rather than price levels.
+        is_price_name = col_name.lower() in (
+            "close",
+            "open",
+            "high",
+            "low",
+            "adj close",
+            "price",
+        )
+        if is_price_name or (
+            clean.min() > 0
+            and clean.mean() > 1.0
+            and (clean.is_monotonic_increasing or clean.is_monotonic_decreasing)
+        ):
+            return series.pct_change()
+        return series
+
     def filter_to_events(
         self,
         multi_asset: pd.DataFrame,
@@ -235,7 +259,9 @@ class EventFilter:
                 continue
 
             ticker_train_df = multi_asset_train.xs(tk, level="ticker")
-            ticker_train_series = ticker_train_df[filter_col]
+            ticker_train_series = self._ensure_differenced(
+                ticker_train_df[filter_col], filter_col
+            )
 
             ticker_train_vol = None
             if vol_col:
@@ -272,7 +298,9 @@ class EventFilter:
         events_map = {}
         for tk in tickers:
             alpha = calibrated_alphas[tk]
-            series_all = multi_asset.xs(tk, level="ticker")[filter_col]
+            series_all = self._ensure_differenced(
+                multi_asset.xs(tk, level="ticker")[filter_col], filter_col
+            )
 
             if vol_col:
                 try:
@@ -320,9 +348,18 @@ class LabelPipeline:
             labels_df = self.label_factory.generate_labels(
                 ticker_df, price_col=price_col
             )
+            if "tbl_return" not in labels_df.columns and "t1" in labels_df.columns:
+                prices = ticker_df[price_col]
+                t1_s = labels_df["t1"]
+                valid_mask = t1_s.notna()
+                fwd_ret = pd.Series(np.nan, index=labels_df.index, dtype=float)
+                if valid_mask.any():
+                    p_t0 = prices.loc[valid_mask].values
+                    p_t1 = prices.reindex(t1_s.loc[valid_mask]).values
+                    fwd_ret.loc[valid_mask] = (p_t1 / p_t0) - 1.0
+                labels_df["tbl_return"] = fwd_ret
 
             labels_df.index.name = "datetime"
-
             labels_df["ticker"] = tk
             labels_df = labels_df.reset_index().set_index(["datetime", "ticker"])
             all_labels.append(labels_df)
@@ -341,7 +378,10 @@ class LabelPipeline:
         return multi_asset
 
     def apply_sample_weights(
-        self, multi_asset: pd.DataFrame, price_col: str = "Close"
+        self,
+        multi_asset: pd.DataFrame,
+        price_col: str = "Close",
+        cutoff_date: str | None = None,
     ) -> pd.DataFrame:
         if multi_asset is None:
             raise ValueError("Multi-asset DataFrame not initialized.")
@@ -360,7 +400,10 @@ class LabelPipeline:
         for tk in tickers:
             ticker_df = multi_asset.xs(tk, level="ticker")
             t1 = ticker_df["t1"]
-            returns = ticker_df[price_col].pct_change()
+            if "tbl_return" in ticker_df.columns:
+                returns = ticker_df["tbl_return"].fillna(0.0)
+            else:
+                returns = ticker_df[price_col].pct_change().bfill().fillna(0.0)
 
             weights = self.label_factory.generate_weights(t1, returns)
             weights.name = self.weight_col
@@ -376,12 +419,30 @@ class LabelPipeline:
 
         weights_concat = pd.concat(all_weights)
 
-        if weights_concat[self.weight_col].sum() > 0:
-            weights_concat[self.weight_col] = (
-                weights_concat[self.weight_col] / weights_concat[self.weight_col].mean()
+        # Fit normalization mean and 99th percentile cap strictly on training data if cutoff_date is given
+        if cutoff_date is not None:
+            dt_vals = pd.to_datetime(
+                weights_concat.index.get_level_values("datetime"), utc=True
             )
+            cutoff_ts = pd.to_datetime(cutoff_date, utc=True)
+            train_mask = dt_vals < cutoff_ts
+            ref_weights = (
+                weights_concat.loc[train_mask, self.weight_col]
+                if train_mask.any()
+                else weights_concat[self.weight_col]
+            )
+        else:
+            ref_weights = weights_concat[self.weight_col]
 
-        upper_cap = weights_concat[self.weight_col].quantile(0.99)
+        mean_w = ref_weights.mean()
+        if pd.notna(mean_w) and mean_w > 0:
+            weights_concat[self.weight_col] = weights_concat[self.weight_col] / mean_w
+            ref_scaled = ref_weights / mean_w
+        else:
+            ref_scaled = ref_weights
+
+        upper_cap = float(ref_scaled.quantile(0.99)) if len(ref_scaled) > 0 else 1.0
+        upper_cap = max(upper_cap, 0.01)
         weights_concat[self.weight_col] = weights_concat[self.weight_col].clip(
             lower=0.01, upper=upper_cap
         )
@@ -700,7 +761,7 @@ class AssetOrganiser:
         if self.multi_asset is None:
             self.prepare_multi_asset_frame()
         self.multi_asset = self._labels.apply_sample_weights(
-            self.multi_asset, price_col
+            self.multi_asset, price_col, cutoff_date=self.cutoff_date
         )
         self._split_train_test()
 
@@ -743,7 +804,6 @@ class AssetOrganiser:
         filter_prediction: int | None = None,
     ) -> None:
         """
-        Fits the model on the multiasset data.
         Generates predictions and probability entropy from the provided model,
         injects them into the multi_asset DataFrame, and optionally filters the dataset.
         """

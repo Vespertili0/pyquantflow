@@ -27,7 +27,7 @@ def _get_y_x(
 
     # Add trend columns based on model type
     n_samples = x.shape[0]
-    trend = np.arange(n_samples)
+    trend = np.arange(1, n_samples + 1, dtype=np.float64) / max(n_samples, 1)
 
     if model == "linear":
         x["trend"] = trend
@@ -253,7 +253,7 @@ def get_sadf_jax(
     model: str,
     lags: int | list,
     min_length: int,
-    add_const: bool = False,
+    add_const: bool = True,
     phi: float = 0,
     verbose: bool = True,  # verbose argument kept for compatibility, unused in JAX
 ) -> pd.Series:

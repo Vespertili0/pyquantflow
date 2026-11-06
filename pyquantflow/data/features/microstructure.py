@@ -25,6 +25,19 @@ import numpy as np
 import pandas as pd
 
 
+def _roll_single(series: pd.Series, window: int) -> np.ndarray:
+    n = len(series)
+    if n < window + 1:
+        return np.full(n, np.nan)
+    delta = series.diff()
+    delta_lag = delta.shift(1)
+    cov = delta.rolling(window=window).cov(delta_lag)
+    spread = 2.0 * np.sqrt(np.maximum(-cov, 0.0))
+    result = spread.to_numpy(dtype=np.float64, copy=True)
+    result[: window + 1] = np.nan
+    return result
+
+
 def ROLL_MEASURE(
     close: np.ndarray | pd.Series,
     window: int = 20,
@@ -78,31 +91,52 @@ def ROLL_MEASURE(
     if window < 2:
         raise ValueError("'window' must be at least 2.")
 
-    return_array = isinstance(close, np.ndarray)
-    series = pd.Series(close) if return_array else close.copy()
+    if isinstance(close, pd.Series) and isinstance(close.index, pd.MultiIndex):
+        from pyquantflow.data.utils import safe_stack
 
-    n = len(series)
-    if n < window + 1:
+        unstacked = close.unstack(level="ticker")
+        transformed = unstacked.apply(
+            lambda col: pd.Series(_roll_single(col, window=window), index=col.index)
+        )
+        stacked = safe_stack(transformed, level="ticker")
+        if stacked.index.names != close.index.names:
+            stacked = stacked.reorder_levels(close.index.names)
+        return stacked.reindex(close.index).to_numpy(dtype=np.float64, copy=True)
+
+    series = pd.Series(close) if isinstance(close, np.ndarray) else close.copy()
+    return _roll_single(series, window=window)
+
+
+def _corwin_schultz_single(
+    high_s: pd.Series, low_s: pd.Series, window: int
+) -> np.ndarray:
+    n = len(high_s)
+    if n < window + 2:
         return np.full(n, np.nan)
 
-    # First-order price differences
-    delta = series.diff()
+    if (high_s.dropna() <= 0).any() or (low_s.dropna() <= 0).any():
+        raise ValueError("'high' and 'low' prices must be strictly positive.")
 
-    # Lag-1 of the price difference
-    delta_lag = delta.shift(1)
+    log_hl_sq = np.log(high_s / low_s) ** 2
+    two_day_sum = log_hl_sq + log_hl_sq.shift(1)
 
-    # Rolling covariance of ΔP_t with ΔP_{t-1}
-    # pandas rolling().cov() computes the sample covariance (ddof=1)
-    cov = delta.rolling(window=window).cov(delta_lag)
+    composite_high = np.fmax(high_s, high_s.shift(1))
+    composite_low = np.fmin(low_s, low_s.shift(1))
+    gamma_raw = np.log(composite_high / composite_low) ** 2
 
-    # Roll's formula: spread = 2 * sqrt(max(-cov, 0))
-    spread = 2.0 * np.sqrt(np.maximum(-cov, 0.0))
+    # Smooth both beta and gamma over the rolling window for consistent scale
+    beta = two_day_sum.rolling(window=window).mean()
+    gamma = gamma_raw.rolling(window=window).mean()
+
+    k = 3.0 - 2.0 * np.sqrt(2.0)
+    alpha = (np.sqrt(2.0 * beta) - np.sqrt(beta)) / k - np.sqrt(gamma / k)
+    alpha_clamped = alpha.clip(lower=0.0)
+
+    exp_alpha = np.exp(alpha_clamped)
+    spread = 2.0 * (exp_alpha - 1.0) / (1.0 + exp_alpha)
 
     result = spread.to_numpy(dtype=np.float64, copy=True)
-
-    # Enforce NaN for the cold-start window (window + 1 extra for diff lag)
     result[: window + 1] = np.nan
-
     return result
 
 
@@ -165,52 +199,33 @@ def CORWIN_SCHULTZ(
     >>> low  = np.array([ 99.0,  98.0,  99.5,  97.0,  98.0,  96.5])
     >>> spreads = CORWIN_SCHULTZ(high, low, window=3)
     """
-    return_array = isinstance(high, np.ndarray)
-
-    high_s = pd.Series(high) if return_array else high.reset_index(drop=True)
-    low_s = pd.Series(low) if return_array else low.reset_index(drop=True)
-
-    if len(high_s) != len(low_s):
+    if window < 2:
+        raise ValueError("'window' must be at least 2.")
+    if len(high) != len(low):
         raise ValueError("'high' and 'low' must have the same length.")
 
-    n = len(high_s)
-    if n < window + 2:
-        return np.full(n, np.nan)
+    if (
+        isinstance(high, pd.Series)
+        and isinstance(low, pd.Series)
+        and isinstance(high.index, pd.MultiIndex)
+    ):
+        from pyquantflow.data.utils import safe_stack
 
-    # Validate strictly positive prices
-    if (high_s <= 0).any() or (low_s <= 0).any():
-        raise ValueError("'high' and 'low' prices must be strictly positive.")
+        h_unstacked = high.unstack(level="ticker")
+        l_unstacked = low.unstack(level="ticker")
+        res_cols = {}
+        for tk in h_unstacked.columns:
+            res_cols[tk] = pd.Series(
+                _corwin_schultz_single(h_unstacked[tk], l_unstacked[tk], window=window),
+                index=h_unstacked.index,
+            )
+        transformed = pd.DataFrame(res_cols, index=h_unstacked.index)
+        transformed.columns.name = "ticker"
+        stacked = safe_stack(transformed, level="ticker")
+        if stacked.index.names != high.index.names:
+            stacked = stacked.reorder_levels(high.index.names)
+        return stacked.reindex(high.index).to_numpy(dtype=np.float64, copy=True)
 
-    # --- β: rolling sum of squared single-day log-HL ratios ---
-    # log_hl_sq_t = [ln(H_t / L_t)]²
-    log_hl_sq = np.log(high_s / low_s) ** 2
-
-    # β_t = E[log_hl_sq_t + log_hl_sq_{t-1}] ≈ rolling mean of 2-day sum
-    # Original paper uses a 2-day sum; we then smooth over `window` observations
-    two_day_sum = log_hl_sq + log_hl_sq.shift(1)
-    beta = two_day_sum.rolling(window=window).mean()
-
-    # --- γ: 2-day composite high/low log-range squared ---
-    # H_{t,t-1}^max = max(H_t, H_{t-1})   L_{t,t-1}^min = min(L_t, L_{t-1})
-    composite_high = np.fmax(high_s, high_s.shift(1))
-    composite_low = np.fmin(low_s, low_s.shift(1))
-    gamma = np.log(composite_high / composite_low) ** 2
-
-    # --- α: spread parameter ---
-    k = 3.0 - 2.0 * np.sqrt(2.0)  # ≈ 0.1716
-
-    alpha = (np.sqrt(2.0 * beta) - np.sqrt(beta)) / k - np.sqrt(gamma / k)
-
-    # Clamp negative alpha (price pressure / model violation) to zero
-    alpha_clamped = alpha.clip(lower=0.0)
-
-    # --- Spread estimate: S = 2(e^α - 1) / (1 + e^α) ---
-    exp_alpha = np.exp(alpha_clamped)
-    spread = 2.0 * (exp_alpha - 1.0) / (1.0 + exp_alpha)
-
-    result = spread.to_numpy(dtype=np.float64, copy=True)
-
-    # Enforce NaN for the cold-start window
-    result[: window + 1] = np.nan
-
-    return result
+    high_s = pd.Series(high) if isinstance(high, np.ndarray) else high.reset_index(drop=True)
+    low_s = pd.Series(low) if isinstance(low, np.ndarray) else low.reset_index(drop=True)
+    return _corwin_schultz_single(high_s, low_s, window=window)

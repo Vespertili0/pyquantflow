@@ -22,33 +22,29 @@ def fetch_quarterly_data(ticker, time_dict, period="quarterly") -> pd.DataFrame:
     if period not in ["quarterly"]:
         raise ValueError("period must be 'quarterly'")
 
-    # Define all quarters with their start and end dates
-    if period == "quarterly":
-        all_period = {
-            1: ("01-01", "03-31"),  # Q1
-            2: ("04-01", "06-30"),  # Q2
-            3: ("07-01", "09-30"),  # Q3
-            4: ("10-01", "12-31"),  # Q4
-        }
-        interval = "1h"
-    data_frames = []  # To store the downloaded data frames
+    all_period = {
+        1: ("01-01", "04-01"),  # Q1 (end is exclusive in yfinance)
+        2: ("04-01", "07-01"),  # Q2
+        3: ("07-01", "10-01"),  # Q3
+        4: ("10-01", "01-01"),  # Q4 (rolls into year + 1)
+    }
+    interval = "1h"
+    data_frames = []
 
-    # Iterate through the years and their respective quarters
     for year, timeframes in time_dict.items():
         for t in timeframes:
             start, end = all_period[t]
+            end_year = int(year) + 1 if t == 4 else int(year)
             try:
-                # Download data for the specific quarter
                 new = yf.download(
                     tickers=ticker,
                     start=f"{year}-{start}",
-                    end=f"{year}-{end}",
+                    end=f"{end_year}-{end}",
                     interval=interval,
                     multi_level_index=False,
                     auto_adjust=True,
-                    progress=False,  # Suppress the progress bar
+                    progress=False,
                 )
-                # Append the new data
                 if not new.empty:
                     data_frames.append(new)
             except Exception as e:
@@ -61,9 +57,12 @@ def fetch_quarterly_data(ticker, time_dict, period="quarterly") -> pd.DataFrame:
         return pd.DataFrame()
 
     data = pd.concat(data_frames)
-
     if data.empty:
         return data
 
-    data.index = data.index.tz_convert("UTC")
+    data = data[~data.index.duplicated(keep="first")].sort_index()
+    if data.index.tz is None:
+        data.index = data.index.tz_localize("UTC")
+    else:
+        data.index = data.index.tz_convert("UTC")
     return data

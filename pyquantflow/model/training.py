@@ -74,6 +74,9 @@ class HyperparameterOptimiser:
         """
         metric_kwargs = metric_kwargs or {}
 
+        if t1_col is not None and hasattr(cv, "t1") and getattr(cv, "t1") is None:
+            cv.t1 = t1_col
+
         # Define optuna objective function
         def objective(trial: optuna.Trial):
             model = model_factory(trial)

@@ -49,8 +49,7 @@ class BatchBacktester:
         finalize_trades: bool,
         **strategy_params,
     ) -> dict[str, Any]:
-        """Validates Data and executes a single backtest."""
-        df = self._validate_data(df)
+        df = self._validate_data(df).copy()
         if not isinstance(df.index, pd.DatetimeIndex):
             df.index = pd.to_datetime(df.index, utc=True)
 

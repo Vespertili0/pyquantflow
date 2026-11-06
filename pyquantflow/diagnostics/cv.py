@@ -7,6 +7,7 @@ evaluation windows, and exposes fold-to-fold feature distribution drift.
 
 import warnings
 
+import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 
@@ -113,20 +114,31 @@ def plot_cv_splits(
                     has_leakage = True
                     leaking_fold_indices.append(i)
 
-        # Plot Train Segment
-        # NOTE: Plotly Bar with datetime base and timedelta x has quirks.
-        # Using ms for duration and datetime for base works well with go.Bar(orientation='h').
-        fig.add_trace(
-            go.Bar(
-                base=train_start_ts,
-                x=[train_duration],
-                y=[f"Fold {i}"],
-                orientation="h",
-                marker_color="steelblue",
-                name="Train",
-                showlegend=(i == 0),
+        # Split train_idx into contiguous index runs (pre-test and post-test blocks)
+        idx_diffs = np.where(np.diff(train_idx) > 1)[0]
+        train_segments = np.split(train_idx, idx_diffs + 1)
+
+        for seg_i, seg in enumerate(train_segments):
+            if len(seg) == 0:
+                continue
+            seg_start = times[seg[0]]
+            seg_end = times[seg[-1]]
+            seg_dur = (
+                (seg_end - seg_start).total_seconds() * 1000
+                if is_datetime
+                else (seg_end - seg_start)
             )
-        )
+            fig.add_trace(
+                go.Bar(
+                    base=seg_start,
+                    x=[seg_dur],
+                    y=[f"Fold {i}"],
+                    orientation="h",
+                    marker_color="steelblue",
+                    name="Train",
+                    showlegend=(i == 0 and seg_i == 0),
+                )
+            )
 
         # Plot Test Segment
         fig.add_trace(
@@ -141,15 +153,19 @@ def plot_cv_splits(
             )
         )
 
-        # Purged zone
-        fig.add_vrect(
-            x0=train_end_ts,
-            x1=test_start_ts,
-            fillcolor=PALETTE["sl"],
-            opacity=0.15,
-            layer="below",
-            line_width=0,
-        )
+        # Identify pre-test purge gap (between end of pre-test train segment and test_start_ts)
+        pre_train = train_idx[train_idx < test_idx[0]]
+        if len(pre_train) > 0:
+            purge_x0 = times[pre_train[-1]]
+            if purge_x0 < test_start_ts:
+                fig.add_vrect(
+                    x0=purge_x0,
+                    x1=test_start_ts,
+                    fillcolor=PALETTE["sl"],
+                    opacity=0.15,
+                    layer="below",
+                    line_width=0,
+                )
 
         # Embargo zone computation
         # Approximate visually by using test_end_ts + some delta.

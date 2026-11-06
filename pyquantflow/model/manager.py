@@ -234,17 +234,23 @@ class ClassifierEngine(BaseModelEngine):
         # 3. Fit on ALL training data
         logger.info("Retraining best model on full training set...")
         fit_params = {}
+        sample_weight = None
         if weight_col and weight_col in X_train.columns:
-            # Extract sample weight and find the target estimator step in the pipeline
-            sample_weight = X_train[weight_col].values
+            sample_weight = X_train[weight_col].values.copy()
 
-            if balance_classes:
-                from sklearn.utils.class_weight import compute_sample_weight
+        if balance_classes:
+            from sklearn.utils.class_weight import compute_sample_weight
 
-                y_array = np.ravel(y_train)
-                class_weights = compute_sample_weight("balanced", y_array)
+            y_array = np.ravel(y_train)
+            class_weights = compute_sample_weight("balanced", y_array)
+            if sample_weight is not None:
                 sample_weight = sample_weight * class_weights
+            else:
+                sample_weight = class_weights
 
+        if sample_weight is not None:
+            if sample_weight.sum() > 0:
+                sample_weight = sample_weight / sample_weight.mean()
             if hasattr(self.best_estimator_, "steps"):
                 final_step_name = self.best_estimator_.steps[-1][0]
                 fit_params[f"{final_step_name}__sample_weight"] = sample_weight

@@ -173,7 +173,7 @@ class FEDiagnostics:
         from .clustering import plot_feature_clusters
 
         all_features = self._obj.features + self._obj.raw_features
-        corr_matrix = df[all_features].corr()
+        corr_matrix = self._obj._coerce_numeric(df[all_features]).corr()
 
         if self._obj.importance_df is not None:
             regime_results = self._obj.importance_df
@@ -236,7 +236,10 @@ class PSCDiagnostics:
         from .metalabel import plot_meta_label_entropy
 
         enriched = self._obj.transform(X).copy()
-        enriched["label"] = y_true
+        if hasattr(y_true, "ndim") and y_true.ndim == 2:
+            enriched["label"] = y_true.iloc[:, 0] if hasattr(y_true, "iloc") else y_true[:, 0]
+        else:
+            enriched["label"] = y_true
 
         return plot_meta_label_entropy(enriched)
 

@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import sqlite3
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -48,13 +49,21 @@ class BacktestDatabaseManager:
         """
         cursor = self.conn.cursor()
 
-        # Serialize metrics to JSON
-        # Handle potential non-serializable types if necessary (though backtesting.py results are mostly float/str)
-        # If there are Timedeltas or NaNs, simple json.dumps might fail or produce invalid JSON.
-        # We'll use a custom encoder or string conversion for safety if needed,
-        # but for now standard dumps with default=str should cover most cases (like Timedelta).
+        clean_dict = {}
+        for k, v in result_dict.items():
+            if str(k).startswith("_"):
+                continue
+            if isinstance(v, (float, np.floating)) and (np.isnan(v) or np.isinf(v)):
+                clean_dict[k] = None
+            elif isinstance(v, np.integer):
+                clean_dict[k] = int(v)
+            elif isinstance(v, np.floating):
+                clean_dict[k] = float(v)
+            else:
+                clean_dict[k] = v
+
         try:
-            metrics_json = json.dumps(result_dict, default=str)
+            metrics_json = json.dumps(clean_dict, default=str, allow_nan=False)
         except Exception as e:
             logger.error(f"Error serializing results for {ticker}: {type(e).__name__}")
             return

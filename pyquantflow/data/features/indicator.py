@@ -130,19 +130,17 @@ def ROGERSATCHELL(high, low, open, close, timeperiod=30):
 
     rs_daily = term1 + term2
 
-    # 3. The Optimisation: Rolling Sum via Cumsum Trick
-    # Sum[i:i+w] = CumSum[i+w] - CumSum[i]
-    ret = np.cumsum(rs_daily, dtype=float)
-    ret[timeperiod:] = ret[timeperiod:] - ret[:-timeperiod]
+    # 3. Rolling Mean via Pandas C-engine (handles internal NaNs safely) or clamped Cumsum
+    if np.isnan(rs_daily).any():
+        rs_mean = pd.Series(rs_daily).rolling(window=timeperiod).mean().to_numpy()
+    else:
+        ret = np.cumsum(rs_daily, dtype=np.float64)
+        ret[timeperiod:] = ret[timeperiod:] - ret[:-timeperiod]
+        rs_mean = ret / timeperiod
+        rs_mean[: timeperiod - 1] = np.nan
 
-    # 4. Variance to Volatility
-    # Divide by window size and sqrt
-    vol = np.sqrt(ret / timeperiod)
-
-    # 5. Padding
-    # TA-Lib convention: if window is 30, indices 0..28 are NaN.
-    # Index 29 is the first valid value.
-    # Usually TA-Lib returns NaN for indices 0 to timeperiod-2.
+    # 4. Variance to Volatility (clamp negative float drift to 0.0)
+    vol = np.sqrt(np.maximum(rs_mean, 0.0))
     vol[: timeperiod - 1] = np.nan
 
     return vol
@@ -360,7 +358,10 @@ def SADF_JAX(
         # Apply transformation column-wise
         transformed_df = unstacked.apply(
             lambda col: get_sadf_jax(
-                np.log(col), model=model, lags=lags, min_length=min_length
+                np.log(col) if model in ("linear", "quadratic", "sm_poly_1") else col,
+                model=model,
+                lags=lags,
+                min_length=min_length,
             )
         )
         # Stack back to multi-index
@@ -375,9 +376,11 @@ def SADF_JAX(
         result.name = "sadf_stat"
     else:
         # Single-asset baseline transformation
-        log_series = np.log(series)
+        input_series = (
+            np.log(series) if model in ("linear", "quadratic", "sm_poly_1") else series
+        )
         sadf_series = get_sadf_jax(
-            log_series, model=model, lags=lags, min_length=min_length
+            input_series, model=model, lags=lags, min_length=min_length
         )
         result = sadf_series.reindex(series.index)
 

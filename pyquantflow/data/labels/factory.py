@@ -87,13 +87,16 @@ class TripleBarrierLabelFactory(BaseLabelFactory):
         self, ticker_df: pd.DataFrame, price_col: str = "Close"
     ) -> pd.DataFrame:
         prices = ticker_df[price_col]
-
-        # Determine Stop-Loss dynamically based on volatility
         vol = prices.pct_change().ewm(span=self.vol_span).std()
         sl_col = prices - prices * vol * self.sl_mult
+        tp_col = prices + prices * vol * self.pt_mult
 
         labels_df = apply_triple_barrier(
-            prices=prices, sl_col=sl_col, tp_mult=self.pt_mult, horizon=self.horizon
+            prices=prices,
+            sl_col=sl_col,
+            tp_mult=self.pt_mult,
+            horizon=self.horizon,
+            tp_col=tp_col,
         )
         return labels_df
 

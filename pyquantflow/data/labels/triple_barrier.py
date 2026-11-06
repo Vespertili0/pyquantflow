@@ -3,13 +3,18 @@ import pandas as pd
 
 
 def apply_triple_barrier(
-    prices: pd.Series, sl_col: pd.Series, tp_mult: float, horizon: int
+    prices: pd.Series,
+    sl_col: pd.Series,
+    tp_mult: float,
+    horizon: int,
+    tp_col: pd.Series | None = None,
 ) -> pd.DataFrame:
     """
     prices: pd.Series of prices (Index must be Datetime)
     sl_col: pd.Series of stop-loss levels (absolute price levels)
     tp_mult: float, multiplier applied to distance between price and SL to compute TP
     horizon: int, number of bars before timeout
+    tp_col: Optional[pd.Series] of take-profit levels (absolute price levels)
 
     Returns: pd.DataFrame with ['label', 't1', 'tbl_return']
              label: {0: SL hit, 1: timeout, 2: TP hit}
@@ -17,11 +22,14 @@ def apply_triple_barrier(
              tbl_return: Simple return between time t and t1
     """
     n = len(prices)
-    prices_arr = prices.values
-    sl_arr = sl_col.values
-    tp_arr = prices_arr + tp_mult * (prices_arr - sl_arr)
+    prices_arr = prices.to_numpy(dtype=np.float64)
+    sl_arr = sl_col.to_numpy(dtype=np.float64)
+    if tp_col is not None:
+        tp_arr = tp_col.to_numpy(dtype=np.float64)
+    else:
+        tp_arr = prices_arr + tp_mult * (prices_arr - sl_arr)
 
-    # 1. Build index matrix
+    # 1. Build forward index matrix (offsets 0..horizon; mask offset 0 from barrier hits)
     max_h = horizon + 1
     offsets = np.arange(max_h)
     end_idx = np.minimum(np.arange(n) + horizon, n - 1)
@@ -31,9 +39,11 @@ def apply_triple_barrier(
 
     forward_prices = np.where(idx_matrix >= 0, prices_arr[idx_matrix], np.nan)
 
-    # 2. Find the EXACT index offset of the first hit
+    # 2. Find the EXACT index offset of the first hit (strictly forward: offset >= 1)
     sl_mask = forward_prices <= sl_arr[:, None]
     tp_mask = forward_prices >= tp_arr[:, None]
+    sl_mask[:, 0] = False
+    tp_mask[:, 0] = False
 
     # np.argmax returns the first True index. (Returns 0 if all are False)
     sl_hit_idx = np.argmax(sl_mask, axis=1)
@@ -49,7 +59,7 @@ def apply_triple_barrier(
 
     # 3. Assign Labels and Resolve Conflicts
     labels = np.full(n, np.nan)
-    t1_offsets = np.full(n, np.nan)  # Stores the steps taken to resolve
+    t1_offsets = np.full(n, np.nan)
 
     # Condition A: Stop Loss hit first (or tied with TP - be conservative!)
     sl_wins = sl_hit_occurred & (sl_first_touch <= tp_first_touch)
@@ -62,7 +72,7 @@ def apply_triple_barrier(
     t1_offsets[tp_wins] = tp_first_touch[tp_wins]
 
     # Condition C: Timeout (Vertical Barrier)
-    full_window = np.arange(n) + horizon < n
+    full_window = (np.arange(n) + horizon < n) & (~np.isnan(sl_arr)) & (~np.isnan(tp_arr))
     timeout_mask = (~sl_hit_occurred) & (~tp_hit_occurred) & full_window
     labels[timeout_mask] = 1
     t1_offsets[timeout_mask] = horizon
@@ -72,18 +82,12 @@ def apply_triple_barrier(
     final_idx = base_idx + t1_offsets
 
     t1_times = pd.Series(pd.NaT, index=prices.index, dtype=prices.index.dtype)
-    tbl_return = np.full(n, np.nan)  # Array to hold returns
+    tbl_return = np.full(n, np.nan)
 
-    # Map valid integer indices back to the price index timestamps and compute return
     valid_t1 = ~np.isnan(final_idx) & (final_idx < n)
     valid_int_idx = final_idx[valid_t1].astype(int)
 
-    # Assign t1 Datetime
     t1_times.iloc[valid_t1] = prices.index[valid_int_idx]
-
-    # Calculate simple return: (P_t1 / P_t) - 1
-    # prices_arr[valid_int_idx] is the price at resolution
-    # prices_arr[valid_t1] is the price at entry
     tbl_return[valid_t1] = (prices_arr[valid_int_idx] / prices_arr[valid_t1]) - 1.0
 
     return pd.DataFrame(

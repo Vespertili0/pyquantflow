@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 from sklearn.base import BaseEstimator
 from sklearn.ensemble import HistGradientBoostingClassifier
 from sklearn.metrics import log_loss
@@ -51,7 +52,7 @@ class DualGatePipelineFactory:
         alpha_min: float = 0.5,
         alpha_max: float = 3.0,
         alpha_step: float = 0.1,
-    ) -> tuple[AssetOrganiser, list[str]]:
+    ) -> tuple[AssetOrganiser, pd.DataFrame | None]:
         """
         Executes the Two-Track pipeline: continuous transformations, discrete event
         downsampling, alignment merge, and Gate 1 memory validation.
@@ -91,10 +92,10 @@ class DualGatePipelineFactory:
 
         Returns
         -------
-        Tuple[AssetOrganiser, List[str]]
+        Tuple[AssetOrganiser, Optional[pd.DataFrame]]
             A tuple containing:
             - The updated AssetOrganiser containing the downsampled and stationarised dataset.
-            - A list of feature names that survived the Gate 1 memory check.
+            - Importance DataFrame or None.
         """
         if target_labels is None:
             target_labels = ["label", "t1", "weight"]
@@ -132,9 +133,11 @@ class DualGatePipelineFactory:
         # THE SYNCHRONISATION BRIDGE: Map Sparse Metadata back to Unbroken Tracks
         continuous_df = continuous_df.join(labeled_events_df)
 
-        # TRACK B (Part 2): Stationarity Transformations & Gate 1 Pruning
-        # fit_transform_features dynamically drops features that fail the memory threshold
-        continuous_transformed_df = evaluator.fit_transform_features(continuous_df)
+        # TRACK B (Part 2): Leak-Free Stationarity Transformations & Gate 1 Pruning
+        # Fit strictly on training partition (< cutoff_date), transform across full panel
+        continuous_transformed_df = evaluator.fit_transform_features(
+            continuous_df, cutoff_date=organiser.cutoff_date
+        )
 
         # Release continuous_df as it is no longer required
         del continuous_df
@@ -150,12 +153,29 @@ class DualGatePipelineFactory:
         if estimator is None:
             estimator = HistGradientBoostingClassifier()
 
+        # Isolate strictly the training partition for Gate 2 Importance Evaluation
+        if (
+            isinstance(merged_df.index, pd.MultiIndex)
+            and "datetime" in merged_df.index.names
+        ):
+            dt_vals = pd.to_datetime(
+                merged_df.index.get_level_values("datetime"), utc=True
+            )
+            cutoff = pd.to_datetime(organiser.cutoff_date, utc=True)
+            train_merged_df = merged_df[dt_vals < cutoff]
+        else:
+            dt_vals = pd.to_datetime(merged_df.index, utc=True)
+            cutoff = pd.to_datetime(organiser.cutoff_date, utc=True)
+            train_merged_df = merged_df[dt_vals < cutoff]
+
+        eval_df = train_merged_df if len(train_merged_df) > 0 else merged_df
+
         evaluator.evaluate_importance(
-            df=merged_df,
+            df=eval_df,
             estimator=estimator,
             metric=log_loss,
             metric_kwargs={
-                "labels": np.unique(merged_df[evaluator.target_col].astype(int).values)
+                "labels": np.unique(eval_df[evaluator.target_col].astype(int).values)
             },
             needs_proba=needs_proba,
             greater_is_better=greater_is_better,
@@ -168,3 +188,4 @@ class DualGatePipelineFactory:
 
         # Return the updated organiser and the curated list of survivor features
         return organiser, evaluator.importance_df
+

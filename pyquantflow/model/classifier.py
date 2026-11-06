@@ -68,52 +68,75 @@ class PrimarySecondaryClassifier(BaseQuantClassifier):
         return entropy(probas, axis=1).reshape(-1, 1)
 
     def fit(self, X, y, sample_weight=None):
+        from sklearn.model_selection import KFold
+
         self.prefitted = False
         self.primary_model_ = clone(self.primary_model)
         self.secondary_model_ = clone(self.secondary_model)
 
-        y_primary = y.iloc[:, 0] if hasattr(y, "iloc") else y[:, 0]
-        y_secondary = y.iloc[:, 1] if hasattr(y, "iloc") else y[:, 1]
+        # Support both 2-column explicit [y_primary, y_secondary] and 1D y_primary (auto meta-label)
+        is_2d_y = hasattr(y, "ndim") and y.ndim == 2 and y.shape[1] >= 2
+        if is_2d_y:
+            y_primary = y.iloc[:, 0] if hasattr(y, "iloc") else y[:, 0]
+            y_secondary = y.iloc[:, 1] if hasattr(y, "iloc") else y[:, 1]
+        else:
+            if hasattr(y, "iloc") and getattr(y, "ndim", 1) == 2:
+                y_primary = y.iloc[:, 0]
+            else:
+                y_primary = y
+            y_secondary = None
 
-        # Convert sample_weight to a numpy array for easy slicing during CV
         sw = np.asarray(sample_weight) if sample_weight is not None else None
 
-        cv = self.cv_generator if self.cv_generator is not None else 5
-        oof_entropy = np.full((len(X), 1), np.nan)
+        if self.cv_generator is None:
+            cv = KFold(n_splits=5, shuffle=False)
+        elif isinstance(self.cv_generator, int):
+            cv = KFold(n_splits=self.cv_generator, shuffle=False)
+        else:
+            cv = self.cv_generator
 
-        # 1. Generate Out-of-Fold Entropy for the secondary model
+        oof_entropy = np.full((len(X), 1), np.nan)
+        oof_preds = np.full(len(X), np.nan)
+
+        # 1. Generate Out-of-Fold Entropy (and OOF predictions) for the secondary model
         for train_idx, val_idx in cv.split(X, y_primary):
             fold_primary = clone(self.primary_model)
-
-            # Slice sample weights if they exist
             fold_sw = sw[train_idx] if sw is not None else None
 
-            # Fit on training fold
+            y_tr = (
+                y_primary.iloc[train_idx]
+                if hasattr(y_primary, "iloc")
+                else y_primary[train_idx]
+            )
             if fold_sw is not None:
                 fold_primary.fit(
                     X.iloc[train_idx][self.primary_features],
-                    y_primary.iloc[train_idx]
-                    if hasattr(y_primary, "iloc")
-                    else y_primary[train_idx],
+                    y_tr,
                     sample_weight=fold_sw,
                 )
             else:
                 fold_primary.fit(
                     X.iloc[train_idx][self.primary_features],
-                    y_primary.iloc[train_idx]
-                    if hasattr(y_primary, "iloc")
-                    else y_primary[train_idx],
+                    y_tr,
                 )
 
-            # Predict on validation fold
             fold_probas = fold_primary.predict_proba(
                 X.iloc[val_idx][self.primary_features]
             )
             oof_entropy[val_idx] = self._calculate_entropy(fold_probas)
+            oof_preds[val_idx] = fold_primary.predict(
+                X.iloc[val_idx][self.primary_features]
+            )
 
-        # Handle potential gaps from purging/embargoing
+        # Causally fill any initial gaps with maximum uniform entropy ln(n_classes) — NEVER bfill!
         if np.isnan(oof_entropy).any():
-            oof_entropy = pd.DataFrame(oof_entropy).ffill().bfill().values
+            n_classes = max(2, len(np.unique(np.asarray(y_primary))))
+            max_entropy = float(np.log(n_classes))
+            oof_entropy = pd.DataFrame(oof_entropy).ffill().fillna(max_entropy).values
+
+        if y_secondary is None:
+            y_prim_arr = np.asarray(y_primary).ravel()
+            y_secondary = (oof_preds == y_prim_arr).astype(int)
 
         # 2. Final Fits on all data
         if sw is not None:

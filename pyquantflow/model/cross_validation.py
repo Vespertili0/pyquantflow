@@ -133,23 +133,29 @@ class PurgedKFoldCV(BaseCrossValidator):
         fold_size = n_unique // self.n_splits
         embargo = int(n_unique * self.embargo_pct)
 
-        # 3. Safely align t1 to X's index
+        # 3. Safely align t1 to X without crashing on duplicate indices
         if self.t1 is not None:
             if isinstance(self.t1, str):
-                t1_series = X[self.t1]
+                t1_raw = X[self.t1].values
+            elif isinstance(self.t1, pd.Series):
+                if len(self.t1) == len(X) and self.t1.index.equals(X.index):
+                    t1_raw = self.t1.values
+                elif X.index.is_unique and self.t1.index.is_unique:
+                    t1_raw = self.t1.reindex(X.index).values
+                else:
+                    t1_raw = self.t1.iloc[: len(X)].values
             else:
-                t1_series = self.t1
-            # .reindex ensures perfect alignment
-            # even if X has duplicate indices or is unsorted
-            t1_times = pd.Series(t1_series).reindex(X.index).values
-            t1_times = pd.to_datetime(t1_times)
-            if t1_times.tz is not None:
+                t1_raw = np.asarray(self.t1)
+
+            t1_times = pd.to_datetime(t1_raw)
+            if getattr(t1_times, "tz", None) is not None:
                 t1_times = t1_times.tz_convert(None)
         else:
-            t1_times = pd.Series([pd.NaT] * len(X)).values
+            t1_times = pd.to_datetime(pd.Series([pd.NaT] * len(X)).values)
+
+        times_arr = times.values
 
         for k in range(self.n_splits):
-            # Define time windows
             test_start = k * fold_size
             test_end = (k + 1) * fold_size if k < self.n_splits - 1 else n_unique
 
@@ -161,18 +167,23 @@ class PurgedKFoldCV(BaseCrossValidator):
             embargo_end = min(test_end + embargo, n_unique)
             embargo_times = unique_times[embargo_start:embargo_end]
 
-            # Generate Masks
-            test_mask = times.isin(test_times).values
-            embargo_mask = times.isin(embargo_times).values
+            test_mask = np.isin(times_arr, test_times)
+            embargo_mask = np.isin(times_arr, embargo_times)
 
-            # CORRECTED PURGE MASK:
-            # Drop if sample started before test ends AND expires after test begins
             if self.t1 is not None:
-                purge_mask = (times <= test_max) & (t1_times >= test_min)
+                # Maximum resolution timestamp of any event in the test fold
+                test_t1s = t1_times[test_mask]
+                valid_test_t1s = test_t1s[~pd.isna(test_t1s)]
+                effective_test_max = (
+                    max(test_max, valid_test_t1s.max())
+                    if len(valid_test_t1s) > 0
+                    else test_max
+                )
+                # Purge any training sample whose [t0, t1] overlaps [test_min, effective_test_max]
+                purge_mask = (times_arr <= effective_test_max) & (t1_times >= test_min)
             else:
                 purge_mask = np.zeros(len(X), dtype=bool)
 
-            # Final training mask: Must not be test, embargoed, or purged
             train_mask = ~(test_mask | embargo_mask | purge_mask)
 
             yield np.where(train_mask)[0], np.where(test_mask)[0]

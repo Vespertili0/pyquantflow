@@ -2,7 +2,11 @@ import numpy as np
 import pandas as pd
 
 
-def get_sample_weights(t1, returns=None):
+def get_sample_weights(
+    t1: pd.Series,
+    returns: pd.Series | None = None,
+    bar_index: pd.DatetimeIndex | None = None,
+) -> pd.Series:
     """
     Calculates sample uniqueness (u_i) and optionally weights it by absolute returns.
 
@@ -14,6 +18,8 @@ def get_sample_weights(t1, returns=None):
     returns : pd.Series, optional
         A Pandas Series of returns corresponding to the same index.
         If provided, the final weight is Uniqueness * |Return|.
+    bar_index : pd.DatetimeIndex, optional
+        Underlying continuous price bar index.
 
     Returns:
     --------
@@ -37,11 +43,16 @@ def get_sample_weights(t1, returns=None):
 
     # Ensure chronological order
     t1 = t1.sort_index()
-    bars = t1.index.values
 
-    # 1. Map timestamps to integer array indices
-    start_idx = np.arange(len(bars))
-    # Find where the end time falls in the bar index
+    if bar_index is not None and len(bar_index) > 0:
+        b_idx = pd.to_datetime(bar_index, utc=True).tz_convert(None)
+        bars = np.sort(b_idx.unique().values)
+        start_idx = np.searchsorted(bars, t1.index.values, side="left")
+    else:
+        # Combine event start and end times to form the finest available timeline
+        bars = np.unique(np.concatenate([t1.index.values, t1.values]))
+        start_idx = np.searchsorted(bars, t1.index.values, side="left")
+
     end_idx = np.searchsorted(bars, t1.values, side="right")
 
     # 2. Fast Concurrency (c_t) via Difference Array
@@ -62,11 +73,10 @@ def get_sample_weights(t1, returns=None):
     # We use a cumulative sum array of point_uniqueness to allow O(1) range sums
     cum_u = np.insert(np.cumsum(point_uniqueness), 0, 0)
 
-    u_i = np.zeros(len(bars))
+    u_i = np.zeros(len(t1))
     for i, (s, e) in enumerate(zip(start_idx, end_idx)):
         e_clipped = min(e, len(bars))
         count = e_clipped - s
-
         if count > 0:
             # Sum of point uniqueness in range [s, e_clipped) divided by lifespan
             u_i[i] = (cum_u[e_clipped] - cum_u[s]) / count
@@ -84,7 +94,12 @@ def get_sample_weights(t1, returns=None):
             returns_naive.index = returns_naive.index.tz_convert(None)
 
         abs_rets = returns_naive.reindex(t1.index).abs()
-        weights = weights * abs_rets
+        # Fill missing return on initial bar with median absolute return (or 1.0) so events are not dropped
+        fallback_ret = float(abs_rets.median()) if abs_rets.notna().any() else 1.0
+        if np.isnan(fallback_ret) or fallback_ret <= 0.0:
+            fallback_ret = 1.0
+        abs_rets = abs_rets.fillna(fallback_ret)
+        weights = weights * np.maximum(abs_rets, 1e-8)
 
     # Always return with a UTC-localised index, regardless of the caller's input timezone.
     # This prevents NaN rows when AssetOrganiser joins weights into a timezone-aware panel.

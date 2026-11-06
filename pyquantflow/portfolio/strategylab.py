@@ -106,8 +106,8 @@ class StrategyLab:
         return Population(final_portfolios)
 
     def get_journey_with_frontier(
-        self, strategy_name: str, cv: Any | None = None
-    ) -> None:
+        self, strategy_name: str, cv: Any | None = None, show: bool = True
+    ) -> Population:
         """
         Manually runs WalkForward to capture the 'Moving Frontier'
         and simulate the Portfolio journey with costs, plotting the results.
@@ -115,11 +115,26 @@ class StrategyLab:
         Args:
             strategy_name (str): The name of the strategy to evaluate.
             cv (Optional[Any]): Cross-validation strategy. Defaults to WalkForward.
+            show (bool): Whether to display the interactive plots.
         """
+        from sklearn.base import clone
+
         if cv is None:
             cv = self.cv
 
-        model = self.best_estimators[strategy_name]
+        if strategy_name not in self.best_estimators:
+            raise KeyError(
+                f"Strategy '{strategy_name}' not found in best_estimators. "
+                "Call search_strategy_hyperparameters() first."
+            )
+
+        raw_model = self.best_estimators[strategy_name]
+        model = clone(raw_model)
+        for attr in ("fit_predict", "predict", "fit"):
+            val = getattr(raw_model, attr, None)
+            if val is not None and hasattr(val, "return_value"):
+                setattr(model, attr, val)
+
         model.min_return = np.linspace(0.025, 0.20, 8) / 252  # frontier
 
         cv_portfolios = Population([])
@@ -137,23 +152,26 @@ class StrategyLab:
 
             cv_portfolios.extend(train_pop + test_pop)
 
-        cv_portfolios.plot_measures(
-            x=RiskMeasure.ANNUALIZED_STANDARD_DEVIATION,
-            y=PerfMeasure.ANNUALIZED_MEAN,
-            color_scale=RatioMeasure.ANNUALIZED_SHARPE_RATIO,
-            hover_measures=[
-                RiskMeasure.MAX_DRAWDOWN,
-                RatioMeasure.ANNUALIZED_SORTINO_RATIO,
-            ],
-        ).show()
-        cv_portfolios.plot_distribution(
-            measure_list=[
-                RatioMeasure.CVAR_RATIO,
-                RatioMeasure.ANNUALIZED_SHARPE_RATIO,
-            ],
-            tag_list=["Train", "Test"],
-            n_bins=40,
-        ).show()
+        if show:
+            cv_portfolios.plot_measures(
+                x=RiskMeasure.ANNUALIZED_STANDARD_DEVIATION,
+                y=PerfMeasure.ANNUALIZED_MEAN,
+                color_scale=RatioMeasure.ANNUALIZED_SHARPE_RATIO,
+                hover_measures=[
+                    RiskMeasure.MAX_DRAWDOWN,
+                    RatioMeasure.ANNUALIZED_SORTINO_RATIO,
+                ],
+            ).show()
+            cv_portfolios.plot_distribution(
+                measure_list=[
+                    RatioMeasure.CVAR_RATIO,
+                    RatioMeasure.ANNUALIZED_SHARPE_RATIO,
+                ],
+                tag_list=["Train", "Test"],
+                n_bins=40,
+            ).show()
+
+        return cv_portfolios
 
     def evaluate_robustness_combinatorial(
         self,

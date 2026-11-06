@@ -372,6 +372,7 @@ class FeatureClusterer:
         """
         # Type-safe coercion: encode any non-numeric columns before clustering
         data = self._coerce_numeric(data)
+        data = data.replace([np.inf, -np.inf], np.nan).fillna(0.0)
 
         if method == "correlation":
             labels_list = data.columns.tolist()
@@ -379,8 +380,16 @@ class FeatureClusterer:
                 return {}
             if len(labels_list) == 1:
                 return {1: [labels_list[0]]}
-            corr = data.corr(method="pearson")
-            dist_matrix = np.sqrt(0.5 * (1 - corr.clip(-1, 1)))
+            corr = (
+                data.corr(method="pearson")
+                .replace([np.inf, -np.inf], np.nan)
+                .fillna(0.0)
+            )
+            dist_vals = np.sqrt(0.5 * (1.0 - corr.clip(-1.0, 1.0).values))
+            np.fill_diagonal(dist_vals, 0.0)
+            dist_matrix = pd.DataFrame(
+                dist_vals, index=corr.index, columns=corr.columns
+            )
             condensed_dist = scipy.spatial.distance.squareform(
                 dist_matrix.values, checks=False
             )
@@ -393,6 +402,7 @@ class FeatureClusterer:
             from sklearn.preprocessing import StandardScaler
 
             scaled_data = StandardScaler().fit_transform(data)
+            scaled_data = np.nan_to_num(scaled_data, nan=0.0, posinf=0.0, neginf=0.0)
             condensed_dist = scipy.spatial.distance.pdist(
                 scaled_data, metric="euclidean"
             )
@@ -445,6 +455,35 @@ class ImportanceEvaluator:
         self.t1_col = t1_col
         self.importance_df: pd.DataFrame | None = None
         self.regime_clusters_: dict[int, list[Any]] | None = None
+
+    @staticmethod
+    def _predict_for_metric(
+        est: BaseEstimator,
+        X_eval: pd.DataFrame,
+        needs_proba: bool,
+        metric_kwargs: dict,
+    ) -> np.ndarray:
+        if needs_proba and hasattr(est, "predict_proba"):
+            preds = est.predict_proba(X_eval)
+            expected_labels = metric_kwargs.get("labels")
+            if expected_labels is not None and hasattr(est, "classes_"):
+                expected_arr = np.asarray(expected_labels)
+                if len(expected_arr) > 2 and preds.shape[1] < len(expected_arr):
+                    padded = np.full(
+                        (len(X_eval), len(expected_arr)), 1e-15, dtype=float
+                    )
+                    for col_i, cls_val in enumerate(est.classes_):
+                        match_idx = np.where(expected_arr == cls_val)[0]
+                        if len(match_idx) > 0:
+                            padded[:, match_idx[0]] = preds[:, col_i]
+                    padded /= padded.sum(axis=1, keepdims=True)
+                    return padded
+                if len(expected_arr) == 2 and preds.ndim > 1 and preds.shape[1] == 2:
+                    return preds[:, 1]
+            elif preds.ndim > 1 and preds.shape[1] == 2:
+                return preds[:, 1]
+            return preds
+        return est.predict(X_eval)
 
     def evaluate_importance(
         self,
@@ -581,12 +620,9 @@ class ImportanceEvaluator:
                     est_sfi = clone(estimator)
                     est_sfi.fit(X_train[cols], y_train, **fit_params)
 
-                    if needs_proba and hasattr(est_sfi, "predict_proba"):
-                        preds = est_sfi.predict_proba(X_val[cols])
-                        if preds.ndim > 1 and preds.shape[1] == 2:
-                            preds = preds[:, 1]
-                    else:
-                        preds = est_sfi.predict(X_val[cols])
+                    preds = self._predict_for_metric(
+                        est_sfi, X_val[cols], needs_proba, metric_kwargs
+                    )
 
                     try:
                         score = metric(y_val, preds, **metric_kwargs)
@@ -598,29 +634,24 @@ class ImportanceEvaluator:
                 est_mda = clone(estimator)
                 est_mda.fit(X_train, y_train, **fit_params)
 
-                if needs_proba and hasattr(est_mda, "predict_proba"):
-                    base_preds = est_mda.predict_proba(X_val)
-                    if base_preds.ndim > 1 and base_preds.shape[1] == 2:
-                        base_preds = base_preds[:, 1]
-                else:
-                    base_preds = est_mda.predict(X_val)
+                base_preds = self._predict_for_metric(
+                    est_mda, X_val, needs_proba, metric_kwargs
+                )
 
                 try:
                     baseline_score = metric(y_val, base_preds, **metric_kwargs)
                 except Exception:
                     baseline_score = np.nan
 
+                rng = np.random.default_rng(42)
                 for c_id, cols in feature_clusters.items():
                     X_val_pert = X_val.copy()
-                    for col in cols:
-                        X_val_pert[col] = np.random.permutation(X_val_pert[col].values)
+                    perm_idx = rng.permutation(len(X_val_pert))
+                    X_val_pert[cols] = X_val_pert[cols].iloc[perm_idx].to_numpy()
 
-                    if needs_proba and hasattr(est_mda, "predict_proba"):
-                        pert_preds = est_mda.predict_proba(X_val_pert)
-                        if pert_preds.ndim > 1 and pert_preds.shape[1] == 2:
-                            pert_preds = pert_preds[:, 1]
-                    else:
-                        pert_preds = est_mda.predict(X_val_pert)
+                    pert_preds = self._predict_for_metric(
+                        est_mda, X_val_pert, needs_proba, metric_kwargs
+                    )
 
                     try:
                         pert_score = metric(y_val, pert_preds, **metric_kwargs)
@@ -770,7 +801,9 @@ class FeatureEvaluator:
     ) -> pd.DataFrame:
         return ImportanceEvaluator._convert_results_to_table(results)
 
-    def fit_transform_features(self, df: pd.DataFrame) -> pd.DataFrame:
+    def fit_transform_features(
+        self, df: pd.DataFrame, cutoff_date: str | None = None
+    ) -> pd.DataFrame:
         """
         Dual-path feature ingestion:
 
@@ -793,8 +826,27 @@ class FeatureEvaluator:
         # --- Transform path ---
         X = df[self.features]
 
-        self.stationary_transformer.fit(X)
+        if cutoff_date is not None:
+            if isinstance(X.index, pd.MultiIndex) and "datetime" in X.index.names:
+                dt_vals = pd.to_datetime(
+                    X.index.get_level_values("datetime"), utc=True
+                )
+            else:
+                dt_vals = pd.to_datetime(X.index, utc=True)
+            cutoff_ts = pd.to_datetime(cutoff_date, utc=True)
+            train_mask = dt_vals < cutoff_ts
+            X_fit = X[train_mask] if train_mask.any() else X
+        else:
+            train_mask = None
+            X_fit = X
+
+        self.stationary_transformer.fit(X_fit)
         X_trans = self.stationary_transformer.transform(X)
+        X_gate1 = (
+            X_trans[train_mask]
+            if (train_mask is not None and train_mask.any())
+            else X_trans
+        )
 
         # Gate 1 Pruning: memory check (ACF1)
         # We use pandas natively to evaluate ACF1 globally, bypassing tsfeatures for speed on edge devices
@@ -802,17 +854,17 @@ class FeatureEvaluator:
         for feat in self.features:
             try:
                 if (
-                    isinstance(X_trans.index, pd.MultiIndex)
-                    and "ticker" in X_trans.index.names
+                    isinstance(X_gate1.index, pd.MultiIndex)
+                    and "ticker" in X_gate1.index.names
                 ):
                     acf1_val = (
-                        X_trans[feat]
+                        X_gate1[feat]
                         .groupby(level="ticker")
                         .apply(lambda s: s.autocorr(lag=1))
                         .mean()
                     )
                 else:
-                    acf1_val = X_trans[feat].autocorr(lag=1)
+                    acf1_val = X_gate1[feat].autocorr(lag=1)
             except Exception:
                 acf1_val = np.nan
 
